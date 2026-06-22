@@ -12,4 +12,6 @@ export interface Post {
   status?: 'published' | 'draft'; // Publication status
   likes?: number; // Upvotes count
   dislikes?: number; // Downvotes count
+  imageUrl?: string; // Opt to attach image/link
+  imagePosition?: 'top' | 'middle' | 'bottom'; // Position mapping: top, middle, bottom
 }

@@ -4,7 +4,7 @@ import { db, handleFirestoreError, OperationType } from '../firebase';
 import { Post } from '../types';
 import BlogPostCard from '../components/BlogPostCard';
 import { Newspaper, Search, RefreshCw, AlertTriangle, ChevronLeft, ChevronRight, ThumbsUp } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 
 function getHtmlTextPreview(htmlString: string, maxLength: number = 160): string {
   if (!htmlString) return '';
@@ -15,13 +15,52 @@ function getHtmlTextPreview(htmlString: string, maxLength: number = 160): string
   return excerpt.substring(0, maxLength).trim() + '...';
 }
 
+function BlogPostCardSkeleton() {
+  return (
+    <div className="bg-white border border-slate-200/80 rounded-xl overflow-hidden shadow-3xs p-6 flex flex-col justify-between h-[255px] animate-pulse">
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <div className="h-4 bg-slate-100 rounded-md w-24"></div>
+          <div className="h-5 bg-slate-100/90 rounded-md w-16"></div>
+        </div>
+        
+        <div className="h-5.5 bg-slate-150 rounded-md w-11/12 mb-2.5"></div>
+        <div className="h-5.5 bg-slate-150 rounded-md w-8/12 mb-4"></div>
+        
+        <div className="space-y-2 mb-4">
+          <div className="h-3 bg-slate-100/80 rounded-md w-full"></div>
+          <div className="h-3 bg-slate-100/80 rounded-md w-11/12"></div>
+        </div>
+      </div>
+      
+      <div className="pt-4 border-t border-slate-100 flex items-center justify-between mt-auto">
+        <div className="flex items-center space-x-2">
+          <div className="h-6 w-6 rounded-full bg-slate-100"></div>
+          <div className="h-3.5 bg-slate-100 rounded-md w-16"></div>
+        </div>
+        <div className="h-3.5 bg-slate-100 rounded-md w-24"></div>
+      </div>
+    </div>
+  );
+}
+
 export default function HomeView() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [globalPenName, setGlobalPenName] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedCategory = searchParams.get('category') || 'All';
+  const setSelectedCategory = (cat: string) => {
+    const nextParams = new URLSearchParams(searchParams);
+    if (cat === 'All') {
+      nextParams.delete('category');
+    } else {
+      nextParams.set('category', cat);
+    }
+    setSearchParams(nextParams);
+  };
   const [currentPage, setCurrentPage] = useState(1);
   const postsPerPage = 20;
 
@@ -89,11 +128,10 @@ export default function HomeView() {
     return matchesSearch && postCategory.toLowerCase() === selectedCategory.toLowerCase();
   });
 
-  // Calculate dynamic trending posts (posts with status !== 'draft' having at least 1 like, sorted descending)
+  // Calculate dynamic trending posts: must have at least 100 likes and surpass others (sorted descending)
   const trendingPosts = posts
-    .filter((p) => p.status !== 'draft' && (p.likes || 0) > 0)
-    .sort((a, b) => (b.likes || 0) - (a.likes || 0))
-    .slice(0, 3);
+    .filter((p) => p.status !== 'draft' && (p.likes || 0) >= 100)
+    .sort((a, b) => (b.likes || 0) - (a.likes || 0));
 
   const totalPages = Math.ceil(filteredPosts.length / postsPerPage);
   const paginatedPosts = filteredPosts.slice((currentPage - 1) * postsPerPage, currentPage * postsPerPage);
@@ -107,7 +145,7 @@ export default function HomeView() {
           <span className="text-xs font-mono font-bold text-indigo-600 uppercase tracking-widest block mb-2">Today's Dispatch</span>
           <h1 className="font-display font-extrabold text-4xl sm:text-5xl text-slate-950 tracking-tight leading-none flex items-center gap-3">
             <Newspaper className="h-10 w-10 text-slate-900 shrink-0" />
-            <span>THE PUBLIC SQUARE</span>
+            <span>CURRENT NEWS LIVE</span>
           </h1>
           <p className="text-sm text-slate-500 mt-3 font-sans max-w-xl">
             Read critical, up-to-date insights, independent coverages, and reports of global scale from our field editors.
@@ -148,7 +186,7 @@ export default function HomeView() {
              <h3 className="font-display font-extrabold text-sm text-slate-900 uppercase tracking-widest flex items-center gap-1.5">
                <span>🔥 Trending Reader Favorites</span>
              </h3>
-             <span className="text-[10px] text-slate-400 font-mono font-bold">(Most upvoted community dispatches)</span>
+             <span className="text-[10px] text-slate-400 font-mono font-bold">(Articles with over hundreds of upvotes that surpass all others)</span>
            </div>
 
            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
@@ -223,9 +261,15 @@ export default function HomeView() {
 
       {/* Main Content Area */}
       {loading ? (
-        <div className="flex flex-col items-center justify-center py-20" id="loading-spinner">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900 mb-4" />
-          <p className="text-slate-500 text-sm font-mono font-medium">Fetching independent ledger feeds...</p>
+        <div id="loading-skeletons" className="space-y-6">
+          <p className="text-slate-400 text-xs font-mono font-bold uppercase tracking-widest text-center animate-pulse mb-6">
+            Connecting to live independent dispatches...
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <BlogPostCardSkeleton key={i} />
+            ))}
+          </div>
         </div>
       ) : error ? (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-8 text-center max-w-2xl mx-auto" id="error-banner">

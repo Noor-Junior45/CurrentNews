@@ -15,7 +15,7 @@ import { useLocation } from 'react-router-dom';
 
 function ConditionalFooter() {
   const location = useLocation();
-  if (location.pathname === '/admin' || location.pathname.startsWith('/admin')) {
+  if (location.pathname !== '/') {
     return null;
   }
   return <Footer />;

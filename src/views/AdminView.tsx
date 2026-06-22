@@ -38,7 +38,8 @@ import {
   Share2,
   Mail,
   Rss,
-  LayoutDashboard
+  LayoutDashboard,
+  Image as ImageIcon
 } from 'lucide-react';
 
 export default function AdminView() {
@@ -75,6 +76,8 @@ export default function AdminView() {
   const [authorName, setAuthorName] = useState('');
   const [category, setCategory] = useState('General');
   const [targetStatus, setTargetStatus] = useState<'published' | 'draft'>('published');
+  const [imageUrl, setImageUrl] = useState('');
+  const [imagePosition, setImagePosition] = useState<'top' | 'middle' | 'bottom'>('top');
   const [pubListFilter, setPubListFilter] = useState<'all' | 'published' | 'drafts'>('all');
 
   // Global Pen Name dynamic profile fields
@@ -210,6 +213,8 @@ export default function AdminView() {
     setCustomLinks([]);
     setAuthorName('');
     setCategory('General');
+    setImageUrl('');
+    setImagePosition('top');
     setEditingPostId(null);
     setIsEditing(false);
     setErrorMsg(null);
@@ -244,6 +249,8 @@ export default function AdminView() {
       authorName: globalPenName.trim() || 'Chronicle Staff Report',
       category: category,
       status: targetStatus,
+      imageUrl: imageUrl.trim(),
+      imagePosition: imagePosition,
     };
 
     const path = 'posts';
@@ -294,6 +301,8 @@ export default function AdminView() {
     setAuthorName(post.authorName || '');
     setCategory(post.category || 'General');
     setTargetStatus(post.status || 'published');
+    setImageUrl(post.imageUrl || '');
+    setImagePosition(post.imagePosition || 'top');
     setEditingPostId(post.id);
     setIsEditing(true);
     setErrorMsg(null);
@@ -467,14 +476,14 @@ export default function AdminView() {
               </p>
             </div>
 
-            <div className="flex items-center gap-2.5 shrink-0">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full sm:w-auto shrink-0">
               <input
                 type="text"
                 placeholder="e.g. Hassan Ahmed, Senior Editor"
                 value={tempPenName}
                 required
                 onChange={(e) => setTempPenName(e.target.value)}
-                className="px-4 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:ring-1 focus:ring-indigo-500 min-w-[210px] sm:min-w-[240px] font-sans font-medium"
+                className="px-4 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:ring-1 focus:ring-indigo-500 w-full sm:min-w-[240px] font-sans font-medium h-10"
                 maxLength={60}
               />
               <button
@@ -485,7 +494,7 @@ export default function AdminView() {
                   }
                   setShowPenNameModal(true);
                 }}
-                className="bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-semibold text-xs py-2 px-4 rounded-lg cursor-pointer transition-all duration-150 shadow-xs h-10 flex items-center justify-center font-mono shrink-0 font-bold"
+                className="bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-semibold text-xs py-2 px-4 rounded-lg cursor-pointer transition-all duration-150 shadow-xs h-10 flex items-center justify-center font-mono shrink-0 font-bold w-full sm:w-auto"
               >
                 Update Name
               </button>
@@ -676,6 +685,45 @@ export default function AdminView() {
                   <option value="Health">Health & Lifestyle</option>
                   <option value="World">World Dispatches</option>
                 </select>
+              </div>
+
+              {/* Image Attachment Options group */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-5" id="image-attachment-group">
+                <label className="block text-xs font-semibold text-indigo-700 uppercase tracking-wider mb-1 font-mono flex items-center space-x-1.5">
+                  <ImageIcon className="h-4 w-4" />
+                  <span>Attach Feature Illustration / Imgur / Image URL</span>
+                </label>
+                <span className="block text-[10px] text-slate-400 mb-3 leading-relaxed">
+                  Paste a direct photo URL or Imgur link (e.g., <code>https://i.imgur.com/xxxxx.jpg</code>).
+                </span>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="md:col-span-2">
+                    <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1 font-mono">
+                      Image Web URL
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. https://i.imgur.com/aBcDeFg.jpg"
+                      value={imageUrl}
+                      onChange={(e) => setImageUrl(e.target.value)}
+                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-xs bg-white focus:ring-1 focus:ring-indigo-500 font-sans font-medium text-slate-850 placeholder:text-slate-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1 font-mono">
+                      Photo Flow Placement
+                    </label>
+                    <select
+                      value={imagePosition}
+                      onChange={(e) => setImagePosition(e.target.value as 'top' | 'middle' | 'bottom')}
+                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-xs bg-white focus:ring-1 focus:ring-indigo-500 font-sans font-medium text-slate-800"
+                    >
+                      <option value="top">🏞️ Top of Article</option>
+                      <option value="middle">🏞️ Middle of Article</option>
+                      <option value="bottom">🏞️ Last (Bottom of Article)</option>
+                    </select>
+                  </div>
+                </div>
               </div>
 
               {/* Rich-Text content editor block */}

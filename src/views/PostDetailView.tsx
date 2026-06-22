@@ -1,11 +1,20 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { doc, getDoc, updateDoc, increment } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, increment, collection, query, where, limit, getDocs } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { Post } from '../types';
 import AdSpace from '../components/AdSpace';
 import EmbedHandler from '../components/EmbedHandler';
-import { Calendar, ChevronLeft, Award, Clock, Twitter, Send, Copy, Check, Share2, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Calendar, ChevronLeft, Award, Clock, Twitter, Send, Copy, Check, Share2, ThumbsUp, ThumbsDown, ArrowRight } from 'lucide-react';
+
+function getHtmlTextPreview(htmlString: string, maxLength: number = 160): string {
+  if (!htmlString) return '';
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = htmlString;
+  const excerpt = tempDiv.textContent || tempDiv.innerText || '';
+  if (excerpt.length <= maxLength) return excerpt;
+  return excerpt.substring(0, maxLength).trim() + '...';
+}
 
 export default function PostDetailView() {
   const { id } = useParams<{ id: string }>();
@@ -14,11 +23,39 @@ export default function PostDetailView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [relatedPosts, setRelatedPosts] = useState<Post[]>([]);
 
   // Reactions Local States
   const [likes, setLikes] = useState(0);
   const [dislikes, setDislikes] = useState(0);
   const [myReaction, setMyReaction] = useState<'liked' | 'disliked' | null>(null);
+
+  useEffect(() => {
+    const fetchRelatedPosts = async () => {
+      if (!post) return;
+      try {
+        const postsCol = collection(db, 'posts');
+        const q = query(
+          postsCol,
+          where('status', '==', 'published'),
+          where('category', '==', post.category || 'General'),
+          limit(10)
+        );
+        const snapshot = await getDocs(q);
+        const fetched: Post[] = [];
+        snapshot.forEach((docSnap) => {
+          if (docSnap.id !== post.id) {
+            fetched.push({ id: docSnap.id, ...docSnap.data() } as Post);
+          }
+        });
+        setRelatedPosts(fetched.slice(0, 3));
+      } catch (err) {
+        console.warn('Failed to fetch related posts', err);
+      }
+    };
+
+    fetchRelatedPosts();
+  }, [post]);
 
   useEffect(() => {
     if (post) {
@@ -88,9 +125,12 @@ export default function PostDetailView() {
   };
 
   const handleCopyLink = () => {
-    navigator.clipboard.writeText(window.location.href);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    if (post) {
+      const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}/post/${post.id}` : `https://currentnewslive.vercel.app/post/${post.id}`;
+      navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
 
   useEffect(() => {
@@ -205,20 +245,123 @@ export default function PostDetailView() {
     });
   }
 
+  const renderArticleContent = () => {
+    if (!post) return null;
+    let contentHtml = post.content || '';
+
+    // Parse bare Imgur URLs or raw image links pasted in copy/text
+    const replaceBareUrls = (htmlText: string) => {
+      let text = htmlText;
+      
+      // Replace bare imgur links inside paragraphs
+      const pLinkPattern = /<p>\s*((?:https?:\/\/)?(?:i\.)?imgur\.com\/[a-zA-Z0-9]+(?:\.[a-zA-Z0-9]+)?)\s*<\/p>/gi;
+      text = text.replace(pLinkPattern, (match, url) => {
+        let src = url;
+        if (!src.startsWith('http')) src = 'https://' + src;
+        if (src.includes('imgur.com') && !/\.(png|jpg|jpeg|gif|webp)$/i.test(src)) {
+          src = src.replace('imgur.com', 'i.imgur.com') + '.jpg';
+        }
+        return `<div class="my-8 flex justify-center"><img src="${src}" alt="Attached Chronicle Image" class="rounded-2xl max-w-full h-auto border border-slate-200 shadow-md transform hover:scale-[1.01] transition-all duration-300 md:max-h-[500px]" referrerPolicy="no-referrer" /></div>`;
+      });
+
+      // Handle raw non-imgur direct image links inside paragraphs
+      const pDirectImgPattern = /<p>\s*(https?:\/\/[^\s<>'"]+\.(?:png|jpg|jpeg|gif|webp))\s*<\/p>/gi;
+      text = text.replace(pDirectImgPattern, (match, url) => {
+        return `<div class="my-8 flex justify-center"><img src="${url}" alt="Attached Chronicle Image" class="rounded-2xl max-w-full h-auto border border-slate-200 shadow-md transform hover:scale-[1.01] transition-all duration-300 md:max-h-[500px]" referrerPolicy="no-referrer" /></div>`;
+      });
+
+      return text;
+    };
+
+    contentHtml = replaceBareUrls(contentHtml);
+
+    // Render based on imageUrl and imagePosition configuration
+    if (post.imageUrl && post.imageUrl.trim().length > 0) {
+      let resolvedSrc = post.imageUrl.trim();
+      if (resolvedSrc.includes('imgur.com') && !/\.(png|jpg|jpeg|gif|webp)$/i.test(resolvedSrc)) {
+        resolvedSrc = resolvedSrc.replace('imgur.com', 'i.imgur.com') + '.jpg';
+      }
+
+      const imageElementHtml = `
+        <div class="my-8 flex justify-center" id="featured-article-photo-container">
+          <img src="${resolvedSrc}" alt="Dispatch Feature Photo" class="rounded-2xl max-w-full h-auto border border-slate-250 shadow-md hover:shadow-lg transition-all duration-350 md:max-h-[550px]" referrerPolicy="no-referrer" />
+        </div>
+      `;
+
+      if (post.imagePosition === 'top') {
+        return (
+          <div>
+            <div dangerouslySetInnerHTML={{ __html: imageElementHtml }} />
+            <div dangerouslySetInnerHTML={{ __html: contentHtml }} className="article-rich-text prose max-w-none break-word break-words" id="article-content" />
+          </div>
+        );
+      } else if (post.imagePosition === 'bottom') {
+        return (
+          <div>
+            <div dangerouslySetInnerHTML={{ __html: contentHtml }} className="article-rich-text prose max-w-none break-word break-words" id="article-content" />
+            <div dangerouslySetInnerHTML={{ __html: imageElementHtml }} />
+          </div>
+        );
+      } else { // 'middle' position split
+        const paragraphs = contentHtml.split('</p>');
+        if (paragraphs.length > 2) {
+          const middleIndex = Math.floor(paragraphs.length / 2);
+          const firstHalf = paragraphs.slice(0, middleIndex).join('</p>') + '</p>';
+          const secondHalf = paragraphs.slice(middleIndex).join('</p>');
+          return (
+            <div>
+              <div dangerouslySetInnerHTML={{ __html: firstHalf }} className="article-rich-text prose max-w-none break-word break-words mb-4" />
+              <div dangerouslySetInnerHTML={{ __html: imageElementHtml }} />
+              <div dangerouslySetInnerHTML={{ __html: secondHalf }} className="article-rich-text prose max-w-none break-word break-words mt-4" id="article-content" />
+            </div>
+          );
+        } else {
+          return (
+            <div>
+              <div dangerouslySetInnerHTML={{ __html: imageElementHtml }} />
+              <div dangerouslySetInnerHTML={{ __html: contentHtml }} className="article-rich-text prose max-w-none break-word break-words" id="article-content" />
+            </div>
+          );
+        }
+      }
+    }
+
+    return (
+      <div 
+        className="article-rich-text prose max-w-none break-word break-words"
+        dangerouslySetInnerHTML={{ __html: contentHtml }}
+        id="article-content"
+      />
+    );
+  };
+
+  const dynamicShareUrl = typeof window !== 'undefined' ? `${window.location.origin}/post/${post.id}` : `https://currentnewslive.vercel.app/post/${post.id}`;
+
   return (
     <article className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8" id={`article-${post.id}`}>
       
       {/* Editorial Breadcrumbs & Back Trigger */}
-      <div className="mb-6 flex items-center justify-between">
-        <Link 
-          to="/" 
-          className="inline-flex items-center text-xs font-semibold uppercase tracking-wider text-slate-500 hover:text-slate-900 transition-colors"
-          id="back-to-feed-link"
-        >
-          <ChevronLeft className="h-4 w-4 mr-1" />
-          <span>Back to Feed</span>
-        </Link>
-        <span className="text-[10px] bg-slate-100 text-slate-600 font-bold font-mono px-2.5 py-1 rounded-sm uppercase tracking-wider">
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4" id="breadcrumbs-header">
+        <nav className="flex items-center space-x-2 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+          <Link 
+            to="/" 
+            className="hover:text-slate-900 dark:hover:text-slate-100 transition-colors"
+          >
+            Home
+          </Link>
+          <span className="text-slate-300 dark:text-slate-700 font-normal">/</span>
+          <Link 
+            to={`/?category=${encodeURIComponent(post.category || 'General')}`} 
+            className="hover:text-indigo-600 text-indigo-500 dark:hover:text-indigo-400 dark:text-indigo-400 transition-colors"
+          >
+            {post.category || 'General'}
+          </Link>
+          <span className="text-slate-300 dark:text-slate-700 font-normal">/</span>
+          <span className="text-slate-800 dark:text-slate-200 font-bold truncate max-w-[150px] xs:max-w-[200px] sm:max-w-xs md:max-w-md">
+            Current dispatch
+          </span>
+        </nav>
+        <span className="text-[10px] bg-slate-100 text-slate-600 dark:bg-slate-900/60 dark:text-slate-400 font-bold font-mono px-2.5 py-1 rounded-sm uppercase tracking-widest shrink-0 self-start sm:self-auto">
           Independent Edition
         </span>
       </div>
@@ -306,7 +449,7 @@ export default function PostDetailView() {
               <div className="flex items-center gap-2">
                 {/* Twitter Share */}
                 <a
-                  href={`https://twitter.com/intent/tweet?url=${encodeURIComponent(window.location.href)}&text=${encodeURIComponent(post.title)}`}
+                  href={`https://twitter.com/intent/tweet?url=${encodeURIComponent(dynamicShareUrl)}&text=${encodeURIComponent(post.title)}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-600 dark:bg-sky-950/40 dark:hover:bg-sky-900/40 dark:text-sky-400 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
@@ -318,7 +461,7 @@ export default function PostDetailView() {
 
                 {/* WhatsApp Share */}
                 <a
-                  href={`https://api.whatsapp.com/send?text=${encodeURIComponent(post.title + ' ' + window.location.href)}`}
+                  href={`https://api.whatsapp.com/send?text=${encodeURIComponent(post.title + ' ' + dynamicShareUrl)}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/40 dark:text-emerald-400 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
@@ -350,15 +493,14 @@ export default function PostDetailView() {
             </div>
           </header>
 
-          {/* Clean Rendered HTML Article Body */}
-          <div 
-            className="article-rich-text prose max-w-none break-word break-words overflow-hidden shadow-xs bg-white rounded-2xl border border-slate-100 p-6 sm:p-10"
-            dangerouslySetInnerHTML={{ __html: post.content }}
-            id="article-content"
-          />
+          {/* Clean Rendered HTML Article Body & Embed Handler in same box */}
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-xs p-6 sm:p-10 overflow-hidden" id="article-main-box">
+            {/* AUTO-EMBED SECTION: Injects custom YouTube and FaceBook players natively above the text */}
+            <EmbedHandler youtubeUrl={post.youtubeUrl} facebookUrl={post.facebookUrl} customLinks={post.customLinks} isHeader={true} />
 
-          {/* AUTO-EMBED SECTION: Injects custom YouTube and FaceBook players natively */}
-          <EmbedHandler youtubeUrl={post.youtubeUrl} facebookUrl={post.facebookUrl} customLinks={post.customLinks} />
+            {/* Main Rich Text Content & Image Inline integration */}
+            {renderArticleContent()}
+          </div>
 
           {/* ⚠️ AD PLACEMENT: Footer bottom ad zone */}
           <AdSpace type="footer" />
@@ -386,6 +528,42 @@ export default function PostDetailView() {
         </div>
 
       </div>
+
+      {/* Related Articles Section */}
+      {relatedPosts.length > 0 && (
+        <div className="mt-16 pt-10 border-t border-slate-200" id="related-articles-section">
+          <h3 className="font-display font-extrabold text-xl text-slate-900 dark:text-white uppercase tracking-wider mb-8 flex items-center gap-2">
+            <span className="w-2.5 h-6 bg-indigo-650 rounded-sm"></span>
+            <span>Related Coverage</span>
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {relatedPosts.map((relatedPost) => (
+              <Link
+                key={relatedPost.id}
+                to={`/post/${relatedPost.id}`}
+                className="group flex flex-col bg-white hover:bg-slate-50/40 border border-slate-200 hover:border-slate-300 rounded-2xl p-6 shadow-3xs hover:shadow-xs transition-all duration-200"
+              >
+                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 block mb-2 font-mono">
+                  {relatedPost.category || 'General'}
+                </span>
+                <h4 className="font-display font-black text-slate-900 group-hover:text-indigo-650 text-base leading-snug line-clamp-2 transition-colors duration-150 mb-3">
+                  {relatedPost.title}
+                </h4>
+                <p className="text-xs text-slate-550 line-clamp-3 leading-relaxed mb-4 grow font-sans">
+                  {getHtmlTextPreview(relatedPost.content, 120)}
+                </p>
+                <div className="flex items-center justify-between mt-auto pt-4 border-t border-slate-100 text-[10px] text-slate-400 font-mono">
+                  <span>{relatedPost.authorName || globalPenName || 'Staff Report'}</span>
+                  <span className="font-bold text-indigo-500 group-hover:text-indigo-600 inline-flex items-center gap-1">
+                    <span>Read</span>
+                    <ArrowRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
+                  </span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
     </article>
   );

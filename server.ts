@@ -127,6 +127,12 @@ async function startServer() {
     }
   });
 
+  // Serve the ads.txt file
+  app.get('/ads.txt', (req, res) => {
+    res.setHeader('Content-Type', 'text/plain');
+    res.send('google.com, pub-5865716270182311, DIRECT, f08c47fec0942fa0');
+  });
+
   // Connect Vite configuration dynamically to support dev vs prod modes
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

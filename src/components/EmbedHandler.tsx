@@ -4,6 +4,7 @@ interface EmbedHandlerProps {
   youtubeUrl?: string;
   facebookUrl?: string;
   customLinks?: string[];
+  isHeader?: boolean;
 }
 
 /**
@@ -46,7 +47,7 @@ function getYouTubeVideoId(url: string = ''): string | null {
   return match ? match[1] : null;
 }
 
-export default function EmbedHandler({ youtubeUrl, facebookUrl, customLinks }: EmbedHandlerProps) {
+export default function EmbedHandler({ youtubeUrl, facebookUrl, customLinks, isHeader }: EmbedHandlerProps) {
   const hasYouTube = !!youtubeUrl && youtubeUrl.trim().length > 0;
   const hasFacebook = !!facebookUrl && facebookUrl.trim().length > 0;
   const validCustomLinks = (customLinks || []).filter(link => link && link.trim().length > 0);
@@ -59,7 +60,7 @@ export default function EmbedHandler({ youtubeUrl, facebookUrl, customLinks }: E
   const fbEncodedUrl = resolvedFbUrl ? encodeURIComponent(resolvedFbUrl.trim()) : null;
 
   return (
-    <div className="mt-12 pt-8 border-t border-slate-200" id="embeds-section">
+    <div className={isHeader ? "mb-8 pb-8 border-b border-slate-200" : "mt-12 pt-8 border-t border-slate-200"} id="embeds-section">
       <h3 className="font-display font-bold text-lg text-slate-900 mb-6 uppercase tracking-wider flex items-center space-x-2">
         <span>Media & Social References</span>
       </h3>

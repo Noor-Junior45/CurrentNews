@@ -36,16 +36,20 @@ export default function Header() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between">
         
         {/* Brand Logo & Name */}
-        <Link to="/" className="flex items-center space-x-3 text-slate-900 hover:opacity-90 transition-opacity" id="header-brand-link">
+        <Link to="/" className="flex items-center space-x-2.5 sm:space-x-3 text-slate-900 hover:opacity-90 transition-opacity min-w-0" id="header-brand-link">
           <img 
             src="https://i.imgur.com/gFgShoZ.jpeg" 
             alt="Current News Live Logo" 
-            className="h-10 w-10 sm:h-12 sm:w-12 rounded-lg object-cover border border-slate-200"
+            className="h-9 w-9 sm:h-11 sm:w-11 rounded-lg object-cover border border-slate-200 shrink-0"
             referrerPolicy="no-referrer"
           />
-          <div className="flex flex-col">
-            <span className="font-display font-bold text-xl tracking-tight leading-none uppercase text-slate-950">Current News Live</span>
-            <span className="text-[10px] text-slate-500 font-semibold font-mono uppercase tracking-wider">Independent Ledger</span>
+          <div className="flex flex-col min-w-0">
+            <span className="font-display font-bold text-base sm:text-lg md:text-xl tracking-tight leading-none uppercase text-slate-950 truncate max-w-[140px] xs:max-w-[180px] sm:max-w-none">
+              Current News Live
+            </span>
+            <span className="text-[9px] sm:text-[10px] text-slate-500 font-semibold font-mono uppercase tracking-wider truncate">
+              Independent Ledger
+            </span>
           </div>
         </Link>
 

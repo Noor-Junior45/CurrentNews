@@ -120,7 +120,7 @@ export default function BlogPostCard({ post, globalPenName }: BlogPostCardProps)
       className="group bg-white border border-slate-200 hover:border-slate-300 rounded-xl overflow-hidden shadow-xs hover:shadow-md transition-all duration-300 flex flex-col justify-between"
       id={`post-card-${post.id}`}
     >
-      <div className="p-6">
+      <div className="p-4 sm:p-6">
         
         {/* Meta badges/info */}
         <div className="flex items-center justify-between text-slate-400 text-xs font-semibold mb-4 font-mono">
@@ -147,7 +147,7 @@ export default function BlogPostCard({ post, globalPenName }: BlogPostCardProps)
         </div>
 
         {/* Title */}
-        <h3 className="font-display font-bold text-xl text-slate-900 group-hover:text-indigo-600 tracking-tight leading-snug mb-3 transition-colors">
+        <h3 className="font-display font-bold text-lg sm:text-xl text-slate-900 group-hover:text-indigo-600 tracking-tight leading-snug mb-3 transition-colors">
           <Link to={`/post/${post.id}/${slugify(post.title)}`}>{post.title}</Link>
         </h3>
 
@@ -187,7 +187,7 @@ export default function BlogPostCard({ post, globalPenName }: BlogPostCardProps)
 
       </div>
 
-      <div className="px-6 pb-6 pt-3 border-t border-slate-100 flex items-center justify-between">
+      <div className="px-4 pb-4 pt-3 sm:px-6 sm:pb-6 sm:pt-3 border-t border-slate-100 flex items-center justify-between">
         <div className="flex items-center space-x-2">
           <img 
             src="https://i.imgur.com/gFgShoZ.jpeg" 

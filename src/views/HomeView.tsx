@@ -50,6 +50,7 @@ export default function HomeView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedCategory = searchParams.get('category') || 'All';
   const setSelectedCategory = (cat: string) => {
@@ -153,22 +154,45 @@ export default function HomeView() {
         </div>
 
         {/* Searching & Live Actions */}
-        <div className="flex items-center gap-3 w-full md:w-auto">
-          <div className="relative w-full md:w-72">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-            <input 
-              type="text" 
-              placeholder="Search major articles..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-hidden focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all shadow-xs"
-              id="search-input"
-            />
+        <div className="flex items-center gap-2.5 w-full md:w-auto justify-end">
+          <div className={`relative flex items-center transition-all duration-300 ${isSearchExpanded || searchTerm ? 'w-full md:w-72' : 'w-10 animate-fade-in'}`}>
+            {isSearchExpanded || searchTerm ? (
+              <div className="relative w-full">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                <input 
+                  type="text" 
+                  placeholder="Search major articles..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-9 pr-8 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-hidden focus:ring-2 focus:ring-slate-950 focus:border-transparent transition-all shadow-xs"
+                  id="search-input"
+                  autoFocus
+                />
+                <button 
+                  onClick={() => {
+                    setSearchTerm('');
+                    setIsSearchExpanded(false);
+                  }}
+                  className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 text-sm font-semibold cursor-pointer"
+                  title="Clear & Close Search"
+                >
+                  ×
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setIsSearchExpanded(true)}
+                className="p-2.5 border border-slate-300 rounded-lg hover:bg-slate-50 text-slate-600 bg-white shadow-xs cursor-pointer transition-colors flex items-center justify-center w-10 h-10 shrink-0"
+                title="Search dispatches"
+              >
+                <Search className="h-4.5 w-4.5 text-slate-800" />
+              </button>
+            )}
           </div>
           <button 
             onClick={fetchPosts}
             title="Refresh feed"
-            className="p-2 border border-slate-300 rounded-lg hover:bg-slate-50 text-slate-600 bg-white shadow-xs cursor-pointer transition-colors"
+            className="p-2.5 border border-slate-300 rounded-lg hover:bg-slate-50 text-slate-600 bg-white shadow-xs cursor-pointer transition-colors w-10 h-10 flex items-center justify-center shrink-0"
           >
             <RefreshCw className={`h-4.5 w-4.5 ${loading ? 'animate-spin' : ''}`} />
           </button>
@@ -226,8 +250,8 @@ export default function HomeView() {
       )}
 
       {/* Category Filter Tabs with dynamic soft cream selection and bottom line indicator */}
-      <div className="mb-8 border-b border-slate-200 dark:border-slate-800" id="category-filter-header">
-        <div className="flex items-center space-x-1 sm:space-x-2 overflow-x-auto pb-px scroll-smooth no-scrollbar" id="category-filter-tabs">
+      <div className="sticky top-[72px] z-40 bg-slate-50/95 backdrop-blur-md border-b border-slate-200/80 dark:bg-slate-900/95 dark:border-slate-800/80 py-2 mb-8 shadow-3xs px-4 -mx-4 sm:-mx-8 lg:-mx-8" id="category-filter-header">
+        <div className="max-w-7xl mx-auto flex items-center space-x-1 sm:space-x-1.5 overflow-x-auto pb-0.5 scroll-smooth no-scrollbar" id="category-filter-tabs">
           {['All', 'General', 'Politics', 'Tech', 'Sports', 'Opinion', 'Business', 'Health', 'World'].map((cat) => {
             // Count matching posts for this specific category (taking into account loaded posts)
             const count = posts.filter(p => {
@@ -242,15 +266,15 @@ export default function HomeView() {
               <button
                 key={cat}
                 onClick={() => setSelectedCategory(cat)}
-                className={`py-2 px-3 sm:px-4 text-xs font-semibold tracking-wider uppercase transition-all duration-200 cursor-pointer whitespace-nowrap flex items-center gap-1.5 border-b-2 -mb-px hover:text-slate-900 dark:hover:text-slate-100 ${
+                className={`py-1.5 px-2.5 sm:px-3.5 text-xs font-semibold tracking-wider uppercase transition-all duration-200 cursor-pointer whitespace-nowrap flex items-center gap-1 border-b-2 -mb-px hover:text-slate-900 dark:hover:text-slate-100 ${
                   isSelected 
-                    ? 'bg-amber-50/60 text-amber-900 border-amber-600/80 dark:bg-amber-950/40 dark:text-amber-200 dark:border-amber-500 rounded-t-lg' 
-                    : 'bg-transparent border-transparent text-slate-400 dark:text-slate-500 hover:border-slate-300'
+                    ? 'bg-amber-100/60 text-amber-950 border-amber-600/80 dark:bg-amber-950/40 dark:text-amber-200 dark:border-amber-500 rounded-t-lg' 
+                    : 'bg-transparent border-transparent text-slate-400 dark:text-slate-500 hover:border-slate-350'
                 }`}
                 id={`cat-tab-${cat.toLowerCase()}`}
               >
-                <span>{cat === 'All' ? 'All Dispatches' : cat}</span>
-                <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-full ${isSelected ? 'bg-amber-100 text-amber-900 dark:bg-amber-900/60 dark:text-amber-300' : 'bg-slate-150 dark:bg-slate-900 text-slate-400'}`}>
+                <span>{cat === 'All' ? 'All' : cat}</span>
+                <span className={`text-[9px] font-mono font-bold px-1 py-0.5 rounded-full ${isSelected ? 'bg-amber-200 text-amber-950 dark:bg-amber-900/60 dark:text-amber-300' : 'bg-slate-200/60 dark:bg-slate-900 text-slate-500'}`}>
                   {count}
                 </span>
               </button>

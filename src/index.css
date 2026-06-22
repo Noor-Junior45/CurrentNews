@@ -233,3 +233,17 @@ html.dark .ql-snow .ql-picker {
   color: #e2e8f0 !important;
 }
 
+/* Interactivity helpers for article image lightboxing */
+.article-rich-text img, 
+#article-main-box img {
+  cursor: zoom-in;
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease-in-out;
+}
+
+.article-rich-text img:hover, 
+#article-main-box img:hover {
+  opacity: 0.95;
+  transform: scale(1.008);
+}
+
+

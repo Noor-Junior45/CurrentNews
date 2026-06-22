@@ -1,114 +1,146 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { ChevronUp, ChevronDown, CircleDot } from 'lucide-react';
 
 export default function ScrollHelper() {
+  const [scrollPercent, setScrollPercent] = useState(0);
   const [isVisible, setIsVisible] = useState(false);
-  const [isActive, setIsActive] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Show the scroll bar helper when scrolled past a certain amount
+  // Track scroll activity
   useEffect(() => {
-    let activityTimer: NodeJS.Timeout;
+    const handleScroll = () => {
+      // Calculate scroll progress percentage
+      const winScroll = document.documentElement.scrollTop || document.body.scrollTop;
+      const height = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+      const pct = height > 0 ? (winScroll / height) * 100 : 0;
+      setScrollPercent(Math.round(pct));
 
-    const handleUserActivity = () => {
-      setIsActive(true);
-      clearTimeout(activityTimer);
-      // Wait exactly 1 second (1000ms) of inactivity before hiding
-      activityTimer = setTimeout(() => {
-        setIsActive(false);
-      }, 1000);
-    };
+      // Show the helper immediately when scrolling
+      setIsVisible(true);
 
-    const toggleVisibility = () => {
-      if (window.scrollY > 100) {
-        setIsVisible(true);
-      } else {
-        setIsVisible(false);
+      // Auto-hide unless hovered/expanded
+      if (hideTimeoutRef.current) {
+        clearTimeout(hideTimeoutRef.current);
       }
-      handleUserActivity();
+
+      // Hide after 2 seconds of inactivity
+      hideTimeoutRef.current = setTimeout(() => {
+        if (!isExpanded) {
+          setIsVisible(false);
+        }
+      }, 2000);
     };
 
-    if (typeof window !== 'undefined') {
-      window.addEventListener('scroll', toggleVisibility, { passive: true });
-      window.addEventListener('mousemove', handleUserActivity, { passive: true });
-      window.addEventListener('touchstart', handleUserActivity, { passive: true });
-      window.addEventListener('keydown', handleUserActivity, { passive: true });
-    }
-
+    window.addEventListener('scroll', handleScroll, { passive: true });
     return () => {
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('scroll', toggleVisibility);
-        window.removeEventListener('mousemove', handleUserActivity);
-        window.removeEventListener('touchstart', handleUserActivity);
-        window.removeEventListener('keydown', handleUserActivity);
-      }
-      clearTimeout(activityTimer);
+      window.removeEventListener('scroll', handleScroll);
+      if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
     };
-  }, []);
+  }, [isExpanded]);
 
-  const scrollToTop = () => {
-    window.scrollTo({
-      top: 0,
-      behavior: 'smooth'
-    });
+  // Keep visible on expansion/hover
+  const handleMouseEnter = () => {
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current);
+    }
   };
 
-  const scrollToMiddle = () => {
-    const documentHeight = document.documentElement.scrollHeight;
-    const windowHeight = window.innerHeight;
-    const middlePosition = (documentHeight - windowHeight) / 2;
-    window.scrollTo({
-      top: middlePosition,
-      behavior: 'smooth'
-    });
+  const handleMouseLeave = () => {
+    // Start fading out shortly after mouse leave
+    hideTimeoutRef.current = setTimeout(() => {
+      setIsVisible(false);
+      setIsExpanded(false);
+    }, 1500);
+  };
+
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const scrollToBottom = () => {
-    window.scrollTo({
-      top: document.documentElement.scrollHeight,
-      behavior: 'smooth'
-    });
+    window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
   };
 
-  if (!isVisible) return null;
-
   return (
-    <div 
-      className={`fixed bottom-24 right-5 sm:right-7 z-50 flex flex-col items-center gap-1.5 p-2 rounded-full bg-white/20 dark:bg-slate-950/20 backdrop-blur-xl border border-white/30 dark:border-slate-800/30 shadow-2xl transition-all duration-500 hover:scale-105 group ${
-        isActive 
-          ? "opacity-100 scale-100 translate-y-0" 
-          : "opacity-0 scale-75 translate-y-4 pointer-events-none"
-      }`}
-      id="samsung-scroll-helper"
-    >
-      {/* Scroll to Top Trigger */}
-      <button
-        onClick={scrollToTop}
-        className="p-2 text-slate-800 dark:text-white hover:bg-white/20 dark:hover:bg-white/10 rounded-full transition-all duration-200 cursor-pointer text-center"
-        title="Scroll to Top"
-        id="scroll-to-top-btn"
-      >
-        <ChevronUp className="h-4.5 w-4.5" />
-      </button>
+    <AnimatePresence>
+      {isVisible && (
+        <motion.div
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: 20 }}
+          transition={{ type: 'spring', damping: 20, stiffness: 300 }}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
+          className="fixed right-4 md:right-6 top-1/2 -translate-y-1/2 z-[99]"
+          id="samsung-scroll-companion"
+        >
+          {/* Main vertical tactile control panel */}
+          <div 
+            className={`flex flex-col items-center bg-slate-900/90 dark:bg-slate-950/90 backdrop-blur-md border border-white/10 rounded-full transition-all duration-300 shadow-2xl p-1.5 ${
+              isExpanded ? 'h-52 w-11' : 'h-36 w-8'
+            }`}
+          >
+            {/* Scroll Indicator Percentage Top */}
+            <div className="text-[9px] font-mono font-bold text-white mb-2 leading-none cursor-default select-none pr-px pt-0.5">
+              {scrollPercent}%
+            </div>
 
-      {/* Middle Scroll Snap Dot Element */}
-      <button
-        onClick={scrollToMiddle}
-        className="p-2 text-slate-800 dark:text-white hover:bg-white/20 dark:hover:bg-white/10 rounded-full transition-all duration-200 cursor-pointer text-center"
-        title="Scroll to Middle of Page"
-        id="scroll-to-middle-btn"
-      >
-        <CircleDot className="h-4 w-4 text-indigo-500 animate-pulse" />
-      </button>
+            {/* Micro Dynamic Track Indicator */}
+            <div className="relative flex-1 w-1 bg-white/20 rounded-full mb-2 overflow-hidden">
+              <motion.div 
+                className="absolute top-0 left-0 right-0 bg-indigo-400 rounded-full"
+                style={{ height: `${scrollPercent}%` }}
+                layoutId="vertical-scroll-bar"
+              />
+            </div>
 
-      {/* Scroll to Bottom Trigger */}
-      <button
-        onClick={scrollToBottom}
-        className="p-2 text-slate-800 dark:text-white hover:bg-white/20 dark:hover:bg-white/10 rounded-full transition-all duration-200 cursor-pointer text-center"
-        title="Scroll to Bottom"
-        id="scroll-to-bottom-btn"
-      >
-        <ChevronDown className="h-4.5 w-4.5" />
-      </button>
-    </div>
+            {/* Trigger Circle Companion Button - expanding with animation */}
+            <button
+              onClick={() => setIsExpanded(!isExpanded)}
+              className={`flex items-center justify-center rounded-full bg-indigo-5050 hover:bg-indigo-600 border border-white/5 shadow-inner cursor-pointer transition-all duration-200 ${
+                isExpanded ? 'h-8 w-8 mb-3 bg-indigo-600 text-white' : 'h-5 w-5 bg-slate-800 text-white/80'
+              }`}
+              title={isExpanded ? "Collapse jump shortcuts" : "Expand quick scroll shortcuts"}
+            >
+              {isExpanded ? (
+                <CircleDot className="h-4 w-4 animate-pulse" />
+              ) : (
+                <div className="flex flex-col space-y-[1.5px] items-center">
+                  <div className="h-0.5 w-2 bg-white/90 rounded-full" />
+                  <div className="h-0.5 w-2.5 bg-white/90 rounded-full" />
+                  <div className="h-0.5 w-2 bg-white/90 rounded-full" />
+                </div>
+              )}
+            </button>
+
+            {/* Quick action controls, staggered entry on expand */}
+            {isExpanded && (
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="flex flex-col gap-2 pb-1"
+              >
+                <button
+                  onClick={scrollToTop}
+                  className="p-1.5 rounded-full bg-slate-800 hover:bg-slate-700 text-white transition-all cursor-pointer shadow-md hover:scale-110"
+                  title="Scroll to main top"
+                >
+                  <ChevronUp className="h-4 w-4 text-indigo-200" />
+                </button>
+                <button
+                  onClick={scrollToBottom}
+                  className="p-1.5 rounded-full bg-slate-800 hover:bg-slate-700 text-white transition-all cursor-pointer shadow-md hover:scale-110"
+                  title="Scroll to footer bottom"
+                >
+                  <ChevronDown className="h-4 w-4 text-indigo-200" />
+                </button>
+              </motion.div>
+            )}
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }

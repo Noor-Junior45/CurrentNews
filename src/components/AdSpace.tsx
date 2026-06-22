@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Landmark } from 'lucide-react';
 
 interface AdSpaceProps {
@@ -5,6 +6,35 @@ interface AdSpaceProps {
 }
 
 export default function AdSpace({ type }: AdSpaceProps) {
+  const [adFailed, setAdFailed] = useState(false);
+  const adsenseClient = (import.meta as any).env.VITE_ADSENSE_CLIENT || '';
+  
+  // Custom slot mappings for the ads based on their placements
+  let adSlot = '';
+  switch (type) {
+    case 'leaderboard':
+      adSlot = (import.meta as any).env.VITE_ADSENSE_SLOT_LEADERBOARD || '';
+      break;
+    case 'sidebar':
+      adSlot = (import.meta as any).env.VITE_ADSENSE_SLOT_SIDEBAR || '';
+      break;
+    case 'footer':
+      adSlot = (import.meta as any).env.VITE_ADSENSE_SLOT_FOOTER || '';
+      break;
+  }
+
+  useEffect(() => {
+    if (adsenseClient && adSlot) {
+      try {
+        // Push ad unit to AdSense pool
+        ((window as any).adsbygoogle = (window as any).adsbygoogle || []).push({});
+      } catch (err) {
+        console.warn('Google AdSense pushed error or blocked by adblocker', err);
+        setAdFailed(true);
+      }
+    }
+  }, [adsenseClient, adSlot]);
+
   let containerClasses = '';
   let label = '';
   let dimensions = '';
@@ -27,11 +57,23 @@ export default function AdSpace({ type }: AdSpaceProps) {
       break;
   }
 
-  return (
-    <div className={containerClasses} id={`ad-container-${type}`} aria-label={label}>
-      <Landmark className="h-5 w-5 mb-1.5 text-slate-400" />
-      <span className="font-mono text-xs font-semibold uppercase tracking-wider text-slate-500">{label}</span>
-      <span className="text-[10px] font-mono text-slate-400 mt-0.5">{dimensions}</span>
-    </div>
-  );
+  // If client ID and slot are provided, try to render real AdSense tag
+  if (adsenseClient && adSlot && !adFailed) {
+    return (
+      <div className="w-full overflow-hidden flex justify-center my-6" id={`real-ad-${type}`}>
+        <ins 
+          className="adsbygoogle"
+          style={{ display: 'block' }}
+          data-ad-client={adsenseClient}
+          data-ad-slot={adSlot}
+          data-ad-format="auto"
+          data-full-width-responsive="true"
+        />
+      </div>
+    );
+  }
+
+  // Hide placeholder boxes as requested by the user
+  return null;
 }
+

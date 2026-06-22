@@ -24,11 +24,27 @@ export default function PostDetailView() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [relatedPosts, setRelatedPosts] = useState<Post[]>([]);
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
 
   // Reactions Local States
   const [likes, setLikes] = useState(0);
   const [dislikes, setDislikes] = useState(0);
   const [myReaction, setMyReaction] = useState<'liked' | 'disliked' | null>(null);
+
+  // Close lightbox with Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setLightboxImage(null);
+      }
+    };
+    if (lightboxImage) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [lightboxImage]);
 
   useEffect(() => {
     const fetchRelatedPosts = async () => {
@@ -75,7 +91,7 @@ export default function PostDetailView() {
     // 1. Update Title Tag
     document.title = `${post.title} | Current News Live`;
 
-    // Helpers to manage meta tags
+    // Helpers to manage HTML head tags
     const setMetaTag = (attribute: string, attrVal: string, content: string) => {
       let element = document.querySelector(`meta[${attribute}="${attrVal}"]`);
       if (!element) {
@@ -86,37 +102,122 @@ export default function PostDetailView() {
       element.setAttribute('content', content);
     };
 
-    // Retrieve raw text preview of content for description
-    const summary = getHtmlTextPreview(post.content || '', 155);
+    const setLinkTag = (rel: string, href: string) => {
+      let element = document.querySelector(`link[rel="${rel}"]`);
+      if (!element) {
+        element = document.createElement('link');
+        element.setAttribute('rel', rel);
+        document.head.appendChild(element);
+      }
+      element.setAttribute('href', href);
+    };
 
-    // 2. OpenGraph Tags
+    const setJsonLd = (id: string, data: object) => {
+      let element = document.getElementById(id) as HTMLScriptElement;
+      if (!element) {
+        element = document.createElement('script');
+        element.type = 'application/ld+json';
+        element.id = id;
+        document.head.appendChild(element);
+      }
+      element.textContent = JSON.stringify(data);
+    };
+
+    // Calculate metadata values
+    const summary = getHtmlTextPreview(post.content || '', 160);
+    const authorVal = globalPenName || post.authorName || 'Chronicle Staff Report';
+    
+    let publishedIso = '';
+    if (post.createdAt) {
+      const d = typeof post.createdAt.toDate === 'function' ? post.createdAt.toDate() : new Date(post.createdAt);
+      if (!isNaN(d.getTime())) {
+        publishedIso = d.toISOString();
+      }
+    }
+    
+    let modifiedIso = publishedIso;
+    if (post.updatedAt) {
+      const d = typeof post.updatedAt.toDate === 'function' ? post.updatedAt.toDate() : new Date(post.updatedAt);
+      if (!isNaN(d.getTime())) {
+        modifiedIso = d.toISOString();
+      }
+    }
+
+    const currentUrl = window.location.href;
+    const postKeywords = `current news live, news, independent ledger, journalism, ${post.category || 'general'}, ${post.title.toLowerCase().split(' ').slice(0, 6).join(', ')}`;
+    const siteLogo = 'https://i.imgur.com/gFgShoZ.jpeg';
+    const mainImg = post.imageUrl || siteLogo;
+
+    // 2. Base SEO Tags & Mappings to Firestore Data
+    setMetaTag('name', 'description', summary);
+    setMetaTag('name', 'keywords', postKeywords);
+    setMetaTag('name', 'author', authorVal);
+    setMetaTag('name', 'robots', 'index, follow');
+    setLinkTag('canonical', currentUrl);
+
+    // 3. OpenGraph Tags mapped to Firestore / Dynamic values
     setMetaTag('property', 'og:title', post.title);
     setMetaTag('property', 'og:description', summary);
     setMetaTag('property', 'og:type', 'article');
-    setMetaTag('property', 'og:url', window.location.href);
-    if (post.imageUrl) {
-      setMetaTag('property', 'og:image', post.imageUrl);
-    } else {
-      setMetaTag('property', 'og:image', 'https://i.imgur.com/gFgShoZ.jpeg');
+    setMetaTag('property', 'og:url', currentUrl);
+    setMetaTag('property', 'og:image', mainImg);
+    setMetaTag('property', 'og:image:alt', `Illustration for ${post.title}`);
+    setMetaTag('property', 'og:site_name', 'Current News Live');
+    
+    // Core OpenGraph Social Discovery tags requested by the user
+    if (publishedIso) {
+      setMetaTag('property', 'article:published_time', publishedIso);
+    }
+    if (modifiedIso) {
+      setMetaTag('property', 'article:modified_time', modifiedIso);
+    }
+    setMetaTag('property', 'article:author', authorVal);
+    if (post.category) {
+      setMetaTag('property', 'article:section', post.category);
     }
 
-    // 3. Twitter Card Tags
+    // 4. Twitter Card Tags
     setMetaTag('name', 'twitter:card', post.imageUrl ? 'summary_large_image' : 'summary');
     setMetaTag('name', 'twitter:title', post.title);
     setMetaTag('name', 'twitter:description', summary);
-    if (post.imageUrl) {
-      setMetaTag('name', 'twitter:image', post.imageUrl);
-    } else {
-      setMetaTag('name', 'twitter:image', 'https://i.imgur.com/gFgShoZ.jpeg');
-    }
+    setMetaTag('name', 'twitter:image', mainImg);
 
-    // 4. Standard description tag
-    setMetaTag('name', 'description', summary);
+    // 5. Schema.org JSON-LD structured microdata rich-results tag for top Google search indexation!
+    const jsonLdData = {
+      "@context": "https://schema.org",
+      "@type": "NewsArticle",
+      "mainEntityOfPage": {
+        "@type": "WebPage",
+        "@id": currentUrl
+      },
+      "headline": post.title,
+      "description": summary,
+      "image": [mainImg],
+      "datePublished": publishedIso || new Date().toISOString(),
+      "dateModified": modifiedIso || new Date().toISOString(),
+      "author": {
+        "@type": "Person",
+        "name": authorVal,
+        "jobTitle": "Journalist"
+      },
+      "publisher": {
+        "@type": "Organization",
+        "name": "Current News Live",
+        "logo": {
+          "@type": "ImageObject",
+          "url": siteLogo
+        }
+      }
+    };
+    setJsonLd('post-jsonld-schema', jsonLdData);
 
     return () => {
       document.title = "Current News Live | Independent Journalism";
+      // Remove JSON-LD tag on unmount to prevent stale schema
+      const staleLd = document.getElementById('post-jsonld-schema');
+      if (staleLd) staleLd.remove();
     };
-  }, [post]);
+  }, [post, globalPenName]);
 
   const handleReaction = async (type: 'liked' | 'disliked') => {
     if (!post) return;
@@ -546,7 +647,19 @@ export default function PostDetailView() {
           </header>
 
           {/* Clean Rendered HTML Article Body & Embed Handler in same box */}
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-xs p-6 sm:p-10 overflow-hidden" id="article-main-box">
+          <div 
+            className="bg-white rounded-2xl border border-slate-100 shadow-xs p-6 sm:p-10 overflow-hidden" 
+            id="article-main-box"
+            onClick={(e) => {
+              const target = e.target as HTMLElement;
+              if (target.tagName === 'IMG') {
+                const src = target.getAttribute('src');
+                if (src) {
+                  setLightboxImage(src);
+                }
+              }
+            }}
+          >
             {/* AUTO-EMBED SECTION: Injects custom YouTube and FaceBook players natively above the text */}
             <EmbedHandler youtubeUrl={post.youtubeUrl} facebookUrl={post.facebookUrl} customLinks={post.customLinks} isHeader={true} />
 
@@ -613,6 +726,53 @@ export default function PostDetailView() {
                 </div>
               </Link>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Dynamic Lightbox Modal Overlay */}
+      {lightboxImage && (
+        <div 
+          className="fixed inset-0 z-[1000] flex flex-col items-center justify-center bg-slate-950/85 backdrop-blur-md transition-opacity duration-300"
+          id="image-lightbox-overlay"
+          onClick={() => setLightboxImage(null)}
+        >
+          {/* Close button top right */}
+          <button 
+            onClick={() => setLightboxImage(null)}
+            className="absolute top-6 right-6 p-2.5 rounded-full bg-slate-900/60 hover:bg-slate-800 text-white font-mono transition-colors border border-white/10 cursor-pointer flex items-center justify-center shadow-lg"
+            aria-label="Close lightbox"
+            title="Close zoom mode (Esc)"
+          >
+            <span className="text-xs font-bold tracking-wider mr-1.5 pl-1.5">CLOSE</span>
+            <span className="text-xl leading-none pr-1.5">×</span>
+          </button>
+          
+          {/* Zoomed-In Image Panel */}
+          <div className="max-w-[90vw] max-h-[80vh] relative flex flex-col justify-center items-center">
+            <img 
+              src={lightboxImage} 
+              alt="Expanded High Resolution View" 
+              className="rounded-xl max-w-full max-h-[75vh] object-contain border border-white/10 shadow-2xl transition-transform duration-300 transform scale-100"
+              onClick={(e) => e.stopPropagation()}
+              referrerPolicy="no-referrer"
+            />
+            
+            {/* Download/Source Option bar */}
+            <div className="mt-4 flex gap-3 text-xs font-mono text-slate-300">
+              <span className="bg-slate-900/60 px-3 py-1 rounded-full border border-white/5 shadow max-w-[200px] sm:max-w-none truncate">
+                Ground Report Image
+              </span>
+              <a 
+                href={lightboxImage} 
+                target="_blank" 
+                rel="noreferrer" 
+                className="bg-indigo-650 hover:bg-indigo-600 font-bold px-3 py-1 rounded-full text-white shadow transition-all cursor-pointer"
+                onClick={(e) => e.stopPropagation()}
+              >
+                Open Original ↗
+              </a>
+            </div>
           </div>
         </div>
       )}

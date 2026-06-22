@@ -7,6 +7,7 @@ import Footer from './components/Footer';
 import ThemeToggle from './components/ThemeToggle';
 import ScrollHelper from './components/ScrollHelper';
 import NewsletterPopup from './components/NewsletterPopup';
+import ConsentBanner from './components/ConsentBanner';
 import HomeView from './views/HomeView';
 import PostDetailView from './views/PostDetailView';
 import AdminView from './views/AdminView';
@@ -77,6 +78,9 @@ export default function App() {
 
         {/* Floating pop-up modal newsletter invite for first-time visitors */}
         <NewsletterPopup />
+
+        {/* Dynamic bottom GDPR/Google policy compliant consent banner */}
+        <ConsentBanner />
 
       </div>
     </BrowserRouter>

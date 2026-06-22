@@ -10,6 +10,42 @@ export default function Footer() {
   const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
   const [errorMsg, setErrorMsg] = useState('');
 
+  const [adsConsent, setAdsConsent] = useState<'granted' | 'denied' | 'pending'>('pending');
+
+  React.useEffect(() => {
+    const checkConsent = () => {
+      const val = localStorage.getItem('google_ads_personalized_consent');
+      setAdsConsent((val as 'granted' | 'denied') || 'pending');
+    };
+    checkConsent();
+    window.addEventListener('storage', checkConsent);
+    // Periodically sync in case of same-page state modifications
+    const interval = setInterval(checkConsent, 1000);
+    return () => {
+      window.removeEventListener('storage', checkConsent);
+      clearInterval(interval);
+    };
+  }, []);
+
+  const toggleAdsConsent = () => {
+    const nextValue = adsConsent === 'granted' ? 'denied' : 'granted';
+    localStorage.setItem('google_ads_personalized_consent', nextValue);
+    setAdsConsent(nextValue);
+    
+    if (window.hasOwnProperty('adsbygoogle')) {
+      try {
+        ((window as any).adsbygoogle = (window as any).adsbygoogle || []).requestNonPersonalizedAds = nextValue === 'granted' ? 0 : 1;
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+  };
+
+  const resetAdsConsent = () => {
+    localStorage.removeItem('google_ads_personalized_consent');
+    setAdsConsent('pending');
+  };
+
   const handleSubscribe = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim()) return;
@@ -113,12 +149,40 @@ export default function Footer() {
             </form>
           </div>
 
-          {/* Useful Copyright Laws for Readers */}
-          <div className="space-y-1.5">
-            <h4 className="font-display font-semibold text-xs uppercase tracking-wider text-white">Copyright</h4>
-            <p className="text-[11px] text-slate-400 leading-relaxed max-w-sm">
-              All editorial dispatches are protected by federal and international copyright laws. Commentary extracts are allowed with full original attribution.
+          {/* Dedicated Data & Ads Policy column */}
+          <div className="space-y-2">
+            <h4 className="font-display font-semibold text-xs uppercase tracking-wider text-white">Data & Ads Policy</h4>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              We use advanced analytics protocols to evaluate dispatch popularity and perform audience telemetry. To fund our journalism, personalized advertising options are displayed in complete alignment with Google's Publisher Policy.
             </p>
+            
+            {/* Interactive preference controller */}
+            <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800/80 space-y-1.5 mt-1">
+              <div className="flex items-center justify-between text-[10px]">
+                <span className="text-slate-400">Personalized Ads:</span>
+                <span className={`font-mono font-bold uppercase ${adsConsent === 'granted' ? 'text-emerald-400' : adsConsent === 'denied' ? 'text-amber-400' : 'text-indigo-400'}`}>
+                  {adsConsent === 'granted' ? 'Allowed' : adsConsent === 'denied' ? 'Declined' : 'Pending'}
+                </span>
+              </div>
+              <div className="flex gap-1.5">
+                <button
+                  type="button"
+                  onClick={toggleAdsConsent}
+                  className="w-full text-center py-1 bg-slate-900 hover:bg-slate-850 hover:text-white rounded text-[9px] font-semibold border border-slate-800 cursor-pointer transition-all"
+                  title="Toggle personalized ads consent"
+                >
+                  Toggle Consent
+                </button>
+                <button
+                  type="button"
+                  onClick={resetAdsConsent}
+                  className="py-1 px-2 bg-slate-900 hover:bg-slate-850 hover:text-white rounded text-[9px] font-semibold border border-slate-800 cursor-pointer transition-all shrink-0"
+                  title="Reset and prompt banner again"
+                >
+                  Reset
+                </button>
+              </div>
+            </div>
           </div>
 
           {/* Useful Reader Information & Nav */}

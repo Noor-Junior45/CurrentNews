@@ -77,6 +77,7 @@ export default function AdminView() {
   const [category, setCategory] = useState('General');
   const [targetStatus, setTargetStatus] = useState<'published' | 'draft'>('published');
   const [imageUrl, setImageUrl] = useState('');
+  const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [imagePosition, setImagePosition] = useState<'top' | 'middle' | 'bottom'>('top');
   const [pubListFilter, setPubListFilter] = useState<'all' | 'published' | 'drafts'>('all');
 
@@ -100,12 +101,20 @@ export default function AdminView() {
     try {
       // Fetch dynamic editor attribution pen name
       try {
-        const docSnap = await getDoc(doc(db, 'settings', 'editorProfile'));
+        const emailKey = user?.email ? user.email.toLowerCase().replace(/[^a-z0-9]/g, '_') : 'editorProfile';
+        const docSnap = await getDoc(doc(db, 'settings', `profile_${emailKey}`));
+        let nameVal = '';
         if (docSnap.exists()) {
-          const nameVal = docSnap.data().penName || '';
-          setGlobalPenName(nameVal);
-          setTempPenName(nameVal);
+          nameVal = docSnap.data().penName || '';
+        } else {
+          // Fallback to legacy shared editorProfile document if specific one is empty
+          const fallbackSnap = await getDoc(doc(db, 'settings', 'editorProfile'));
+          if (fallbackSnap.exists()) {
+            nameVal = fallbackSnap.data().penName || '';
+          }
         }
+        setGlobalPenName(nameVal);
+        setTempPenName(nameVal);
       } catch (settingsErr) {
         console.warn('Could not query dynamic profile attributes', settingsErr);
       }
@@ -168,18 +177,20 @@ export default function AdminView() {
     setIsSavingPenName(true);
     setErrorMsg(null);
     setSuccessMsg(null);
-    const path = 'settings/editorProfile';
+    const emailKey = user?.email ? user.email.toLowerCase().replace(/[^a-z0-9]/g, '_') : 'editorProfile';
+    const path = `settings/profile_${emailKey}`;
     try {
-      await setDoc(doc(db, 'settings', 'editorProfile'), {
+      await setDoc(doc(db, 'settings', `profile_${emailKey}`), {
         penName: tempPenName.trim(),
-        updatedAt: serverTimestamp()
+        updatedAt: serverTimestamp(),
+        email: user?.email || ''
       });
       setGlobalPenName(tempPenName.trim());
-      setSuccessMsg('Global Editor Pen Name updated successfully! All past, current and future articles will now reflect this name.');
+      setSuccessMsg('Your custom author Pen Name has been updated successfully! Future articles you draft/edit will reflect this attribution.');
       setShowPenNameModal(false);
     } catch (err) {
       console.error(err);
-      setErrorMsg('Failed to update global editor pen name signature.');
+      setErrorMsg('Failed to update your custom author pen name signature.');
       try {
         handleFirestoreError(err, OperationType.WRITE, path);
       } catch (wrap) {}
@@ -214,6 +225,7 @@ export default function AdminView() {
     setAuthorName('');
     setCategory('General');
     setImageUrl('');
+    setImageUrls([]);
     setImagePosition('top');
     setEditingPostId(null);
     setIsEditing(false);
@@ -239,6 +251,7 @@ export default function AdminView() {
     setSuccessMsg(null);
 
     const filteredCustomLinks = customLinks.filter(lnk => lnk && lnk.trim().length > 0);
+    const filteredImageUrls = imageUrls.filter(url => url && url.trim().length > 0);
 
     const postPayload = {
       title: title.trim(),
@@ -250,6 +263,7 @@ export default function AdminView() {
       category: category,
       status: targetStatus,
       imageUrl: imageUrl.trim(),
+      imageUrls: filteredImageUrls,
       imagePosition: imagePosition,
     };
 
@@ -302,6 +316,7 @@ export default function AdminView() {
     setCategory(post.category || 'General');
     setTargetStatus(post.status || 'published');
     setImageUrl(post.imageUrl || '');
+    setImageUrls(post.imageUrls || []);
     setImagePosition(post.imagePosition || 'top');
     setEditingPostId(post.id);
     setIsEditing(true);
@@ -723,6 +738,57 @@ export default function AdminView() {
                       <option value="bottom">🏞️ Last (Bottom of Article)</option>
                     </select>
                   </div>
+                </div>
+
+                {/* Additional photo gallery links list */}
+                <div className="mt-4 pt-4 border-t border-slate-200/60">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-[10px] uppercase font-bold text-slate-500 font-mono">
+                      Additional Photo Links / Gallery ({imageUrls.length})
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setImageUrls([...imageUrls, ''])}
+                      className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-600 hover:text-indigo-850 bg-indigo-50 hover:bg-indigo-100/60 px-2 py-1 rounded-lg transition-colors cursor-pointer"
+                      id="add-extra-photo-button"
+                    >
+                      <PlusCircle className="h-3 w-3" /> Add Image Link
+                    </button>
+                  </div>
+
+                  {imageUrls.length === 0 ? (
+                    <p className="text-[10px] text-slate-400 italic font-medium">
+                      No additional photos attached. Click "Add Image Link" above to chain multiple illustrations.
+                    </p>
+                  ) : (
+                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                      {imageUrls.map((lnk, idx) => (
+                        <div key={idx} className="flex items-center gap-2">
+                          <span className="text-[10px] font-bold text-slate-400 font-mono w-6">#{idx + 1}</span>
+                          <input
+                            type="text"
+                            placeholder="e.g. https://i.imgur.com/anotherImageUrl.jpg"
+                            value={lnk}
+                            onChange={(e) => {
+                              const updated = [...imageUrls];
+                              updated[idx] = e.target.value;
+                              setImageUrls(updated);
+                            }}
+                            className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white focus:ring-1 focus:ring-indigo-500 font-sans"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setImageUrls(imageUrls.filter((_, i) => i !== idx));
+                            }}
+                            className="p-1 px-2.5 text-rose-600 hover:text-white hover:bg-rose-600 border border-transparent hover:border-rose-700 rounded-lg transition-colors cursor-pointer font-mono font-bold text-xs"
+                          >
+                            REMOVE
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 

@@ -59,6 +59,28 @@ export default function EmbedHandler({ youtubeUrl, facebookUrl, customLinks, isH
   const resolvedFbUrl = hasFacebook ? extractUrlFromEmbedCode(facebookUrl) : '';
   const fbEncodedUrl = resolvedFbUrl ? encodeURIComponent(resolvedFbUrl.trim()) : null;
 
+  // Resolve Facebook source carefully to avoid double-wrapping and connection refused issues
+  let fbEmbedSrc = '';
+  const trimmedFb = facebookUrl ? facebookUrl.trim() : '';
+
+  if (trimmedFb.startsWith('https://www.facebook.com/plugins/') || trimmedFb.startsWith('https://facebook.com/plugins/')) {
+    fbEmbedSrc = trimmedFb;
+  } else if (trimmedFb.startsWith('<iframe')) {
+    const extracted = extractUrlFromEmbedCode(trimmedFb);
+    if (extracted.startsWith('https://www.facebook.com/plugins/') || extracted.startsWith('https://facebook.com/plugins/')) {
+      fbEmbedSrc = extracted;
+    } else if (extracted) {
+      const enc = encodeURIComponent(extracted);
+      fbEmbedSrc = extracted.includes('/reel/') || extracted.includes('/share/r/') || extracted.includes('/videos/') || extracted.includes('watch')
+        ? `https://www.facebook.com/plugins/video.php?href=${enc}&show_text=false&width=360`
+        : `https://www.facebook.com/plugins/post.php?href=${enc}&show_text=true&width=500`;
+    }
+  } else if (fbEncodedUrl) {
+    fbEmbedSrc = facebookUrl.includes('/reel/') || facebookUrl.includes('/share/r/') || facebookUrl.includes('/videos/') || facebookUrl.includes('watch')
+      ? `https://www.facebook.com/plugins/video.php?href=${fbEncodedUrl}&show_text=false&width=360`
+      : `https://www.facebook.com/plugins/post.php?href=${fbEncodedUrl}&show_text=true&width=500`;
+  }
+
   return (
     <div className={isHeader ? "mb-8 pb-8 border-b border-slate-200" : "mt-12 pt-8 border-t border-slate-200"} id="embeds-section">
       <h3 className="font-display font-bold text-lg text-slate-900 mb-6 uppercase tracking-wider flex items-center space-x-2">
@@ -68,14 +90,14 @@ export default function EmbedHandler({ youtubeUrl, facebookUrl, customLinks, isH
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* YouTube Video Embed */}
         {hasYouTube && (
-          <div className="flex flex-col bg-slate-50 border border-slate-200 rounded-xl p-4 shadow-2xs" id="yt-embed-box">
+          <div className="flex flex-col bg-transparent border-0 p-0 shadow-none" id="yt-embed-box">
             <div className="flex items-center space-x-2 text-red-600 mb-3">
               <Youtube className="h-5 w-5" />
               <span className="text-xs font-semibold uppercase tracking-wider font-mono">YouTube Video Embed</span>
             </div>
             
             {ytVideoId ? (
-              <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-black shadow-inner">
+              <div className="relative w-full max-w-2xl mx-auto aspect-video rounded-xl overflow-hidden bg-black shadow-none border border-slate-100/55 dark:border-slate-800/40">
                 <iframe
                   src={`https://www.youtube.com/embed/${ytVideoId}`}
                   title="YouTube video player"
@@ -97,20 +119,16 @@ export default function EmbedHandler({ youtubeUrl, facebookUrl, customLinks, isH
 
         {/* Facebook Embed */}
         {hasFacebook && (
-          <div className="flex flex-col bg-slate-50 border border-slate-200 rounded-xl p-4 shadow-2xs" id="fb-embed-box">
+          <div className="flex flex-col bg-transparent border-0 p-0 shadow-none" id="fb-embed-box">
             <div className="flex items-center space-x-2 text-blue-600 mb-3">
               <Facebook className="h-5 w-5" />
               <span className="text-xs font-semibold uppercase tracking-wider font-mono">Facebook Reference</span>
             </div>
 
-            {fbEncodedUrl ? (
-              <div className={`w-full bg-white border border-slate-200 rounded-lg overflow-hidden p-1 flex justify-center shadow-inner ${facebookUrl.includes('/reel/') || facebookUrl.includes('/share/r/') ? 'min-h-[550px]' : 'min-h-[400px]'}`}>
+            {fbEmbedSrc ? (
+              <div className={`w-full max-w-xl mx-auto bg-transparent border-0 rounded-xl overflow-hidden p-0 flex justify-center ${facebookUrl.includes('/reel/') || facebookUrl.includes('/share/r/') ? 'min-h-[550px]' : 'min-h-[400px]'}`}>
                 <iframe
-                  src={
-                    facebookUrl.includes('/reel/') || facebookUrl.includes('/share/r/') || facebookUrl.includes('/videos/') || facebookUrl.includes('watch')
-                      ? `https://www.facebook.com/plugins/video.php?href=${fbEncodedUrl}&show_text=false&width=360`
-                      : `https://www.facebook.com/plugins/post.php?href=${fbEncodedUrl}&show_text=true&width=500`
-                  }
+                  src={fbEmbedSrc}
                   scrolling="no"
                   frameBorder="0"
                   allowFullScreen={true}

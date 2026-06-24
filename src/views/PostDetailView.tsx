@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { doc, getDoc, updateDoc, increment, collection, query, where, limit, getDocs } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../firebase';
+import { auth, db, handleFirestoreError, OperationType } from '../firebase';
+import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { Post, slugify } from '../types';
 import AdSpace from '../components/AdSpace';
 import EmbedHandler from '../components/EmbedHandler';
-import { Calendar, ChevronLeft, Award, Clock, Twitter, Send, Copy, Check, Share2, ThumbsUp, ThumbsDown, ArrowRight } from 'lucide-react';
+import { Calendar, ChevronLeft, Award, Clock, Twitter, Send, Copy, Check, Share2, ThumbsUp, ThumbsDown, ArrowRight, WifiOff, Eye } from 'lucide-react';
 
 function getHtmlTextPreview(htmlString: string, maxLength: number = 160): string {
   if (!htmlString) return '';
@@ -22,6 +23,7 @@ export default function PostDetailView() {
   const [globalPenName, setGlobalPenName] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isOfflineCached, setIsOfflineCached] = useState(false);
   const [copied, setCopied] = useState(false);
   const [relatedPosts, setRelatedPosts] = useState<Post[]>([]);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
@@ -125,7 +127,7 @@ export default function PostDetailView() {
 
     // Calculate metadata values
     const summary = getHtmlTextPreview(post.content || '', 160);
-    const authorVal = globalPenName || post.authorName || 'Chronicle Staff Report';
+    const authorVal = post.authorName || globalPenName || 'Chronicle Staff Report';
     
     let publishedIso = '';
     if (post.createdAt) {
@@ -221,6 +223,19 @@ export default function PostDetailView() {
 
   const handleReaction = async (type: 'liked' | 'disliked') => {
     if (!post) return;
+    if (!auth.currentUser) {
+      const confirmSignIn = window.confirm("To react to this article, you must be logged in. Would you like to sign in with your Google account now?");
+      if (confirmSignIn) {
+        try {
+          const provider = new GoogleAuthProvider();
+          provider.setCustomParameters({ prompt: 'select_account' });
+          await signInWithPopup(auth, provider);
+        } catch (err) {
+          console.error("Popup sign in failed", err);
+        }
+      }
+      return;
+    }
     const postRef = doc(db, 'posts', post.id);
     let newLikes = likes;
     let newDislikes = dislikes;
@@ -291,6 +306,7 @@ export default function PostDetailView() {
       if (!id) return;
       setLoading(true);
       setError(null);
+      setIsOfflineCached(false);
 
       // Load global pen name setting
       try {
@@ -307,20 +323,50 @@ export default function PostDetailView() {
         const docRef = doc(db, 'posts', id);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
-          setPost({
+          const postData = {
             id: docSnap.id,
             ...docSnap.data()
-          } as Post);
+          } as Post;
+          
+          // Increment and display views
+          const viewedSessionKey = `viewed_post_${id}`;
+          const alreadyViewed = sessionStorage.getItem(viewedSessionKey);
+          if (!alreadyViewed) {
+            sessionStorage.setItem(viewedSessionKey, 'true');
+            try {
+              await updateDoc(docRef, { views: increment(1) });
+              postData.views = (postData.views || 0) + 1;
+            } catch (viewErr) {
+              console.warn('Failed to update views in Firestore:', viewErr);
+            }
+          }
+          
+          setPost(postData);
+          try {
+            localStorage.setItem('cached_post_' + id, JSON.stringify(postData));
+          } catch (cacheErr) {
+            console.warn('Failed to save post cache', cacheErr);
+          }
         } else {
           setError('Article not found. The article could have been removed by an administrator or has an incorrect web link.');
         }
       } catch (err) {
-        console.error(err);
-        setError('Failed to fetch article details. There might be a temporary server disconnection.');
+        console.error('Fetch post failed, checking offline cache:', err);
         try {
-          handleFirestoreError(err, OperationType.GET, docPath);
-        } catch (wrappedErr) {
-          // Keep state running for client-side rendering
+          const cached = localStorage.getItem('cached_post_' + id);
+          if (cached) {
+            setPost(JSON.parse(cached));
+            setIsOfflineCached(true);
+          } else {
+            setError('Failed to fetch article details. There might be a temporary server disconnection.');
+            try {
+              handleFirestoreError(err, OperationType.GET, docPath);
+            } catch (wrappedErr) {
+              // Keep state running for client-side rendering
+            }
+          }
+        } catch (cacheReadErr) {
+          setError('Failed to fetch article details. There might be a temporary server disconnection.');
         }
       } finally {
         setLoading(false);
@@ -347,7 +393,7 @@ export default function PostDetailView() {
             anyWindow.gtag('event', 'news_item_view', {
               article_id: post.id,
               article_title: post.title,
-              article_author: globalPenName || post.authorName || 'Chronicle Staff Report',
+              article_author: post.authorName || globalPenName || 'Chronicle Staff Report',
               engagement_time_msec: Date.now()
             });
             console.log(`[Google Analytics] Dynamic view tracked for item: ${post.title}`);
@@ -519,6 +565,13 @@ export default function PostDetailView() {
         </span>
       </div>
 
+      {isOfflineCached && (
+        <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-900/60 rounded-xl p-3 px-4 mb-6 flex items-center gap-2.5 text-amber-900 dark:text-amber-200 text-xs font-medium" id="offline-banner">
+          <WifiOff className="h-4 w-4 text-amber-500 shrink-0 animate-pulse" />
+          <span><strong>Offline Mode:</strong> Viewing a saved copy of this dispatch retrieved from local memory. Please reconnect to view live updates and submit ratings.</span>
+        </div>
+      )}
+
       {/* ⚠️ AD PLACEMENT: Leaderboard top cover */}
       <AdSpace type="leaderboard" />
 
@@ -545,7 +598,7 @@ export default function PostDetailView() {
                 />
                 <div>
                   <span className="font-semibold text-slate-900 block leading-tight">
-                    {globalPenName || post.authorName || 'Chronicle Staff Report'}
+                    {post.authorName || globalPenName || 'Chronicle Staff Report'}
                   </span>
                   <span className="text-[10px] text-slate-400 font-mono tracking-wider flex items-center gap-1 uppercase">
                     <Award className="h-3 w-3 text-amber-500" /> Ground Journalism
@@ -574,7 +627,7 @@ export default function PostDetailView() {
               <div className="flex items-center gap-2" id="article-reactions-group">
                 <button
                   onClick={() => handleReaction('liked')}
-                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-mono font-semibold transition-all border cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-sans font-semibold transition-all border cursor-pointer ${
                     myReaction === 'liked'
                       ? 'bg-emerald-50 text-emerald-700 border-emerald-300 shadow-3xs'
                       : 'bg-slate-50 text-slate-500 hover:text-slate-700 hover:bg-slate-100 border-slate-200'
@@ -582,12 +635,12 @@ export default function PostDetailView() {
                   title="Like this dispatch"
                 >
                   <ThumbsUp className={`h-4 w-4 ${myReaction === 'liked' ? 'fill-emerald-600 animate-pulse' : ''}`} />
-                  <span>{likes} Likes</span>
+                  <span className="font-sans">{likes} Likes</span>
                 </button>
 
                 <button
                   onClick={() => handleReaction('disliked')}
-                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-mono font-semibold transition-all border cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-sans font-semibold transition-all border cursor-pointer ${
                     myReaction === 'disliked'
                       ? 'bg-rose-50 text-rose-700 border-rose-300 shadow-3xs'
                       : 'bg-slate-50 text-slate-500 hover:text-slate-700 hover:bg-slate-100 border-slate-200'
@@ -595,8 +648,14 @@ export default function PostDetailView() {
                   title="Dislike this dispatch"
                 >
                   <ThumbsDown className={`h-4 w-4 ${myReaction === 'disliked' ? 'fill-rose-600' : ''}`} />
-                  <span>{dislikes} Dislikes</span>
+                  <span className="font-sans">{dislikes} Dislikes</span>
                 </button>
+
+                {/* Dynamic Views count beside reactions */}
+                <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-slate-400 dark:text-slate-500 font-medium ml-2" title="Total article views">
+                  <Eye className="h-4 w-4 text-slate-400" />
+                  <span className="font-sans">{post.views || 0} Views</span>
+                </div>
               </div>
 
               <div className="flex items-center gap-2">
@@ -661,10 +720,80 @@ export default function PostDetailView() {
             }}
           >
             {/* AUTO-EMBED SECTION: Injects custom YouTube and FaceBook players natively above the text */}
-            <EmbedHandler youtubeUrl={post.youtubeUrl} facebookUrl={post.facebookUrl} customLinks={post.customLinks} isHeader={true} />
+            <EmbedHandler youtubeUrl={post.youtubeUrl} facebookUrl={post.facebookUrl} isHeader={true} />
 
             {/* Main Rich Text Content & Image Inline integration */}
             {renderArticleContent()}
+
+            {/* Custom References shown at the very end of the article, below the content body */}
+            {post.customLinks && post.customLinks.length > 0 && (
+              <EmbedHandler customLinks={post.customLinks} isHeader={false} />
+            )}
+
+            {/* End of Article Reactions Toolbar */}
+            <div className="mt-12 pt-8 border-t border-slate-100 flex flex-col items-center justify-center text-center space-y-4" id="article-bottom-reactions">
+              <h4 className="text-sm font-semibold text-slate-800 uppercase tracking-wider">
+                Enjoyed this dispatch? Give a reaction below
+              </h4>
+              <div className="flex items-center justify-center gap-3">
+                <button
+                  onClick={() => handleReaction('liked')}
+                  className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-sans font-semibold transition-all border cursor-pointer ${
+                    myReaction === 'liked'
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300 shadow-3xs'
+                      : 'bg-slate-50 text-slate-500 hover:text-slate-700 hover:bg-slate-100 border-slate-200'
+                  }`}
+                  title="Like this dispatch"
+                >
+                  <ThumbsUp className={`h-4 w-4 ${myReaction === 'liked' ? 'fill-emerald-600 animate-pulse' : ''}`} />
+                  <span className="font-sans">{likes} Likes</span>
+                </button>
+
+                <button
+                  onClick={() => handleReaction('disliked')}
+                  className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-sans font-semibold transition-all border cursor-pointer ${
+                    myReaction === 'disliked'
+                      ? 'bg-rose-50 text-rose-700 border-rose-300 shadow-3xs'
+                      : 'bg-slate-50 text-slate-500 hover:text-slate-700 hover:bg-slate-100 border-slate-200'
+                  }`}
+                  title="Dislike this dispatch"
+                >
+                  <ThumbsDown className={`h-4 w-4 ${myReaction === 'disliked' ? 'fill-rose-600' : ''}`} />
+                  <span className="font-sans">{dislikes} Dislikes</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Additional gallery if attached */}
+            {post.imageUrls && post.imageUrls.length > 0 && (
+              <div className="mt-8 pt-8 border-t border-slate-150" id="article-gallery-container">
+                <h4 className="text-xs font-mono font-extrabold text-indigo-650 uppercase tracking-widest mb-4 flex items-center gap-1.5">
+                  📁 Dispatch Photo Evidence & Gallery ({post.imageUrls.length})
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {post.imageUrls.map((extraUrl, idx) => {
+                    let rSrc = extraUrl.trim();
+                    if (rSrc.includes('imgur.com') && !/\.(png|jpg|jpeg|gif|webp)$/i.test(rSrc)) {
+                      rSrc = rSrc.replace('imgur.com', 'i.imgur.com') + '.jpg';
+                    }
+                    return (
+                      <div 
+                        key={idx} 
+                        className="group overflow-hidden rounded-xl border border-slate-200 bg-slate-50 cursor-pointer"
+                        onClick={() => setLightboxImage(rSrc)}
+                      >
+                        <img 
+                          src={rSrc} 
+                          alt={`Evidence Image #${idx + 1}`} 
+                          className="w-full h-44 sm:h-52 object-cover transition-transform duration-300 hover:scale-105 pointer-events-none" 
+                          referrerPolicy="no-referrer"
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* ⚠️ AD PLACEMENT: Footer bottom ad zone */}

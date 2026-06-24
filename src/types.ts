@@ -13,7 +13,9 @@ export interface Post {
   likes?: number; // Upvotes count
   dislikes?: number; // Downvotes count
   imageUrl?: string; // Opt to attach image/link
+  imageUrls?: string[]; // Multiple extra image links
   imagePosition?: 'top' | 'middle' | 'bottom'; // Position mapping: top, middle, bottom
+  views?: number; // Total article views
 }
 
 export function slugify(text: string): string {

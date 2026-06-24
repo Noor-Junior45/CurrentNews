@@ -242,16 +242,14 @@ export default function Header() {
                       <Link
                         to="/liked"
                         onClick={() => setIsDropdownOpen(false)}
-                        className="w-full flex items-center justify-between p-2.5 rounded-xl bg-rose-50/50 dark:bg-rose-950/20 border border-rose-100/40 dark:border-rose-900/40 hover:border-rose-300 dark:hover:border-rose-800/80 text-slate-800 dark:text-slate-200 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-all cursor-pointer"
+                        className="w-full flex items-center space-x-3 p-2.5 rounded-xl text-slate-700 hover:text-indigo-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-900 text-xs font-semibold tracking-wide transition-colors cursor-pointer"
                         id="liked-dispatches-button"
                       >
-                        <div className="flex items-center space-x-2">
-                          <ThumbsUp className="h-4 w-4 text-rose-500 fill-rose-100 dark:fill-rose-950" />
-                          <span className="text-xs font-semibold">My Liked Dispatches</span>
+                        <ThumbsUp className="h-4 w-4 text-rose-550 shrink-0" />
+                        <div className="flex flex-col text-left min-w-0">
+                          <span>My Liked Dispatches</span>
+                          <span className="text-[10px] text-slate-400 font-normal">Previously liked and bookmarked articles</span>
                         </div>
-                        <span className="text-[10px] font-mono leading-none bg-rose-105 dark:bg-rose-900/60 text-rose-700 px-1.5 py-0.5 rounded-full font-bold">
-                          History →
-                        </span>
                       </Link>
                     </div>
 
@@ -292,14 +290,14 @@ export default function Header() {
                       <Link
                         to="/liked"
                         onClick={() => setIsDropdownOpen(false)}
-                        className="w-full flex items-center justify-between p-2 rounded-xl bg-slate-50 dark:bg-slate-900 hover:bg-rose-50 dark:hover:bg-rose-950/20 text-slate-800 dark:text-slate-200 hover:text-rose-700 transition-all cursor-pointer text-xs font-semibold border border-slate-150 dark:border-slate-800"
+                        className="w-full flex items-center space-x-3 p-2.5 rounded-xl text-slate-700 hover:text-indigo-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-900 text-xs font-semibold tracking-wide transition-colors cursor-pointer"
                         id="liked-dispatches-guest-button"
                       >
-                        <div className="flex items-center space-x-2">
-                          <ThumbsUp className="h-3.5 w-3.5 text-rose-500 fill-rose-150" />
+                        <ThumbsUp className="h-4 w-4 text-rose-550 shrink-0" />
+                        <div className="flex flex-col text-left min-w-0">
                           <span>My Liked Dispatches</span>
+                          <span className="text-[10px] text-slate-400 font-normal">Previously liked and bookmarked articles</span>
                         </div>
-                        <span className="text-[9px] text-slate-450 font-mono">View →</span>
                       </Link>
 
                       <a 

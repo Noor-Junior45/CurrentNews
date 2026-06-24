@@ -3,7 +3,7 @@ import { collection, getDocs, query, orderBy, limit, doc, getDoc } from 'firebas
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { Post, slugify } from '../types';
 import BlogPostCard from '../components/BlogPostCard';
-import { Newspaper, Search, RefreshCw, AlertTriangle, ChevronLeft, ChevronRight, ThumbsUp } from 'lucide-react';
+import { Newspaper, Search, RefreshCw, AlertTriangle, ChevronLeft, ChevronRight, ThumbsUp, WifiOff } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 
 function getHtmlTextPreview(htmlString: string, maxLength: number = 160): string {
@@ -49,6 +49,7 @@ export default function HomeView() {
   const [globalPenName, setGlobalPenName] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isOfflineCached, setIsOfflineCached] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -73,6 +74,7 @@ export default function HomeView() {
   const fetchPosts = async () => {
     setLoading(true);
     setError(null);
+    setIsOfflineCached(false);
     const path = 'posts';
     try {
       // Recover dynamic editor pen name
@@ -95,14 +97,35 @@ export default function HomeView() {
         } as Post);
       });
       setPosts(fetchedPosts);
-    } catch (err) {
-      console.error(err);
-      setError('Could not retrieve publications. Please make sure the database is provisioned and active.');
-      // Handle the error specifically according to Firestore guidelines with rich JSON
+      
+      // Save to localStorage for robust offline capability
       try {
-        handleFirestoreError(err, OperationType.GET, path);
-      } catch (wrappedErr) {
-        // Suppress breaking exception to let state handle gracefully in the UI
+        localStorage.setItem('cached_posts', JSON.stringify(fetchedPosts));
+        // Pre-cache individual posts to support single article views offline
+        fetchedPosts.forEach((post) => {
+          localStorage.setItem('cached_post_' + post.id, JSON.stringify(post));
+        });
+      } catch (cacheErr) {
+        console.warn('Failed to save posts cache', cacheErr);
+      }
+    } catch (err) {
+      console.error('Fetch posts failed, checking offline cache:', err);
+      try {
+        const cached = localStorage.getItem('cached_posts');
+        if (cached) {
+          const cachedPosts = JSON.parse(cached);
+          setPosts(cachedPosts);
+          setIsOfflineCached(true);
+        } else {
+          setError('Could not retrieve publications. Please make sure the database is provisioned and active.');
+          try {
+            handleFirestoreError(err, OperationType.GET, path);
+          } catch (wrappedErr) {
+            // Suppress breaking exception to let state handle gracefully in the UI
+          }
+        }
+      } catch (cacheReadErr) {
+        setError('Could not retrieve publications. Please make sure the database is provisioned and active.');
       }
     } finally {
       setLoading(false);
@@ -139,6 +162,21 @@ export default function HomeView() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-10" id="homepage-view">
+
+      {isOfflineCached && (
+        <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-900/60 rounded-xl p-3 px-4 mb-4 flex items-center justify-between gap-3 text-amber-900 dark:text-amber-200 text-xs font-medium mt-4" id="offline-banner">
+          <div className="flex items-center gap-2">
+            <WifiOff className="h-4 w-4 text-amber-500 shrink-0 animate-pulse" />
+            <span><strong>Offline Mode:</strong> Displaying cached news dispatches from your last visit. Please reconnect to view live dispatches.</span>
+          </div>
+          <button 
+            onClick={fetchPosts}
+            className="bg-amber-600 hover:bg-amber-700 text-white px-2.5 py-1 rounded-md text-[10px] font-bold uppercase transition-colors shrink-0 cursor-pointer"
+          >
+            Reconnect
+          </button>
+        </div>
+      )}
 
       {/* Category Filter Tabs positioned below the main header, above Today's Dispatch */}
       <div className="sticky top-[72px] z-40 bg-slate-50/95 backdrop-blur-md border-b border-slate-200/80 dark:bg-slate-900/95 dark:border-slate-800/80 py-2 mb-8 shadow-3xs px-4 -mx-4 sm:-mx-8 lg:-mx-8" id="category-filter-header">

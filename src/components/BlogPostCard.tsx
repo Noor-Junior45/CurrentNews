@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Post, slugify } from '../types';
 import { Link } from 'react-router-dom';
-import { Calendar, Youtube, Facebook, ArrowRight, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Calendar, Youtube, Facebook, ArrowRight, ThumbsUp, ThumbsDown, Eye } from 'lucide-react';
 import { doc, updateDoc, increment } from 'firebase/firestore';
-import { db } from '../firebase';
+import { auth, db } from '../firebase';
+import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 
 interface BlogPostCardProps {
   post: Post;
@@ -25,7 +26,7 @@ function getHtmlTextPreview(htmlString: string, maxLength: number = 160): string
 
 export default function BlogPostCard({ post, globalPenName }: BlogPostCardProps): React.JSX.Element {
   const previewText = getHtmlTextPreview(post.content);
-  const displayedAuthor = globalPenName || post.authorName || 'Chronicle Staff Report';
+  const displayedAuthor = post.authorName || globalPenName || 'Chronicle Staff Report';
   
   const [likes, setLikes] = useState(post.likes || 0);
   const [dislikes, setDislikes] = useState(post.dislikes || 0);
@@ -44,6 +45,20 @@ export default function BlogPostCard({ post, globalPenName }: BlogPostCardProps)
   const handleReaction = async (type: 'liked' | 'disliked', e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
+
+    if (!auth.currentUser) {
+      const confirmSignIn = window.confirm("To like or dislike this dispatch, you must be logged in. Would you like to sign in with your Google account now?");
+      if (confirmSignIn) {
+        try {
+          const provider = new GoogleAuthProvider();
+          provider.setCustomParameters({ prompt: 'select_account' });
+          await signInWithPopup(auth, provider);
+        } catch (err) {
+          console.error("Popup sign in failed", err);
+        }
+      }
+      return;
+    }
 
     const postRef = doc(db, 'posts', post.id);
     let newLikes = likes;
@@ -160,7 +175,7 @@ export default function BlogPostCard({ post, globalPenName }: BlogPostCardProps)
         <div className="flex items-center gap-2 pt-3 border-t border-slate-100/60" id="card-reactions">
           <button
             onClick={(e) => handleReaction('liked', e)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-semibold transition-all border cursor-pointer ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-sans font-semibold transition-all border cursor-pointer ${
               myReaction === 'liked'
                 ? 'bg-emerald-50 text-emerald-700 border-emerald-300 shadow-3xs'
                 : 'bg-slate-50 text-slate-500 hover:text-slate-700 hover:bg-slate-100 border-slate-200/60'
@@ -168,12 +183,12 @@ export default function BlogPostCard({ post, globalPenName }: BlogPostCardProps)
             title="Like this dispatch"
           >
             <ThumbsUp className={`h-3.5 w-3.5 ${myReaction === 'liked' ? 'fill-emerald-600 animate-pulse' : ''}`} />
-            <span>{likes}</span>
+            <span className="font-sans">{likes}</span>
           </button>
 
           <button
             onClick={(e) => handleReaction('disliked', e)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-semibold transition-all border cursor-pointer ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-sans font-semibold transition-all border cursor-pointer ${
               myReaction === 'disliked'
                 ? 'bg-rose-50 text-rose-700 border-rose-300 shadow-3xs'
                 : 'bg-slate-50 text-slate-500 hover:text-slate-700 hover:bg-slate-100 border-slate-200/60'
@@ -181,8 +196,14 @@ export default function BlogPostCard({ post, globalPenName }: BlogPostCardProps)
             title="Dislike this dispatch"
           >
             <ThumbsDown className={`h-3.5 w-3.5 ${myReaction === 'disliked' ? 'fill-rose-600' : ''}`} />
-            <span>{dislikes}</span>
+            <span className="font-sans">{dislikes}</span>
           </button>
+
+          {/* Elegant Views Counter beside reactions */}
+          <div className="flex items-center gap-1 text-xs text-slate-400 dark:text-slate-500 font-medium ml-auto" title="Total article views">
+            <Eye className="h-3.5 w-3.5 text-slate-400" />
+            <span className="font-sans">{post.views || 0}</span>
+          </div>
         </div>
 
       </div>

@@ -4,7 +4,7 @@ import { db, handleFirestoreError, OperationType } from '../firebase';
 import { Post, slugify } from '../types';
 import BlogPostCard from '../components/BlogPostCard';
 import { Newspaper, Search, RefreshCw, AlertTriangle, ChevronLeft, ChevronRight, ThumbsUp, WifiOff } from 'lucide-react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 
 function getHtmlTextPreview(htmlString: string, maxLength: number = 160): string {
   if (!htmlString) return '';
@@ -53,7 +53,16 @@ export default function HomeView() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const selectedCategory = searchParams.get('category') || 'All';
+
+  // Support sharing/opening posts via robust query parameters
+  useEffect(() => {
+    const postIdFromQuery = searchParams.get('post') || searchParams.get('p') || searchParams.get('id');
+    if (postIdFromQuery) {
+      navigate(`/post/${postIdFromQuery}`);
+    }
+  }, [searchParams, navigate]);
   const setSelectedCategory = (cat: string) => {
     const nextParams = new URLSearchParams(searchParams);
     if (cat === 'All') {
@@ -212,61 +221,16 @@ export default function HomeView() {
       </div>
       
       {/* Editorial Headline Hero Banner */}
-      <div className="border-b-4 border-double border-slate-900 pb-10 mb-10 pt-6 sm:pt-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
+      <div className="border-b-4 border-double border-slate-900 dark:border-slate-700 pb-10 mb-10 pt-6 sm:pt-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
-          <span className="text-xs font-mono font-bold text-indigo-600 uppercase tracking-widest block mb-2">Today's Dispatch</span>
-          <h1 className="font-display font-extrabold text-4xl sm:text-5xl text-slate-950 tracking-tight leading-none flex items-center gap-3">
-            <Newspaper className="h-10 w-10 text-slate-900 shrink-0" />
-            <span>CURRENT NEWS</span>
+          <span className="text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest block mb-2">Today's Dispatch</span>
+          <h1 className="font-display font-extrabold text-4xl sm:text-5xl text-slate-950 dark:text-white tracking-tight leading-none flex items-center gap-3">
+            <Newspaper className="h-10 w-10 text-slate-900 dark:text-white shrink-0" />
+            <span>Current News</span>
           </h1>
-          <p className="text-sm text-slate-500 mt-3 font-sans max-w-xl">
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-3 font-sans max-w-xl">
             Read critical, up-to-date insights, independent coverages, and reports of global scale from our field editors.
           </p>
-        </div>
-
-        {/* Searching & Live Actions */}
-        <div className="flex items-center gap-2.5 w-full md:w-auto justify-end">
-          <div className={`relative flex items-center transition-all duration-300 ${isSearchExpanded || searchTerm ? 'w-full md:w-72' : 'w-10 animate-fade-in'}`}>
-            {isSearchExpanded || searchTerm ? (
-              <div className="relative w-full">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                <input 
-                  type="text" 
-                  placeholder="Search major articles..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-9 pr-8 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-hidden focus:ring-2 focus:ring-slate-950 focus:border-transparent transition-all shadow-xs"
-                  id="search-input"
-                  autoFocus
-                />
-                <button 
-                  onClick={() => {
-                    setSearchTerm('');
-                    setIsSearchExpanded(false);
-                  }}
-                  className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 text-sm font-semibold cursor-pointer"
-                  title="Clear & Close Search"
-                >
-                  ×
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => setIsSearchExpanded(true)}
-                className="p-2.5 border border-slate-300 rounded-lg hover:bg-slate-50 text-slate-600 bg-white shadow-xs cursor-pointer transition-colors flex items-center justify-center w-10 h-10 shrink-0"
-                title="Search dispatches"
-              >
-                <Search className="h-4.5 w-4.5 text-slate-800" />
-              </button>
-            )}
-          </div>
-          <button 
-            onClick={fetchPosts}
-            title="Refresh feed"
-            className="p-2.5 border border-slate-300 rounded-lg hover:bg-slate-50 text-slate-600 bg-white shadow-xs cursor-pointer transition-colors w-10 h-10 flex items-center justify-center shrink-0"
-          >
-            <RefreshCw className={`h-4.5 w-4.5 ${loading ? 'animate-spin' : ''}`} />
-          </button>
         </div>
       </div>
 

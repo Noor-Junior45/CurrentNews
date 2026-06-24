@@ -6,7 +6,7 @@ import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { Post, slugify } from '../types';
 import AdSpace from '../components/AdSpace';
 import EmbedHandler from '../components/EmbedHandler';
-import { Calendar, ChevronLeft, Award, Clock, Twitter, Send, Copy, Check, Share2, ThumbsUp, ThumbsDown, ArrowRight, WifiOff, Eye } from 'lucide-react';
+import { Calendar, ChevronLeft, Award, Clock, Send, Copy, Check, Share2, ThumbsUp, ThumbsDown, ArrowRight, WifiOff, Eye } from 'lucide-react';
 
 function getHtmlTextPreview(htmlString: string, maxLength: number = 160): string {
   if (!htmlString) return '';
@@ -294,7 +294,7 @@ export default function PostDetailView() {
 
   const handleCopyLink = () => {
     if (post) {
-      const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}/post/${post.id}/${slugify(post.title)}` : `https://currentnewslive.vercel.app/post/${post.id}/${slugify(post.title)}`;
+      const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}/?post=${post.id}` : `https://currentnewslive.vercel.app/?post=${post.id}`;
       navigator.clipboard.writeText(shareUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -534,7 +534,7 @@ export default function PostDetailView() {
     );
   };
 
-  const dynamicShareUrl = typeof window !== 'undefined' ? `${window.location.origin}/post/${post.id}/${slugify(post.title)}` : `https://currentnewslive.vercel.app/post/${post.id}/${slugify(post.title)}`;
+  const dynamicShareUrl = typeof window !== 'undefined' ? `${window.location.origin}/?post=${post.id}` : `https://currentnewslive.vercel.app/?post=${post.id}`;
 
   return (
     <article className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8" id={`article-${post.id}`}>
@@ -659,16 +659,18 @@ export default function PostDetailView() {
               </div>
 
               <div className="flex items-center gap-2">
-                {/* Twitter Share */}
+                {/* X (formerly Twitter) Share */}
                 <a
-                  href={`https://twitter.com/intent/tweet?url=${encodeURIComponent(dynamicShareUrl)}&text=${encodeURIComponent(post.title)}`}
+                  href={`https://x.com/intent/tweet?url=${encodeURIComponent(dynamicShareUrl)}&text=${encodeURIComponent(post.title)}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-600 dark:bg-sky-950/40 dark:hover:bg-sky-900/40 dark:text-sky-400 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
-                  title="Share on Twitter"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-150 hover:bg-slate-200 text-slate-900 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-100 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+                  title="Share on X"
                 >
-                  <Twitter className="h-3.5 w-3.5" />
-                  <span>Twitter</span>
+                  <svg className="h-3.5 w-3.5 fill-current" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                  </svg>
+                  <span>X</span>
                 </a>
 
                 {/* WhatsApp Share */}

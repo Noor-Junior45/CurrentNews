@@ -98,6 +98,7 @@ export default function AdminView() {
     if (!isAdmin) return;
     setFeedLoading(true);
     const path = 'posts';
+    let activePenName = '';
     try {
       // Fetch dynamic editor attribution pen name
       try {
@@ -113,6 +114,7 @@ export default function AdminView() {
             nameVal = fallbackSnap.data().penName || '';
           }
         }
+        activePenName = nameVal;
         setGlobalPenName(nameVal);
         setTempPenName(nameVal);
       } catch (settingsErr) {
@@ -143,7 +145,21 @@ export default function AdminView() {
           ...doc.data()
         } as Post);
       });
-      setPosts(fetched);
+
+      // Filter publications so each admin only sees their own posts
+      const ownPosts = fetched.filter(p => {
+        if (p.authorEmail) {
+          return p.authorEmail.toLowerCase() === user?.email?.toLowerCase();
+        }
+        // Fallback for legacy posts (no authorEmail): show only to primary admin mdhassan1738@gmail.com
+        // or if the authorName matches their current active pen name
+        const primaryAdmin = 'mdhassan1738@gmail.com';
+        const isPrimaryAdmin = user?.email?.toLowerCase() === primaryAdmin;
+        const matchesPenName = activePenName && p.authorName === activePenName;
+        return isPrimaryAdmin || matchesPenName;
+      });
+
+      setPosts(ownPosts);
     } catch (err) {
       console.error(err);
       setErrorMsg('Failed to download existing list of articles.');
@@ -185,9 +201,38 @@ export default function AdminView() {
         updatedAt: serverTimestamp(),
         email: user?.email || ''
       });
+
+      // Also automatically update all existing posts in Firestore written by this editor to use the new pen name
+      try {
+        const postsCol = collection(db, 'posts');
+        const postsSnap = await getDocs(postsCol);
+        const batchPromises: Promise<any>[] = [];
+        postsSnap.forEach((postDoc) => {
+          const data = postDoc.data();
+          const isOwnPost = (data.authorEmail && data.authorEmail.toLowerCase() === user?.email?.toLowerCase()) ||
+                            (!data.authorEmail && globalPenName && data.authorName === globalPenName && user?.email?.toLowerCase() === 'mdhassan1738@gmail.com');
+          
+          if (isOwnPost && data.authorName !== tempPenName.trim()) {
+            const postRef = doc(db, 'posts', postDoc.id);
+            batchPromises.push(updateDoc(postRef, {
+              authorName: tempPenName.trim(),
+              authorEmail: user?.email || '',
+              authorId: user?.uid || ''
+            }));
+          }
+        });
+        if (batchPromises.length > 0) {
+          await Promise.all(batchPromises);
+          console.log(`Updated ${batchPromises.length} old articles with the new pen name.`);
+        }
+      } catch (updatePostsErr) {
+        console.warn('Failed to update older articles with new pen name', updatePostsErr);
+      }
+
       setGlobalPenName(tempPenName.trim());
-      setSuccessMsg('Your custom author Pen Name has been updated successfully! Future articles you draft/edit will reflect this attribution.');
+      setSuccessMsg('Your custom author Pen Name has been updated successfully! Both your profile settings and older articles have been refreshed with this signature.');
       setShowPenNameModal(false);
+      fetchAdminPosts(); // Refresh list to reflect the updated pen names immediately
     } catch (err) {
       console.error(err);
       setErrorMsg('Failed to update your custom author pen name signature.');
@@ -253,13 +298,15 @@ export default function AdminView() {
     const filteredCustomLinks = customLinks.filter(lnk => lnk && lnk.trim().length > 0);
     const filteredImageUrls = imageUrls.filter(url => url && url.trim().length > 0);
 
-    const postPayload = {
+    const postPayload: any = {
       title: title.trim(),
       content: content,
       youtubeUrl: youtubeUrl.trim(),
       facebookUrl: facebookUrl.trim(),
       customLinks: filteredCustomLinks,
       authorName: globalPenName.trim() || 'Chronicle Staff Report',
+      authorEmail: user?.email || '',
+      authorId: user?.uid || '',
       category: category,
       status: targetStatus,
       imageUrl: imageUrl.trim(),
@@ -271,6 +318,12 @@ export default function AdminView() {
 
     try {
       if (isEditing && editingPostId) {
+        // Preserve original author information if editing
+        const originalPost = posts.find(p => p.id === editingPostId);
+        if (originalPost) {
+          postPayload.authorEmail = originalPost.authorEmail || user?.email || '';
+          postPayload.authorId = originalPost.authorId || user?.uid || '';
+        }
         // Perform update
         const docRef = doc(db, 'posts', editingPostId);
         await updateDoc(docRef, {

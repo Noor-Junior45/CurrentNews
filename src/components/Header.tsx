@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { auth } from '../firebase';
 import { useAuthState } from '../hooks/useAuthState';
-import { LogIn, LogOut, Shield, Newspaper, User, Rss, ArrowRight, PlusCircle, Users, Search, ThumbsUp } from 'lucide-react';
+import { LogIn, LogOut, Shield, Newspaper, User, Rss, ArrowRight, PlusCircle, Users, Search, ThumbsUp, X } from 'lucide-react';
 import { GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
 
 export default function Header() {
@@ -127,9 +127,19 @@ export default function Header() {
             {/* Gmail-Style Dropdown Menu */}
             {isDropdownOpen && (
               <div 
-                className="absolute right-0 mt-3 w-80 bg-white dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 rounded-[28px] shadow-2xl py-6 px-5 z-55 animate-in fade-in slide-in-from-top-3 duration-200 origin-top-right font-sans"
+                className="absolute right-0 mt-3 w-80 bg-white dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 rounded-[28px] shadow-2xl py-6 px-5 z-55 animate-in fade-in slide-in-from-top-3 duration-200 origin-top-right font-sans max-h-[85vh] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
                 id="gmail-style-account-dropdown"
               >
+                {/* Close Button */}
+                <button
+                  onClick={() => setIsDropdownOpen(false)}
+                  className="absolute top-4 right-4 p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-900 rounded-full transition-colors cursor-pointer z-10"
+                  title="Close menu"
+                  id="close-dropdown-button"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+
                 {user ? (
                   <div className="flex flex-col items-center text-center">
                     {/* User Profile Header */}
@@ -283,7 +293,7 @@ export default function Header() {
                       className="w-full flex items-center justify-center space-x-2 py-2.5 px-4 bg-slate-950 text-white hover:bg-slate-800 text-xs font-semibold rounded-full cursor-pointer transition-colors shadow-xs mb-3"
                     >
                       <LogIn className="h-3.5 w-3.5" />
-                      <span>Admin Sign In</span>
+                      <span>Sign In</span>
                     </button>
 
                     <div className="w-full border-t border-slate-100 dark:border-slate-800 pt-3 flex flex-col gap-2.5">

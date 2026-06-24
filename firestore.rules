@@ -8,11 +8,12 @@ service cloud.firestore {
 
       // Only the authenticated admin client can create or delete posts
       allow create, delete: if request.auth != null && 
-                            request.auth.token.email.lower() in ["mdhassan1738@gmail.com", "alifraja404@gmail.com"];
+                            request.auth.token.email != null &&
+                            request.auth.token.email in ["mdhassan1738@gmail.com", "alifraja404@gmail.com", "mdnoor4860@gmail.com", "Alifraja404@gmail.com", "Mdnoor4860@gmail.com", "AlifRaja404@gmail.com", "MdNoor4860@gmail.com"];
 
-      // Anyone can update likes or dislikes to react to posts, but only admin can update any other fields
-      allow update: if (request.auth != null && request.auth.token.email.lower() in ["mdhassan1738@gmail.com", "alifraja404@gmail.com"]) ||
-                    (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'dislikes']));
+      // Anyone can update likes, dislikes, or views to react to/view posts, but only admin can update any other fields
+      allow update: if (request.auth != null && request.auth.token.email != null && request.auth.token.email in ["mdhassan1738@gmail.com", "alifraja404@gmail.com", "mdnoor4860@gmail.com", "Alifraja404@gmail.com", "Mdnoor4860@gmail.com", "AlifRaja404@gmail.com", "MdNoor4860@gmail.com"]) ||
+                    (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'dislikes', 'views']));
     }
 
     match /settings/{settingsId} {
@@ -21,7 +22,8 @@ service cloud.firestore {
 
       // Only the authenticated admin can write config settings
       allow write: if request.auth != null && 
-                    request.auth.token.email.lower() in ["mdhassan1738@gmail.com", "alifraja404@gmail.com"];
+                    request.auth.token.email != null &&
+                    request.auth.token.email in ["mdhassan1738@gmail.com", "alifraja404@gmail.com", "mdnoor4860@gmail.com", "Alifraja404@gmail.com", "Mdnoor4860@gmail.com", "AlifRaja404@gmail.com", "MdNoor4860@gmail.com"];
     }
 
     match /subscribers/{subscriberId} {
@@ -30,7 +32,8 @@ service cloud.firestore {
 
       // Only the admin can read, modify or delete the audience database
       allow read, update, delete: if request.auth != null && 
-                                    request.auth.token.email.lower() in ["mdhassan1738@gmail.com", "alifraja404@gmail.com"];
+                                     request.auth.token.email != null &&
+                                     request.auth.token.email in ["mdhassan1738@gmail.com", "alifraja404@gmail.com", "mdnoor4860@gmail.com", "Alifraja404@gmail.com", "Mdnoor4860@gmail.com", "AlifRaja404@gmail.com", "MdNoor4860@gmail.com"];
     }
   }
 }

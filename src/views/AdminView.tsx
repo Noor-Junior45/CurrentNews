@@ -454,7 +454,7 @@ export default function AdminView() {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10" id="admin-board-view">
       
       {/* Title Panel */}
-      <div className="border-b-4 border-double border-slate-900 pb-6 mb-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="border-b-4 border-double border-slate-900 pb-6 mb-10 flex flex-col md:flex-row md:items-center justify-between gap-4 relative">
         <div>
           <span className="text-xs font-mono font-bold text-indigo-600 uppercase tracking-widest block mb-1">Editor-In-Chief Console</span>
           <h1 className="font-display font-extrabold text-3xl text-slate-950 tracking-tight leading-none uppercase">
@@ -462,10 +462,21 @@ export default function AdminView() {
           </h1>
         </div>
         
-        {/* Connection health visual indicator */}
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 border border-green-200 text-green-800 text-xs font-semibold rounded-lg font-mono">
-          <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-          <span>Firestore Real-Time Authorized</span>
+        {/* Connection health visual indicator and close button */}
+        <div className="flex items-center gap-3.5" id="admin-header-controls">
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 border border-green-200 text-green-800 text-xs font-semibold rounded-lg font-mono">
+            <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+            <span>Firestore Real-Time Authorized</span>
+          </div>
+
+          <button
+            onClick={() => navigate('/')}
+            className="p-1.5 text-red-600 hover:text-white hover:bg-red-600 border-2 border-red-500 hover:border-red-600 rounded-lg bg-red-50 transition-all duration-200 cursor-pointer flex items-center justify-center font-bold"
+            id="close-admin-portal-btn"
+            title="Close page and exit portal"
+          >
+            <X className="h-5 w-5 stroke-[3]" />
+          </button>
         </div>
       </div>
 

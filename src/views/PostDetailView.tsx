@@ -6,7 +6,7 @@ import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { Post, slugify } from '../types';
 import AdSpace from '../components/AdSpace';
 import EmbedHandler from '../components/EmbedHandler';
-import { Calendar, ChevronLeft, Award, Clock, Send, Copy, Check, Share2, ThumbsUp, ThumbsDown, ArrowRight, WifiOff, Eye } from 'lucide-react';
+import { Calendar, ChevronLeft, Award, Clock, Send, Copy, Check, Share2, ThumbsUp, ThumbsDown, ArrowRight, WifiOff, Eye, Hash } from 'lucide-react';
 
 function getHtmlTextPreview(htmlString: string, maxLength: number = 160): string {
   if (!htmlString) return '';
@@ -298,6 +298,29 @@ export default function PostDetailView() {
       navigator.clipboard.writeText(shareUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleNativeShare = async () => {
+    if (post) {
+      const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}/?post=${post.id}` : `https://currentnewslive.vercel.app/?post=${post.id}`;
+      if (typeof navigator !== 'undefined' && navigator.share) {
+        try {
+          await navigator.share({
+            title: post.title,
+            text: getHtmlTextPreview(post.content || '', 120),
+            url: shareUrl,
+          });
+        } catch (err) {
+          console.error('Error sharing content:', err);
+          // Only fallback if not a user cancellation (AbortError)
+          if (err instanceof Error && err.name !== 'AbortError') {
+            handleCopyLink();
+          }
+        }
+      } else {
+        handleCopyLink();
+      }
     }
   };
 
@@ -660,18 +683,28 @@ export default function PostDetailView() {
               </div>
 
               <div className="flex items-center gap-2">
+                {/* Native Mobile Share */}
+                {typeof navigator !== 'undefined' && navigator.share && (
+                  <button
+                    onClick={handleNativeShare}
+                    className="p-2.5 bg-indigo-50/50 hover:bg-indigo-100/70 text-indigo-600 dark:bg-indigo-950/20 dark:text-indigo-400 dark:hover:bg-indigo-900/40 rounded-full border border-indigo-200/30 hover:border-indigo-400 transition-all duration-300 cursor-pointer flex items-center justify-center shrink-0 shadow-3xs hover:scale-115 active:scale-95 hover:shadow-xs"
+                    title="Share via device apps"
+                  >
+                    <Share2 className="h-4 w-4" />
+                  </button>
+                )}
+
                 {/* X (formerly Twitter) Share */}
                 <a
                   href={`https://x.com/intent/tweet?url=${encodeURIComponent(dynamicShareUrl)}&text=${encodeURIComponent(post.title)}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="share-btn inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+                  className="p-2.5 bg-slate-100/50 dark:bg-slate-800/40 text-slate-850 dark:text-slate-100 rounded-full border border-slate-200 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-500 transition-all duration-300 cursor-pointer flex items-center justify-center shrink-0 shadow-3xs hover:scale-115 active:scale-95 hover:shadow-xs"
                   title="Share on X"
                 >
-                  <svg className="h-3.5 w-3.5 fill-current" viewBox="0 0 24 24" aria-hidden="true">
+                  <svg className="h-4 w-4 fill-current" viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
                   </svg>
-                  <span>Post</span>
                 </a>
 
                 {/* WhatsApp Share */}
@@ -679,29 +712,28 @@ export default function PostDetailView() {
                   href={`https://api.whatsapp.com/send?text=${encodeURIComponent(post.title + ' ' + dynamicShareUrl)}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="share-btn inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+                  className="p-2.5 bg-emerald-50/50 dark:bg-emerald-950/20 text-[#25D366] rounded-full border border-emerald-200/30 hover:border-emerald-400/50 transition-all duration-300 cursor-pointer flex items-center justify-center shrink-0 shadow-3xs hover:scale-115 active:scale-95 hover:shadow-xs"
                   title="Share on WhatsApp"
                 >
-                  <Send className="h-3.5 w-3.5" />
-                  <span>WhatsApp</span>
+                  <svg className="h-4 w-4 fill-current" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.73-1.45L0 24zm6.59-4.846c1.6.95 3.188 1.449 4.825 1.451 5.436 0 9.86-4.37 9.864-9.799.002-2.63-1.023-5.101-2.885-6.966a9.9 9.9 0 0 0-6.98-2.82c-5.443 0-9.874 4.372-9.878 9.802-.001 1.77.463 3.5 1.34 5.023l-.99 3.616 3.704-.971zm11.367-6.405c-.31-.156-1.834-.905-2.119-1.008-.285-.104-.493-.156-.7.156-.207.312-.802 1.008-.984 1.217-.181.21-.362.235-.672.079-.31-.156-1.31-.483-2.496-1.542-.923-.824-1.546-1.841-1.727-2.153-.182-.312-.02-.481.136-.636.14-.139.31-.363.466-.546.156-.182.208-.312.31-.52.105-.209.052-.39-.026-.547-.078-.156-.7-1.691-.958-2.315-.252-.607-.51-.523-.7-.533l-.597-.01c-.207 0-.544.078-.83.39-.285.312-1.088 1.066-1.088 2.602 0 1.537 1.114 3.02 1.27 3.228.155.208 2.192 3.348 5.31 4.697.741.321 1.32.513 1.77.656.745.236 1.423.203 1.958.123.596-.089 1.834-.75 2.093-1.437.26-.687.26-1.277.182-1.402-.078-.125-.285-.208-.595-.364z" />
+                  </svg>
                 </a>
 
                 {/* Copy Link */}
                 <button
                   onClick={handleCopyLink}
-                  className="share-btn inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+                  className={`p-2.5 rounded-full transition-all duration-300 cursor-pointer flex items-center justify-center shrink-0 shadow-3xs border hover:scale-115 active:scale-95 hover:shadow-xs ${
+                    copied
+                      ? 'bg-emerald-500/10 dark:bg-emerald-500/15 border-emerald-500/50 dark:border-emerald-500/40 text-emerald-600 dark:text-emerald-400'
+                      : 'bg-slate-100/50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700 text-slate-650 dark:text-slate-300 hover:border-slate-400 dark:hover:border-slate-500'
+                  }`}
                   title="Copy Link to Clipboard"
                 >
                   {copied ? (
-                    <>
-                      <Check className="h-3.5 w-3.5 text-emerald-600 animate-bounce" />
-                      <span className="text-emerald-700">Copied!</span>
-                    </>
+                    <Check className="h-4 w-4 animate-bounce text-emerald-500" />
                   ) : (
-                    <>
-                      <Copy className="h-3.5 w-3.5" />
-                      <span>Copy Link</span>
-                    </>
+                    <Copy className="h-4 w-4" />
                   )}
                 </button>
               </div>
@@ -731,6 +763,24 @@ export default function PostDetailView() {
             {/* Custom References shown at the very end of the article, below the content body */}
             {post.customLinks && post.customLinks.length > 0 && (
               <EmbedHandler customLinks={post.customLinks} isHeader={false} />
+            )}
+
+            {/* Instagram/Reddit/Quora-Style Hashtags */}
+            {post.hashtags && post.hashtags.length > 0 && (
+              <div className="mt-8 pt-4 border-t border-slate-100 flex flex-wrap gap-2 items-center" id="article-hashtags">
+                <span className="text-xs font-bold text-slate-400 flex items-center gap-1 uppercase tracking-wider font-mono mr-1">
+                  <Hash className="h-3.5 w-3.5 text-indigo-500 font-bold" /> Tags:
+                </span>
+                {post.hashtags.map((tag, idx) => (
+                  <Link
+                    key={idx}
+                    to={`/?search=${encodeURIComponent(tag)}`}
+                    className="inline-flex items-center text-xs font-bold bg-slate-50 hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 px-3 py-1.5 rounded-full border border-slate-200 hover:border-indigo-200 transition-all cursor-pointer"
+                  >
+                    {tag}
+                  </Link>
+                ))}
+              </div>
             )}
 
             {/* End of Article Reactions Toolbar */}

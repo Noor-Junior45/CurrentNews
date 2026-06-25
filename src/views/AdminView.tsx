@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuthState } from '../hooks/useAuthState';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
 import { Post, slugify } from '../types';
@@ -73,6 +73,8 @@ export default function AdminView() {
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const [facebookUrl, setFacebookUrl] = useState('');
   const [customLinks, setCustomLinks] = useState<string[]>([]);
+  const [hashtags, setHashtags] = useState<string[]>([]);
+  const [hashtagInput, setHashtagInput] = useState('');
   const [authorName, setAuthorName] = useState('');
   const [category, setCategory] = useState('General');
   const [targetStatus, setTargetStatus] = useState<'published' | 'draft'>('published');
@@ -267,6 +269,8 @@ export default function AdminView() {
     setYoutubeUrl('');
     setFacebookUrl('');
     setCustomLinks([]);
+    setHashtags([]);
+    setHashtagInput('');
     setAuthorName('');
     setCategory('General');
     setImageUrl('');
@@ -297,6 +301,10 @@ export default function AdminView() {
 
     const filteredCustomLinks = customLinks.filter(lnk => lnk && lnk.trim().length > 0);
     const filteredImageUrls = imageUrls.filter(url => url && url.trim().length > 0);
+    const filteredHashtags = hashtags
+      .map(tag => tag.trim())
+      .filter(tag => tag.length > 0)
+      .map(tag => tag.startsWith('#') ? tag : '#' + tag);
 
     const postPayload: any = {
       title: title.trim(),
@@ -304,7 +312,8 @@ export default function AdminView() {
       youtubeUrl: youtubeUrl.trim(),
       facebookUrl: facebookUrl.trim(),
       customLinks: filteredCustomLinks,
-      authorName: globalPenName.trim() || 'Chronicle Staff Report',
+      hashtags: filteredHashtags,
+      authorName: globalPenName.trim() || 'Current News Staff Report',
       authorEmail: user?.email || '',
       authorId: user?.uid || '',
       category: category,
@@ -365,6 +374,7 @@ export default function AdminView() {
     setYoutubeUrl(post.youtubeUrl || '');
     setFacebookUrl(post.facebookUrl || '');
     setCustomLinks(post.customLinks || []);
+    setHashtags(post.hashtags || []);
     setAuthorName(post.authorName || '');
     setCategory(post.category || 'General');
     setTargetStatus(post.status || 'published');
@@ -444,10 +454,10 @@ export default function AdminView() {
   const currentSegment = params.get('focus') || 'dashboard';
 
   const segments = [
-    { id: 'dashboard', label: 'Admin Dashboard', icon: LayoutDashboard, count: null },
-    { id: 'draft', label: isEditing ? 'Edit Story' : 'Draft New Publication', icon: PlusCircle, count: null },
-    { id: 'publications', label: 'Current Publications', icon: Newspaper, count: posts.length },
-    { id: 'audience', label: 'Audience Registry', icon: Mail, count: subscribers.length }
+    { id: 'dashboard', label: 'Admin Dashboard', shortLabel: 'Dashboard', icon: LayoutDashboard, count: null },
+    { id: 'draft', label: isEditing ? 'Edit Story' : 'Draft New Publication', shortLabel: isEditing ? 'Edit' : 'Draft', icon: PlusCircle, count: null },
+    { id: 'publications', label: 'Current Publications', shortLabel: 'Stories', icon: Newspaper, count: posts.length },
+    { id: 'audience', label: 'Audience Registry', shortLabel: 'Audience', icon: Mail, count: subscribers.length }
   ];
 
   return (
@@ -481,7 +491,7 @@ export default function AdminView() {
       </div>
 
       {/* 🧭 Segment Switcher Navigation Deck */}
-      <div className="mb-10 bg-slate-100 p-1 border border-slate-200/80 rounded-2xl flex flex-col md:flex-row gap-1 shadow-2xs" id="segment-deck">
+      <div className="mb-10 bg-white/45 dark:bg-slate-900/40 backdrop-blur-md p-1.5 border border-white/60 dark:border-white/10 rounded-2xl md:rounded-full flex flex-col md:flex-row gap-2 shadow-lg shadow-slate-150/40 dark:shadow-none md:items-center w-full" id="segment-deck">
         {segments.map((seg) => {
           const isActive = currentSegment === seg.id;
           const Icon = seg.icon;
@@ -493,16 +503,18 @@ export default function AdminView() {
                 setSuccessMsg(null);
                 navigate(`/admin?focus=${seg.id}`);
               }}
-              className={`flex-1 px-4 py-3 sm:py-3.5 rounded-xl text-xs sm:text-xs font-bold transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 ${
+              className={`w-full md:flex-1 px-4 py-3 md:px-6 md:py-3.5 rounded-xl md:rounded-full text-xs font-extrabold uppercase tracking-wider transition-all duration-300 cursor-pointer flex items-center justify-between md:justify-center gap-2 ${
                 isActive
-                  ? 'bg-slate-950 text-white shadow-md scale-[1.01]'
-                  : 'text-slate-600 hover:bg-slate-200/60 hover:text-slate-900'
+                  ? 'bg-slate-950 dark:bg-white text-white dark:text-slate-950 shadow-md scale-[1.01]'
+                  : 'text-slate-600 dark:text-slate-300 hover:bg-white/50 dark:hover:bg-slate-800/40 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              <Icon className="h-4 w-4 shrink-0" />
-              <span>{seg.label}</span>
+              <div className="flex items-center gap-2.5">
+                <Icon className="h-4 w-4 shrink-0" />
+                <span>{seg.label}</span>
+              </div>
               {seg.count !== null && (
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono font-black ${isActive ? 'bg-slate-800 text-slate-200' : 'bg-slate-200 text-slate-500'}`}>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-black shrink-0 ${isActive ? 'bg-slate-800 dark:bg-slate-100 text-slate-200 dark:text-slate-800' : 'bg-slate-200 dark:bg-slate-800 text-slate-500'}`}>
                   {seg.count}
                 </span>
               )}
@@ -806,29 +818,21 @@ export default function AdminView() {
 
                 {/* Additional photo gallery links list */}
                 <div className="mt-4 pt-4 border-t border-slate-200/60">
-                  <div className="flex items-center justify-between mb-2">
+                  <div className="mb-3">
                     <label className="block text-[10px] uppercase font-bold text-slate-500 font-mono">
                       Additional Photo Links / Gallery ({imageUrls.length})
                     </label>
-                    <button
-                      type="button"
-                      onClick={() => setImageUrls([...imageUrls, ''])}
-                      className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-600 hover:text-indigo-850 bg-indigo-50 hover:bg-indigo-100/60 px-2 py-1 rounded-lg transition-colors cursor-pointer"
-                      id="add-extra-photo-button"
-                    >
-                      <PlusCircle className="h-3 w-3" /> Add Image Link
-                    </button>
                   </div>
 
                   {imageUrls.length === 0 ? (
-                    <p className="text-[10px] text-slate-400 italic font-medium">
-                      No additional photos attached. Click "Add Image Link" above to chain multiple illustrations.
-                    </p>
+                    <div className="text-center py-5 border border-dashed border-slate-200 bg-white/35 rounded-lg mb-3">
+                      <span className="text-[11px] font-mono text-slate-400 block">No additional photos attached yet.</span>
+                    </div>
                   ) : (
-                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1 mb-3">
                       {imageUrls.map((lnk, idx) => (
                         <div key={idx} className="flex items-center gap-2">
-                          <span className="text-[10px] font-bold text-slate-400 font-mono w-6">#{idx + 1}</span>
+                          <span className="text-[11px] font-semibold text-slate-500 font-mono w-4 text-center">{idx + 1}</span>
                           <input
                             type="text"
                             placeholder="e.g. https://i.imgur.com/anotherImageUrl.jpg"
@@ -845,14 +849,25 @@ export default function AdminView() {
                             onClick={() => {
                               setImageUrls(imageUrls.filter((_, i) => i !== idx));
                             }}
-                            className="p-1 px-2.5 text-rose-600 hover:text-white hover:bg-rose-600 border border-transparent hover:border-rose-700 rounded-lg transition-colors cursor-pointer font-mono font-bold text-xs"
+                            className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/25 rounded-lg transition-colors cursor-pointer flex items-center justify-center shrink-0"
+                            title="Remove image"
                           >
-                            REMOVE
+                            <Trash2 className="h-4 w-4" />
                           </button>
                         </div>
                       ))}
                     </div>
                   )}
+
+                  <button
+                    type="button"
+                    onClick={() => setImageUrls([...imageUrls, ''])}
+                    className="w-full justify-center px-5 py-2.5 border border-slate-300 dark:border-slate-700 bg-white/45 dark:bg-slate-900/45 backdrop-blur-md text-slate-800 dark:text-slate-200 text-xs font-bold rounded-full transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 hover:bg-white/70 dark:hover:bg-slate-800/70 shadow-2xs"
+                    id="add-extra-photo-button"
+                  >
+                    <PlusCircle className="h-4 w-4 text-indigo-500" />
+                    <span>Add Image Link</span>
+                  </button>
                 </div>
               </div>
 
@@ -907,32 +922,24 @@ export default function AdminView() {
 
               {/* Custom Social Embed Integration with dynamic add/remove inputs */}
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-5" id="custom-embed-integration-group">
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-indigo-600 uppercase tracking-wider font-mono">
-                      Social Embed Integration Links
-                    </label>
-                    <span className="block text-[10px] text-slate-400 mt-0.5 font-sans">
-                      Add custom external hyperlinks or situational reference URLs below.
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setCustomLinks([...customLinks, ''])}
-                    className="flex items-center gap-1.5 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 bg-white border border-indigo-200 px-3 py-1.5 rounded-lg transition-colors cursor-pointer font-bold"
-                  >
-                    <span>+ Add Row</span>
-                  </button>
+                <div className="mb-4">
+                  <label className="block text-xs font-semibold text-indigo-600 uppercase tracking-wider font-mono">
+                    Social Embed Integration Links
+                  </label>
+                  <span className="block text-[10px] text-slate-400 mt-0.5 font-sans">
+                    Add custom external hyperlinks or situational reference URLs below.
+                  </span>
                 </div>
 
                 {customLinks.length === 0 ? (
-                  <div className="text-center py-6 border border-dashed border-slate-250 bg-white rounded-lg">
+                  <div className="text-center py-6 border border-dashed border-slate-250 bg-white rounded-lg mb-4">
                     <span className="text-[11px] font-mono text-slate-400 block">No custom social hyperlinks added yet.</span>
                   </div>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-3 mb-4">
                     {customLinks.map((link, idx) => (
                       <div key={idx} className="flex items-center gap-2">
+                        <span className="text-[11px] font-semibold text-slate-500 font-mono w-4 text-center">{idx + 1}</span>
                         <input
                           type="url"
                           placeholder="https://twitter.com/user/status/... or website URL link"
@@ -951,7 +958,7 @@ export default function AdminView() {
                             const updated = customLinks.filter((_, i) => i !== idx);
                             setCustomLinks(updated);
                           }}
-                          className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                          className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/25 rounded-lg transition-colors cursor-pointer flex items-center justify-center shrink-0"
                           title="Remove link row"
                         >
                           <Trash2 className="h-4 w-4" />
@@ -960,34 +967,164 @@ export default function AdminView() {
                     ))}
                   </div>
                 )}
+
+                {/* Horizontal Add Row button positioned below, matching Save Draft style */}
+                <button
+                  type="button"
+                  onClick={() => setCustomLinks([...customLinks, ''])}
+                  className="w-full justify-center px-5 py-2.5 border border-slate-300 dark:border-slate-700 bg-white/45 dark:bg-slate-900/45 backdrop-blur-md text-slate-800 dark:text-slate-200 text-xs font-bold rounded-full transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 hover:bg-white/70 dark:hover:bg-slate-800/70 shadow-2xs"
+                >
+                  <PlusCircle className="h-4 w-4 text-indigo-500" />
+                  <span>Add Social/Hyperlink Row</span>
+                </button>
+              </div>
+
+              {/* Hashtag Integration Group */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 mt-5" id="hashtag-integration-group">
+                <div className="mb-4">
+                  <label className="block text-xs font-semibold text-indigo-600 uppercase tracking-wider font-mono">
+                    Trending Hashtags
+                  </label>
+                  <span className="block text-[10px] text-slate-400 mt-0.5 font-sans">
+                    Categorize your story with Instagram-style trending tags. Readers can explore related articles by tapping them.
+                  </span>
+                </div>
+
+                {/* Tag Pills List (shown above the add/input trigger) */}
+                {hashtags.length === 0 ? (
+                  <div className="text-center py-6 border border-dashed border-slate-250 bg-white rounded-lg mb-4">
+                    <span className="text-[11px] font-mono text-slate-400 block">No hashtags attached to this article.</span>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2 mb-4 bg-white p-3 border border-slate-200 rounded-lg">
+                    {hashtags.map((tag, idx) => (
+                      <span
+                        key={idx}
+                        className="inline-flex items-center gap-1.5 bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 text-xs font-bold px-3 py-1.5 rounded-full border border-indigo-150"
+                      >
+                        <span>{tag}</span>
+                        <button
+                          type="button"
+                          onClick={() => setHashtags(hashtags.filter((_, i) => i !== idx))}
+                          className="text-red-500 hover:text-red-700 hover:bg-red-50 p-0.5 rounded-full transition-colors cursor-pointer"
+                          title="Remove tag"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Trending quick suggestions */}
+                <div className="mb-4">
+                  <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+                    Popular Suggestions
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {['#breaking', '#exclusive', '#politics', '#crime', '#investigation', '#localnews', '#community', '#sports'].map((sug) => {
+                      const isAdded = hashtags.includes(sug);
+                      return (
+                        <button
+                          type="button"
+                          key={sug}
+                          onClick={() => {
+                            if (isAdded) {
+                              setHashtags(hashtags.filter(t => t !== sug));
+                            } else {
+                              setHashtags([...hashtags, sug]);
+                            }
+                          }}
+                          className={`text-[10px] font-bold px-2.5 py-1 rounded-full border transition-all cursor-pointer ${
+                            isAdded
+                              ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs'
+                              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          {sug}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Custom Hashtag input / button */}
+                <div className="flex flex-col gap-3">
+                  <div className="flex gap-2 items-center">
+                    <input
+                      type="text"
+                      id="custom-hashtag-input"
+                      placeholder="Enter custom tag (e.g. #technology)"
+                      value={hashtagInput}
+                      onChange={(e) => setHashtagInput(e.target.value)}
+                      className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white focus:ring-1 focus:ring-indigo-500 font-sans"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const val = hashtagInput.trim();
+                          if (val) {
+                            const formatted = val.startsWith('#') ? val : '#' + val;
+                            if (!hashtags.includes(formatted)) {
+                              setHashtags([...hashtags, formatted]);
+                            }
+                            setHashtagInput('');
+                          }
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setHashtagInput('')}
+                      className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/25 rounded-lg transition-colors cursor-pointer flex items-center justify-center shrink-0 border border-slate-200"
+                      title="Clear custom tag box"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const val = hashtagInput.trim();
+                      if (val) {
+                        const formatted = val.startsWith('#') ? val : '#' + val;
+                        if (!hashtags.includes(formatted)) {
+                          setHashtags([...hashtags, formatted]);
+                        }
+                        setHashtagInput('');
+                      }
+                    }}
+                    className="w-full justify-center px-5 py-2.5 border border-slate-300 dark:border-slate-700 bg-white/45 dark:bg-slate-900/45 backdrop-blur-md text-slate-800 dark:text-slate-200 text-xs font-bold rounded-full transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 hover:bg-white/70 dark:hover:bg-slate-800/70 shadow-2xs"
+                  >
+                    <PlusCircle className="h-4 w-4 text-indigo-500" />
+                    <span>Add Tag</span>
+                  </button>
+                </div>
               </div>
 
               {/* Action buttons */}
-              <div className="flex items-center justify-between gap-3 pt-5 border-t border-slate-100">
-                <div>
-                  {isEditing && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        handleResetForm();
-                        navigate('/admin?focus=publications');
-                      }}
-                      className="px-4 py-2 text-xs font-bold text-slate-650 hover:bg-slate-100 hover:text-slate-900 px-4 py-2 border border-slate-300 rounded-lg cursor-pointer"
-                    >
-                      Discard / Cancel Edit
-                    </button>
-                  )}
-                </div>
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-4 pt-5 border-t border-slate-100">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
+                  {/* Red Discard Button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleResetForm();
+                      navigate('/admin?focus=dashboard');
+                    }}
+                    className="w-full sm:w-auto justify-center px-5 py-2.5 border border-red-200 dark:border-red-950 bg-red-50/50 dark:bg-red-950/20 text-red-600 dark:text-red-400 text-xs font-bold rounded-full transition-all duration-200 cursor-pointer flex items-center gap-2 hover:bg-red-100 dark:hover:bg-red-950/40"
+                  >
+                    <Trash2 className="h-4 w-4 shrink-0" />
+                    <span>{isEditing ? 'Discard Changes' : 'Discard Draft'}</span>
+                  </button>
 
-                <div className="flex items-center gap-3">
                   {/* Save Draft Button */}
                   <button
                     type="submit"
                     disabled={submitLoading}
                     onClick={() => setTargetStatus('draft')}
-                    className="px-5 py-2.5 border-2 border-slate-950/80 hover:bg-slate-50 text-slate-950 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-2"
+                    className="w-full sm:w-auto justify-center px-5 py-2.5 border border-slate-300 dark:border-slate-700 bg-white/45 dark:bg-slate-900/45 backdrop-blur-md text-slate-800 dark:text-slate-200 text-xs font-bold rounded-full transition-all duration-200 cursor-pointer flex items-center gap-2 hover:bg-white/70 dark:hover:bg-slate-800/70"
                   >
-                    <Clock className="h-4 w-4 text-slate-500" />
+                    <Clock className="h-4 w-4 text-slate-500 font-bold" />
                     <span>Save as Draft</span>
                   </button>
 
@@ -996,7 +1133,7 @@ export default function AdminView() {
                     type="submit"
                     disabled={submitLoading}
                     onClick={() => setTargetStatus('published')}
-                    className="bg-slate-950 hover:bg-slate-900 disabled:bg-slate-400 text-white px-5 py-2.5 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-2 shadow-xs"
+                    className="w-full sm:w-auto justify-center bg-slate-950 hover:bg-slate-900 disabled:bg-slate-400 text-white px-6 py-2.5 rounded-full text-xs font-bold transition-all duration-200 cursor-pointer flex items-center gap-2 shadow-xs"
                   >
                     <Upload className="h-4 w-4" />
                     <span>{isEditing ? 'Publish Modification' : 'Publish Article'}</span>
@@ -1132,21 +1269,19 @@ export default function AdminView() {
                             <button
                               onClick={() => setDeleteConfirmId(postItem.id)}
                               title="Delete publication"
-                              className="p-1.5 hover:bg-red-50 text-slate-400 hover:text-red-600 rounded-lg transition-colors cursor-pointer"
+                              className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/25 rounded-lg transition-colors cursor-pointer"
                             >
                               <Trash2 className="h-4 w-4" />
                             </button>
                           )}
 
-                          <a 
-                            href={`/post/${postItem.id}/${slugify(postItem.title)}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                          <Link 
+                            to={`/post/${postItem.id}/${slugify(postItem.title)}`}
                             title="Open published article"
                             className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-900 transition-all cursor-pointer"
                           >
                             <ArrowUpRight className="h-4 w-4" />
-                          </a>
+                          </Link>
                         </div>
                       </div>
                     );
@@ -1197,7 +1332,7 @@ export default function AdminView() {
                       </div>
                       <button
                         onClick={() => handleDeleteSubscriber(sub.id)}
-                        className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                        className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/25 rounded-lg transition-colors cursor-pointer"
                         title="Delete subscriber address"
                       >
                         <Trash2 className="h-4 w-4" />

@@ -78,19 +78,19 @@ export default function ScrollHelper() {
         >
           {/* Main vertical tactile control panel */}
           <div 
-            className={`flex flex-col items-center bg-slate-900/90 dark:bg-slate-950/90 backdrop-blur-md border border-white/10 rounded-full transition-all duration-300 shadow-2xl p-1.5 ${
+            className={`flex flex-col items-center bg-white/40 dark:bg-slate-900/40 backdrop-blur-lg border border-white/50 dark:border-white/10 rounded-full transition-all duration-300 shadow-xl shadow-slate-200/40 dark:shadow-black/20 p-1.5 ${
               isExpanded ? 'h-52 w-11' : 'h-36 w-8'
             }`}
           >
             {/* Scroll Indicator Percentage Top */}
-            <div className="text-[9px] font-mono font-bold text-white mb-2 leading-none cursor-default select-none pr-px pt-0.5">
+            <div className="text-[9px] font-mono font-bold text-slate-800 dark:text-white mb-2 leading-none cursor-default select-none pr-px pt-0.5">
               {scrollPercent}%
             </div>
 
             {/* Micro Dynamic Track Indicator */}
-            <div className="relative flex-1 w-1 bg-white/20 rounded-full mb-2 overflow-hidden">
+            <div className="relative flex-1 w-1 bg-slate-200 dark:bg-white/20 rounded-full mb-2 overflow-hidden">
               <motion.div 
-                className="absolute top-0 left-0 right-0 bg-indigo-400 rounded-full"
+                className="absolute top-0 left-0 right-0 bg-indigo-500 dark:bg-indigo-400 rounded-full"
                 style={{ height: `${scrollPercent}%` }}
                 layoutId="vertical-scroll-bar"
               />
@@ -99,8 +99,8 @@ export default function ScrollHelper() {
             {/* Trigger Circle Companion Button - expanding with animation */}
             <button
               onClick={() => setIsExpanded(!isExpanded)}
-              className={`flex items-center justify-center rounded-full bg-indigo-5050 hover:bg-indigo-600 border border-white/5 shadow-inner cursor-pointer transition-all duration-200 ${
-                isExpanded ? 'h-8 w-8 mb-3 bg-indigo-600 text-white' : 'h-5 w-5 bg-slate-800 text-white/80'
+              className={`flex items-center justify-center rounded-full border border-slate-200 dark:border-white/5 shadow-inner cursor-pointer transition-all duration-200 ${
+                isExpanded ? 'h-8 w-8 mb-3 bg-indigo-600 text-white' : 'h-5 w-5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-white/80'
               }`}
               title={isExpanded ? "Collapse jump shortcuts" : "Expand quick scroll shortcuts"}
             >
@@ -108,9 +108,9 @@ export default function ScrollHelper() {
                 <CircleDot className="h-4 w-4 animate-pulse" />
               ) : (
                 <div className="flex flex-col space-y-[1.5px] items-center">
-                  <div className="h-0.5 w-2 bg-white/90 rounded-full" />
-                  <div className="h-0.5 w-2.5 bg-white/90 rounded-full" />
-                  <div className="h-0.5 w-2 bg-white/90 rounded-full" />
+                  <div className="h-0.5 w-2 bg-slate-600 dark:bg-white/90 rounded-full" />
+                  <div className="h-0.5 w-2.5 bg-slate-600 dark:bg-white/90 rounded-full" />
+                  <div className="h-0.5 w-2 bg-slate-600 dark:bg-white/90 rounded-full" />
                 </div>
               )}
             </button>
@@ -124,17 +124,17 @@ export default function ScrollHelper() {
               >
                 <button
                   onClick={scrollToTop}
-                  className="p-1.5 rounded-full bg-slate-800 hover:bg-slate-700 text-white transition-all cursor-pointer shadow-md hover:scale-110"
+                  className="p-1.5 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-white transition-all cursor-pointer shadow-md hover:scale-110"
                   title="Scroll to main top"
                 >
-                  <ChevronUp className="h-4 w-4 text-indigo-200" />
+                  <ChevronUp className="h-4 w-4 text-indigo-600 dark:text-indigo-200" />
                 </button>
                 <button
                   onClick={scrollToBottom}
-                  className="p-1.5 rounded-full bg-slate-800 hover:bg-slate-700 text-white transition-all cursor-pointer shadow-md hover:scale-110"
+                  className="p-1.5 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-white transition-all cursor-pointer shadow-md hover:scale-110"
                   title="Scroll to footer bottom"
                 >
-                  <ChevronDown className="h-4 w-4 text-indigo-200" />
+                  <ChevronDown className="h-4 w-4 text-indigo-600 dark:text-indigo-200" />
                 </button>
               </motion.div>
             )}

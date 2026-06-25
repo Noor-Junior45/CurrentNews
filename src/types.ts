@@ -18,6 +18,7 @@ export interface Post {
   imageUrls?: string[]; // Multiple extra image links
   imagePosition?: 'top' | 'middle' | 'bottom'; // Position mapping: top, middle, bottom
   views?: number; // Total article views
+  hashtags?: string[]; // Custom social/instagram hashtags
 }
 
 export function slugify(text: string): string {

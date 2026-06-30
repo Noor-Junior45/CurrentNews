@@ -78,6 +78,7 @@ export default function AdminView() {
   const [authorName, setAuthorName] = useState('');
   const [category, setCategory] = useState('General');
   const [targetStatus, setTargetStatus] = useState<'published' | 'draft'>('published');
+  const [sendEmailAlert, setSendEmailAlert] = useState(true);
   const [imageUrl, setImageUrl] = useState('');
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [imagePosition, setImagePosition] = useState<'top' | 'middle' | 'bottom'>('top');
@@ -278,6 +279,7 @@ export default function AdminView() {
     setImagePosition('top');
     setEditingPostId(null);
     setIsEditing(false);
+    setSendEmailAlert(true);
     setErrorMsg(null);
   };
 
@@ -340,16 +342,80 @@ export default function AdminView() {
           updatedAt: serverTimestamp()
         });
         setSuccessMsg(targetStatus === 'draft' ? 'Draft saved successfully!' : 'Story file updated and published successfully!');
+
+        // Dispatch alert to subscribers if checked and published
+        if (targetStatus === 'published' && sendEmailAlert) {
+          try {
+            const subsSnap = await getDocs(collection(db, 'subscribers'));
+            const emails: string[] = [];
+            subsSnap.forEach((subDoc) => {
+              const subData = subDoc.data();
+              if (subData.email) {
+                emails.push(subData.email);
+              }
+            });
+
+            if (emails.length > 0) {
+              const postLink = `${window.location.origin}/post/${editingPostId}/${slugify(title.trim())}`;
+              const emailPromises = emails.map(emailAddr => 
+                fetch('/api/mail/send-alert', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    email: emailAddr,
+                    title: `Breaking Update: ${title.trim()}`,
+                    link: postLink
+                  })
+                }).catch(err => console.warn(`Failed to send email alert to ${emailAddr}`, err))
+              );
+              await Promise.all(emailPromises);
+            }
+          } catch (emailErr) {
+            console.warn('Failed to dispatch alerts to subscribers:', emailErr);
+          }
+        }
       } else {
         // Perform creation
         const collectionRef = collection(db, path);
-        await addDoc(collectionRef, {
+        const newDocRef = await addDoc(collectionRef, {
           ...postPayload,
           likes: 0,
           dislikes: 0,
           createdAt: serverTimestamp()
         });
         setSuccessMsg(targetStatus === 'draft' ? 'Draft manuscript saved successfully!' : 'Story file published successfully on the feed!');
+
+        // Dispatch alert to subscribers if checked and published
+        if (targetStatus === 'published' && sendEmailAlert) {
+          try {
+            const subsSnap = await getDocs(collection(db, 'subscribers'));
+            const emails: string[] = [];
+            subsSnap.forEach((subDoc) => {
+              const subData = subDoc.data();
+              if (subData.email) {
+                emails.push(subData.email);
+              }
+            });
+
+            if (emails.length > 0) {
+              const postLink = `${window.location.origin}/post/${newDocRef.id}/${slugify(title.trim())}`;
+              const emailPromises = emails.map(emailAddr => 
+                fetch('/api/mail/send-alert', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    email: emailAddr,
+                    title: `Breaking News: ${title.trim()}`,
+                    link: postLink
+                  })
+                }).catch(err => console.warn(`Failed to send email alert to ${emailAddr}`, err))
+              );
+              await Promise.all(emailPromises);
+            }
+          } catch (emailErr) {
+            console.warn('Failed to dispatch alerts to subscribers:', emailErr);
+          }
+        }
       }
 
       handleResetForm();
@@ -1099,6 +1165,21 @@ export default function AdminView() {
                     <span>Add Tag</span>
                   </button>
                 </div>
+              </div>
+
+              {/* Automated Email Alerts Toggle Option */}
+              <div className="flex items-center space-x-3 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/60 rounded-xl p-4 mb-4">
+                <input
+                  type="checkbox"
+                  id="send-email-alert-checkbox"
+                  checked={sendEmailAlert}
+                  onChange={(e) => setSendEmailAlert(e.target.checked)}
+                  className="h-4.5 w-4.5 rounded-md border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                />
+                <label htmlFor="send-email-alert-checkbox" className="text-xs font-semibold text-slate-700 dark:text-slate-300 select-none cursor-pointer flex flex-col">
+                  <span>Send automated breaking news alert circular to dynamic subscriber list</span>
+                  <span className="text-[10px] text-slate-400 font-normal mt-0.5">Currently targeting {subscribers.length} registered recipient(s) securely via your Gmail SMTP server</span>
+                </label>
               </div>
 
               {/* Action buttons */}

@@ -77,10 +77,27 @@ export default function NewsletterPopup() {
     setErrorMsg('');
 
     try {
+      const subscriberEmail = email.trim().toLowerCase();
       await addDoc(collection(db, 'subscribers'), {
-        email: email.trim().toLowerCase(),
+        email: subscriberEmail,
         createdAt: serverTimestamp()
       });
+      
+      // Dispatch welcome email via SMTP
+      try {
+        await fetch('/api/mail/send-alert', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: subscriberEmail,
+            title: "Welcome to Current News Alerts!",
+            link: window.location.origin
+          })
+        });
+      } catch (mailErr) {
+        console.warn('Welcome email dispatch failed:', mailErr);
+      }
+
       setStatus('success');
       setEmail('');
       localStorage.setItem('news_popup_interacted', 'subscribed');

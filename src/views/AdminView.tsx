@@ -93,6 +93,17 @@ export default function AdminView() {
   // Audience list state loaded from zero baseline 
   const [subscribers, setSubscribers] = useState<any[]>([]);
 
+  // Test email alert state
+  const [testEmailAddress, setTestEmailAddress] = useState('');
+  const [isSendingTestEmail, setIsSendingTestEmail] = useState(false);
+  const [testEmailFeedback, setTestEmailFeedback] = useState<{
+    status: 'idle' | 'success' | 'error';
+    message: string;
+    isIpRestriction?: boolean;
+    detail?: string;
+    solution?: string;
+  }>({ status: 'idle', message: '' });
+
   // Delete safety guard modal
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
@@ -280,6 +291,47 @@ export default function AdminView() {
 
     if (addedTags.length > 0) {
       setHashtags((prev) => [...prev, ...addedTags]);
+    }
+  };
+
+  const handleSendTestEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!testEmailAddress.trim()) {
+      setTestEmailFeedback({ status: 'error', message: 'Please enter a valid email address.' });
+      return;
+    }
+    
+    setIsSendingTestEmail(true);
+    setTestEmailFeedback({ status: 'idle', message: '' });
+
+    try {
+      const response = await fetch('/api/mail/send-alert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: testEmailAddress.trim(),
+          title: 'Test Notification: Brevo Email Dispatch Functional Alert Check',
+          link: window.location.origin
+        })
+      });
+
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setTestEmailFeedback({ status: 'success', message: `Test email sent successfully to ${testEmailAddress.trim()} via Brevo API!` });
+      } else {
+        setTestEmailFeedback({ 
+          status: 'error', 
+          message: data.message || 'API request succeeded but server failed to dispatch.',
+          isIpRestriction: data.isIpRestriction,
+          detail: data.detail,
+          solution: data.solution
+        });
+      }
+    } catch (err: any) {
+      console.error('Test email sending error:', err);
+      setTestEmailFeedback({ status: 'error', message: err.message || 'Network error occurred while trying to contact mail server.' });
+    } finally {
+      setIsSendingTestEmail(false);
     }
   };
 
@@ -1203,7 +1255,7 @@ export default function AdminView() {
                 />
                 <label htmlFor="send-email-alert-checkbox" className="text-xs font-semibold text-slate-700 dark:text-slate-300 select-none cursor-pointer flex flex-col">
                   <span>Send automated breaking news alert circular to dynamic subscriber list</span>
-                  <span className="text-[10px] text-slate-400 font-normal mt-0.5">Currently targeting {subscribers.length} registered recipient(s) securely via your Gmail SMTP server</span>
+                  <span className="text-[10px] text-slate-400 font-normal mt-0.5">Currently targeting {subscribers.length} registered recipient(s) securely via your Brevo API</span>
                 </label>
               </div>
 
@@ -1411,6 +1463,80 @@ export default function AdminView() {
               <p className="text-xs text-slate-400 mt-1 leading-relaxed">
                 Real-time directory of citizens registered via the footer's news subscription form. Use this audience list to gauge active subscriber engagement.
               </p>
+            </div>
+
+            {/* Brevo API Test Section */}
+            <div className="mb-8 p-5 bg-indigo-50/50 border border-indigo-100 rounded-xl">
+              <h3 className="text-xs font-bold text-indigo-900 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <span className="flex h-2 w-2 rounded-full bg-indigo-600 animate-pulse"></span>
+                Brevo API Live Test Console
+              </h3>
+              <p className="text-xs text-slate-500 mb-4">
+                Verify your Brevo transactional email setup in real time. Send a test news alert immediately to any address.
+              </p>
+              
+              <form onSubmit={handleSendTestEmail} className="flex flex-col sm:flex-row gap-3">
+                <div className="flex-1 relative">
+                  <input
+                    type="email"
+                    value={testEmailAddress}
+                    onChange={(e) => setTestEmailAddress(e.target.value)}
+                    placeholder="Enter email address"
+                    className="w-full px-3.5 py-2 pl-9 border border-indigo-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 rounded-lg text-xs bg-white text-slate-800"
+                    required
+                  />
+                  <Mail className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                </div>
+                <button
+                  type="submit"
+                  disabled={isSendingTestEmail}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg transition-all duration-150 flex items-center justify-center gap-2 disabled:bg-indigo-400 cursor-pointer"
+                >
+                  {isSendingTestEmail ? (
+                    <>
+                      <span className="h-3 w-3 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                      <span>Dispatching...</span>
+                    </>
+                  ) : (
+                    <span>Send Test Mail</span>
+                  )}
+                </button>
+              </form>
+
+              {testEmailFeedback.status !== 'idle' && (
+                <div className={`mt-3 p-3.5 rounded-lg text-xs flex flex-col gap-2 ${
+                  testEmailFeedback.status === 'success' 
+                    ? 'bg-emerald-50 border border-emerald-100 text-emerald-800' 
+                    : 'bg-rose-50 border border-rose-100 text-rose-800'
+                }`}>
+                  <div className="flex items-start gap-2.5">
+                    {testEmailFeedback.status === 'success' ? (
+                      <CheckCircle className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
+                    ) : (
+                      <AlertCircle className="h-4 w-4 text-rose-500 shrink-0 mt-0.5" />
+                    )}
+                    <span className="font-semibold">{testEmailFeedback.message}</span>
+                  </div>
+
+                  {testEmailFeedback.isIpRestriction && (
+                    <div className="mt-1.5 pl-6 text-slate-700 space-y-2">
+                      <div className="bg-white/80 border border-rose-200/50 p-2.5 rounded-md font-mono text-[10px] text-rose-900 break-all leading-relaxed">
+                        <strong>Raw Brevo Response:</strong> {testEmailFeedback.detail}
+                      </div>
+                      <div className="bg-white/90 border border-indigo-100 p-3 rounded-lg text-indigo-900 shadow-xs">
+                        <p className="font-bold mb-1">💡 Resolution Steps:</p>
+                        <p className="leading-relaxed mb-2 text-slate-600">
+                          Brevo has blocked the transaction because the cloud hosting environment's IP is not whitelisted. Because cloud IPs are dynamic, you should:
+                        </p>
+                        <ol className="list-decimal pl-4 space-y-1 text-slate-600 font-medium">
+                          <li>Click this link to open your <a href="https://app.brevo.com/security/authorised_ips" target="_blank" rel="noopener noreferrer" className="underline text-indigo-600 hover:text-indigo-800 font-semibold">Brevo Authorised IPs settings</a>.</li>
+                          <li>You can temporarily add the IP shown above or, to prevent future issues, <strong>disable IP whitelisting restriction</strong> altogether inside your Brevo Account settings (recommended for containerized previews).</li>
+                        </ol>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {subscribers.length === 0 ? (

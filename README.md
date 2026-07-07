@@ -15,13 +15,13 @@
 
 ## Overview
 
-Current News Live is a lightweight, installable news platform where an admin writes and publishes dispatches directly from a browser-based dashboard, and readers browse, save, and subscribe to breaking news alerts — no CMS, no backend server to babysit. Posts live in Firestore, alerts go out over email via Brevo, and the whole thing installs like a native app on mobile.
+Current News Live is a lightweight, installable news platform where an admin writes and publishes dispatches directly from a browser-based dashboard, and readers browse, save, and subscribe to breaking news alerts — no CMS, no backend server to babysit. Posts live in Firestore, alerts go out over email via Resend, and the whole thing installs like a native app on mobile.
 
 ## ✨ Features
 
 - 📱 **Installable PWA** — offline-ready, add-to-home-screen support
 - 📝 **Admin dashboard** — rich text editor for publishing, editing, and managing posts
-- 📬 **Automated breaking news alerts** — subscriber emails sent via the Brevo transactional API
+- 📬 **Automated breaking news alerts** — subscriber emails sent via the Resend transactional API
 - 📡 **Dynamic RSS feed** — generated live from Firestore data at `/rss.xml`
 - 🔥 **Firebase / Firestore backend** — no separate database to manage
 - ❤️ **Liked posts view** — readers can save articles for later
@@ -38,7 +38,7 @@ Current News Live is a lightweight, installable news platform where an admin wri
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS |
 | Routing | React Router 7 |
 | Data | Firebase (Firestore) |
-| Email | Brevo (Sendinblue) transactional API |
+| Email | Resend transactional API |
 | Rich text | React Quill |
 | Animation | Motion (Framer Motion) |
 | Hosting | Vercel (static build + serverless functions) |
@@ -71,15 +71,17 @@ The app will be running at `http://localhost:3000`.
 |---|---|---|
 | `GEMINI_API_KEY` | Gemini API key for AI-assisted features | Yes |
 | `APP_URL` | Base URL of the deployed app | Yes |
-| `BREVO_API_KEY` | Brevo API key for sending email alerts | Yes |
-| `BREVO_SENDER_EMAIL` | Verified sender email in Brevo | Yes |
-| `BREVO_SENDER_NAME` | Display name for outgoing alert emails | Yes |
+| `RESEND_API_KEY` | Resend API key for sending email alerts | Yes |
+| `RESEND_SENDER_EMAIL` | Verified sender email on a domain confirmed in Resend | Yes |
+| `RESEND_SENDER_NAME` | Display name for outgoing alert emails | Yes |
 | `VITE_ADSENSE_CLIENT` | Google AdSense client ID | Optional |
 | `VITE_ADSENSE_SLOT_LEADERBOARD` | AdSense slot ID (leaderboard placement) | Optional |
 | `VITE_ADSENSE_SLOT_SIDEBAR` | AdSense slot ID (sidebar placement) | Optional |
 | `VITE_ADSENSE_SLOT_FOOTER` | AdSense slot ID (footer placement) | Optional |
 
 > Firebase config is read from `firebase-applet-config.json`, not environment variables.
+
+> **Resend setup:** verify your sending domain under Resend → Domains before going live. Until it's verified, Resend only allows sending to the email address on your own Resend account — the admin dashboard's test-mail console will flag this with a fix-it link if it happens.
 
 **Important:** when deploying to Vercel, set these in **Project → Settings → Environment Variables** — a local `.env` file alone will not reach the production build.
 

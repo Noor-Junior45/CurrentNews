@@ -1,34 +1,26 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-async function sendBrevoEmail(toEmail: string, subject: string, htmlContent: string, textContent: string) {
-  const apiKey = process.env.BREVO_API_KEY;
+async function sendResendEmail(toEmail: string, subject: string, htmlContent: string, textContent: string) {
+  const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
-    throw new Error('BREVO_API_KEY environment variable is not defined.');
+    throw new Error('RESEND_API_KEY environment variable is not defined.');
   }
 
-  const senderEmail = process.env.BREVO_SENDER_EMAIL || 'alerts@currentnews.blog';
-  const senderName = process.env.BREVO_SENDER_NAME || 'Current News Live';
+  const senderEmail = process.env.RESEND_SENDER_EMAIL || 'alerts@currentnews.blog';
+  const senderName = process.env.RESEND_SENDER_NAME || 'Current News Live';
 
-  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+  const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
-      'accept': 'application/json',
-      'api-key': apiKey,
-      'content-type': 'application/json'
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      sender: {
-        name: senderName,
-        email: senderEmail
-      },
-      to: [
-        {
-          email: toEmail
-        }
-      ],
+      from: `${senderName} <${senderEmail}>`,
+      to: [toEmail],
       subject: subject,
-      htmlContent: htmlContent,
-      textContent: textContent
+      html: htmlContent,
+      text: textContent
     })
   });
 
@@ -42,11 +34,19 @@ async function sendBrevoEmail(toEmail: string, subject: string, htmlContent: str
       }
     } catch (e) {}
 
-    if (response.status === 401 && (parsedMessage.toLowerCase().includes('ip address') || parsedMessage.toLowerCase().includes('authorised_ips') || parsedMessage.toLowerCase().includes('unauthorised') || parsedMessage.toLowerCase().includes('unrecognized'))) {
-      throw new Error(`BREVO_IP_UNAUTHORIZED: ${parsedMessage}`);
+    const lowerMsg = parsedMessage.toLowerCase();
+    // Resend's equivalent of Brevo's "IP not whitelisted" gotcha: until you verify a
+    // sending domain, it only lets you send to the email address on your own account.
+    if (
+      response.status === 403 &&
+      (lowerMsg.includes('domain is not verified') ||
+        lowerMsg.includes('you can only send testing emails') ||
+        lowerMsg.includes('verify a domain'))
+    ) {
+      throw new Error(`RESEND_DOMAIN_UNVERIFIED: ${parsedMessage}`);
     }
 
-    throw new Error(`Brevo API responded with status ${response.status}: ${parsedMessage}`);
+    throw new Error(`Resend API responded with status ${response.status}: ${parsedMessage}`);
   }
 
   return await response.json();
@@ -63,13 +63,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const { email, title, link } = req.body || {};
-  
+
   if (!email || !title) {
     return res.status(400).json({ success: false, message: 'Recipient email and subject title are required.' });
   }
 
   console.log(`\n==================================================`);
-  console.log(`[VERCEL SERVERLESS BREVO API] Dispatch initiated`);
+  console.log(`[VERCEL SERVERLESS RESEND API] Dispatch initiated`);
   console.log(`Target Recipient : ${email}`);
   console.log(`Alert Subject    : ${title}`);
   console.log(`Access Link      : ${link || 'N/A'}`);
@@ -204,32 +204,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 </html>`;
 
     const textContent = `Welcome to Current News Live! ${title}. Read more at ${link || 'https://currentnews.blog'}`;
-    const result = await sendBrevoEmail(email, title, htmlContent, textContent);
+    const result = await sendResendEmail(email, title, htmlContent, textContent);
 
-    console.log(`[VERCEL SERVERLESS BREVO API] Email successfully dispatched. Result:`, result);
-    return res.status(200).json({ 
-      success: true, 
-      message: `Automated breaking news alert email compiled and sent to ${email} via Brevo API.` 
+    console.log(`[VERCEL SERVERLESS RESEND API] Email successfully dispatched. Result:`, result);
+    return res.status(200).json({
+      success: true,
+      message: `Automated breaking news alert email compiled and sent to ${email} via Resend API.`
     });
 
   } catch (err: any) {
-    console.error('[VERCEL SERVERLESS BREVO API] Failed to send email via Brevo API:', err);
-    
-    if (err.message && err.message.startsWith('BREVO_IP_UNAUTHORIZED:')) {
-      const rawMessage = err.message.replace('BREVO_IP_UNAUTHORIZED:', '').trim();
-      return res.status(401).json({
+    console.error('[VERCEL SERVERLESS RESEND API] Failed to send email via Resend API:', err);
+
+    if (err.message && err.message.startsWith('RESEND_DOMAIN_UNVERIFIED:')) {
+      const rawMessage = err.message.replace('RESEND_DOMAIN_UNVERIFIED:', '').trim();
+      return res.status(403).json({
         success: false,
-        isIpRestriction: true,
-        message: `Brevo security blocked this request because our server's IP is not on your Brevo IP whitelist.`,
+        isDomainRestriction: true,
+        message: `Resend blocked this request because your sending domain isn't verified yet.`,
         detail: rawMessage,
-        solution: `Please log into Brevo, navigate to Settings > Security (https://app.brevo.com/security/authorised_ips) and authorize this IP address or disable IP restriction entirely to allow automated mail alerts.`
+        solution: `Please log into Resend, go to Domains (https://resend.com/domains), add and verify "currentnews.blog" (or whichever domain you're sending from), then set RESEND_SENDER_EMAIL to an address on that domain. Until verified, Resend only lets you send to the email address on your own Resend account.`
       });
     }
 
-    return res.status(500).json({ 
-      success: false, 
-      message: 'Brevo API dispatch failed', 
-      error: err.message 
+    return res.status(500).json({
+      success: false,
+      message: 'Resend API dispatch failed',
+      error: err.message
     });
   }
 }

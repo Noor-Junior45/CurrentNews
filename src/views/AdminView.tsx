@@ -137,13 +137,19 @@ export default function AdminView() {
 
       // Fetch dynamic audience list directly from Firestore subscribers collection
       try {
-        const subSnap = await getDocs(query(collection(db, 'subscribers'), orderBy('createdAt', 'desc')));
+        const subSnap = await getDocs(collection(db, 'subscribers'));
         const fetchedSubs: any[] = [];
         subSnap.forEach((doc) => {
           fetchedSubs.push({
             id: doc.id,
             ...doc.data()
           });
+        });
+        // Sort in-memory to safely include old subscriber documents that might be missing the 'createdAt' field
+        fetchedSubs.sort((a, b) => {
+          const dateA = a.createdAt ? (typeof a.createdAt.toDate === 'function' ? a.createdAt.toDate() : new Date(a.createdAt)) : new Date(0);
+          const dateB = b.createdAt ? (typeof b.createdAt.toDate === 'function' ? b.createdAt.toDate() : new Date(b.createdAt)) : new Date(0);
+          return dateB.getTime() - dateA.getTime();
         });
         setSubscribers(fetchedSubs);
       } catch (subErr) {
@@ -429,13 +435,14 @@ export default function AdminView() {
         if (targetStatus === 'published' && sendEmailAlert) {
           try {
             const subsSnap = await getDocs(collection(db, 'subscribers'));
-            const emails: string[] = [];
+            const emailsSet = new Set<string>();
             subsSnap.forEach((subDoc) => {
               const subData = subDoc.data();
               if (subData.email) {
-                emails.push(subData.email);
+                emailsSet.add(subData.email.trim().toLowerCase());
               }
             });
+            const emails = Array.from(emailsSet);
 
             if (emails.length > 0) {
               const postLink = `${window.location.origin}/post/${editingPostId}/${slugify(title.trim())}`;
@@ -471,13 +478,14 @@ export default function AdminView() {
         if (targetStatus === 'published' && sendEmailAlert) {
           try {
             const subsSnap = await getDocs(collection(db, 'subscribers'));
-            const emails: string[] = [];
+            const emailsSet = new Set<string>();
             subsSnap.forEach((subDoc) => {
               const subData = subDoc.data();
               if (subData.email) {
-                emails.push(subData.email);
+                emailsSet.add(subData.email.trim().toLowerCase());
               }
             });
+            const emails = Array.from(emailsSet);
 
             if (emails.length > 0) {
               const postLink = `${window.location.origin}/post/${newDocRef.id}/${slugify(title.trim())}`;

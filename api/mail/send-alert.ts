@@ -7,7 +7,7 @@ async function sendResendEmail(toEmail: string, subject: string, htmlContent: st
   }
 
   const senderEmail = process.env.RESEND_SENDER_EMAIL || 'alerts@currentnews.blog';
-  const senderName = process.env.RESEND_SENDER_NAME || 'Current News Live';
+  const senderName = process.env.RESEND_SENDER_NAME || 'Current News';
 
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -178,20 +178,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   <div class="wrapper">
     <div class="container">
       <div class="header">
-        <h1>Current News Live</h1>
-        <p>Independent Ledger &amp; Live Alerts</p>
+        <h1>Current News</h1>
+        <p>Independent Ledger &amp; Alerts</p>
       </div>
       <div class="content">
         <h2>${title}</h2>
         <p>Hello,</p>
-        <p>We are pleased to bring you the latest verified update from Current News Live. Stay ahead of the curve with our independent journalism and real-time dispatches.</p>
+        <p>We are pleased to bring you the latest verified update from Current News. Stay ahead of the curve with our independent journalism and real-time dispatches.</p>
         <p>Click the button below to access the live story or explore our coverage immediately.</p>
         <div class="btn-container">
           <a href="${link || 'https://currentnews.blog'}" class="btn" target="_blank">Access Live Story</a>
         </div>
       </div>
       <div class="footer">
-        <p><strong>Current News Live</strong></p>
+        <p><strong>Current News</strong></p>
         <p>Serving the public interest with transparent, accurate, and autonomous journalism.</p>
         <p style="margin-top: 12px; color: #94a3b8;">
           You received this email because you subscribed to our breaking news alerts.<br>
@@ -203,7 +203,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 </body>
 </html>`;
 
-    const textContent = `Welcome to Current News Live! ${title}. Read more at ${link || 'https://currentnews.blog'}`;
+    const textContent = `Welcome to Current News! ${title}. Read more at ${link || 'https://currentnews.blog'}`;
     const result = await sendResendEmail(email, title, htmlContent, textContent);
 
     console.log(`[VERCEL SERVERLESS RESEND API] Email successfully dispatched. Result:`, result);

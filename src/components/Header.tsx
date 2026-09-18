@@ -16,11 +16,15 @@ import {
   ThumbsUp, 
   X, 
   ArrowLeft,
+  CheckCircle2,
   Settings as SettingsIcon, 
   Bell, 
   Loader2,
   Sun,
-  MoonStar
+  MoonStar,
+  FileText,
+  ShieldCheck,
+  Trash2
 } from 'lucide-react';
 import { GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
 import { motion } from 'motion/react';
@@ -206,6 +210,18 @@ export default function Header() {
       clearInterval(interval);
     };
   }, [user]);
+
+  // Lock body scroll on mobile when profile page dropdown is open
+  useEffect(() => {
+    if (isDropdownOpen && window.innerWidth < 640) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isDropdownOpen]);
 
   // Toggle Browser notifications and PWA alert settings
   const toggleNotifications = async () => {
@@ -430,10 +446,10 @@ export default function Header() {
           </button>
           
           <div className="relative" id="header-profile-dropdown-container">
-            {/* Click catcher overlay when dropdown is open */}
+            {/* Click catcher overlay when dropdown is open on desktop */}
             {isDropdownOpen && (
               <div 
-                className="fixed inset-0 z-45 bg-transparent cursor-default" 
+                className="hidden sm:block fixed inset-0 z-45 bg-transparent cursor-default" 
                 onClick={() => setIsDropdownOpen(false)}
               />
             )}
@@ -441,7 +457,7 @@ export default function Header() {
             {loading ? (
               <div className="h-10 w-10 rounded-full bg-slate-100 animate-pulse border border-slate-200" />
             ) : (
-              /* The trigger circle button - always a round thumbnail like Gmail */
+              /* The trigger circle button - always a round thumbnail like Gmail without outer ring */
               <button 
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
                 className="h-10 w-10 rounded-full bg-slate-100 hover:bg-slate-200 border-2 border-slate-200 hover:border-indigo-500 overflow-hidden text-slate-600 hover:text-slate-900 shadow-xs transition-all duration-200 flex items-center justify-center cursor-pointer relative z-50 focus:outline-hidden"
@@ -467,199 +483,305 @@ export default function Header() {
               </button>
             )}
 
-            {/* Gmail-Style Dropdown Menu */}
+            {/* Gmail-Style Dropdown Menu / Full-screen mobile profile page */}
             {isDropdownOpen && (
               <div 
-                className="absolute right-0 mt-3 w-80 bg-white dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 rounded-[28px] shadow-2xl py-6 px-5 z-55 animate-in fade-in slide-in-from-top-3 duration-200 origin-top-right font-sans max-h-[85vh] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+                className="fixed inset-0 z-[100] w-full h-full min-h-screen bg-white dark:bg-slate-950 overflow-y-auto sm:inset-auto sm:absolute sm:right-0 sm:mt-3 sm:w-88 sm:h-auto sm:min-h-0 sm:rounded-[28px] sm:bg-white sm:dark:bg-slate-950 sm:border sm:border-slate-200/80 sm:dark:border-slate-800 sm:shadow-2xl sm:p-0 sm:z-55 sm:max-h-[85vh] [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] animate-in fade-in duration-200 origin-top-right font-sans flex flex-col"
                 id="gmail-style-account-dropdown"
               >
-                {/* Close Button */}
-                <button
-                  onClick={() => setIsDropdownOpen(false)}
-                  className="absolute top-4 right-4 p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-900 rounded-full transition-colors cursor-pointer z-10"
-                  title="Close menu"
-                  id="close-dropdown-button"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-
-                {user ? (
-                  <div className="flex flex-col items-center text-center">
-                    {/* User Profile Header */}
-                    {isAdmin && (
-                      <span className="text-[10px] font-mono font-bold tracking-wider text-indigo-600 uppercase mb-3 bg-indigo-50 dark:bg-indigo-950/40 px-2.5 py-1 rounded-full border border-indigo-100/30">
-                        🛡️ AUTHORIZED EDITOR
-                      </span>
-                    )}
-                    
-                    {/* Large profile avatar */}
-                    <div className="h-16 w-16 rounded-full border border-slate-200 overflow-hidden mb-3 shadow-xs">
-                      {user.photoURL ? (
-                        <img 
-                          src={user.photoURL} 
-                          alt="Large Avatar" 
-                          className="h-full w-full object-cover" 
-                          referrerPolicy="no-referrer"
-                        />
-                      ) : (
-                        <div className="h-full w-full bg-indigo-600 text-white flex items-center justify-center font-bold text-xl">
-                          {user.displayName?.charAt(0).toUpperCase() || 'U'}
-                        </div>
-                      )}
-                    </div>
-
-                    <h4 className="text-base font-semibold text-slate-900 dark:text-white truncate max-w-full">
-                      {user.displayName || 'Chronicle Reader'}
-                    </h4>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 font-mono truncate max-w-full mb-4">
-                      {user.email}
-                    </p>
-
-                    {/* Navigation Actions List */}
-                    <div className="w-full border-t border-slate-100 dark:border-slate-800 py-3 space-y-1.5 align-left text-left">
-                      <button
-                        onClick={() => { setIsDropdownOpen(false); navigate('/'); }}
-                        className="w-full flex items-center space-x-3 p-2.5 rounded-xl text-slate-700 hover:text-indigo-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-900 text-xs font-semibold tracking-wide transition-colors cursor-pointer"
-                        id="public-news-feed-button"
-                      >
-                        <Newspaper className="h-4 w-4 text-slate-400 shrink-0" />
-                        <span>Public News Feed</span>
-                      </button>
-
-                      {/* Liked Button (placed between News Feed and Setting) */}
-                      <Link
-                        to="/liked"
-                        onClick={() => setIsDropdownOpen(false)}
-                        className="w-full flex items-center space-x-3 p-2.5 rounded-xl text-slate-700 hover:text-indigo-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-900 text-xs font-semibold tracking-wide transition-colors cursor-pointer"
-                        id="liked-dispatches-button"
-                      >
-                        <ThumbsUp className="h-4 w-4 text-rose-550 shrink-0" />
-                        <span>Liked</span>
-                      </Link>
-
-                      {isAdmin && (
-                        <>
-                          <button
-                            onClick={() => { setIsDropdownOpen(false); navigate('/admin?focus=dashboard'); }}
-                            className="w-full flex items-center space-x-3 p-2.5 rounded-xl text-slate-700 hover:text-indigo-600 hover:bg-indigo-50/50 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-900 text-xs font-semibold tracking-wide transition-colors cursor-pointer"
-                          >
-                            <Shield className="h-4 w-4 text-indigo-500 shrink-0" />
-                            <div className="flex flex-col text-left min-w-0">
-                              <span>Admin Dashboard</span>
-                              <span className="text-[10px] text-slate-400 font-normal">View editor metrics and global pen name settings</span>
-                            </div>
-                          </button>
-
-                          <button
-                            onClick={() => { setIsDropdownOpen(false); navigate('/admin?focus=draft'); }}
-                            className="w-full flex items-center space-x-3 p-2.5 rounded-xl text-slate-700 hover:text-indigo-600 hover:bg-indigo-50/50 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-900 text-xs font-semibold tracking-wide transition-colors cursor-pointer"
-                          >
-                            <PlusCircle className="h-4 w-4 text-emerald-500 shrink-0" />
-                            <div className="flex flex-col text-left min-w-0">
-                              <span>Draft New Publication</span>
-                              <span className="text-[10px] text-slate-400 font-normal">Compose a fresh article with custom embeds</span>
-                            </div>
-                          </button>
-
-                          <button
-                            onClick={() => { setIsDropdownOpen(false); navigate('/admin?focus=publications'); }}
-                            className="w-full flex items-center space-x-3 p-2.5 rounded-xl text-slate-700 hover:text-indigo-600 hover:bg-slate-50/50 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-900 text-xs font-semibold tracking-wide transition-colors cursor-pointer"
-                          >
-                            <Newspaper className="h-4 w-4 text-blue-500 shrink-0" />
-                            <div className="flex flex-col text-left min-w-0">
-                              <span>Current Publications</span>
-                              <span className="text-[10px] text-slate-400 font-normal">Modify, update, or remove active articles</span>
-                            </div>
-                          </button>
-
-                          <button
-                            onClick={() => { setIsDropdownOpen(false); navigate('/admin?focus=audience'); }}
-                            className="w-full flex items-center space-x-3 p-2.5 rounded-xl text-slate-700 hover:text-indigo-600 hover:bg-indigo-50/50 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-900 text-xs font-semibold tracking-wide transition-colors cursor-pointer"
-                          >
-                            <Users className="h-4 w-4 text-purple-500 shrink-0" />
-                            <div className="flex flex-col text-left min-w-0">
-                              <span>Audience Registry</span>
-                              <span className="text-[10px] text-slate-400 font-normal">Registered emails and subscriber tracking</span>
-                            </div>
-                          </button>
-                        </>
-                      )}
-
-                      {/* Setting Button */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsDropdownOpen(false);
-                          setIsSettingsOpen(true);
-                        }}
-                        className="w-full flex items-center space-x-3 p-2.5 rounded-xl text-slate-700 hover:text-indigo-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-900 text-xs font-semibold tracking-wide transition-colors cursor-pointer text-left"
-                        id="settings-trigger-button"
-                      >
-                        <SettingsIcon className="h-4 w-4 text-purple-500 shrink-0" />
-                        <span>Setting</span>
-                      </button>
-                    </div>
-
-                    <div className="w-full border-t border-slate-100 dark:border-slate-800 pt-4 mt-1">
-                      <button 
-                        onClick={handleLogout}
-                        className="w-full flex items-center justify-center space-x-2 py-2.5 px-4 bg-slate-50 hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-850 text-slate-700 dark:text-slate-300 text-xs font-semibold border border-slate-200 dark:border-slate-800 rounded-full cursor-pointer transition-colors"
-                        id="signout-button"
-                      >
-                        <LogOut className="h-3.5 w-3.5" />
-                        <span>Sign Out</span>
-                      </button>
-                    </div>
-
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center text-center">
-                    {/* Guest Login Layout */}
-                    <div className="h-12 w-12 rounded-full bg-slate-50 border border-slate-200 flex items-center justify-center mb-3">
-                      <User className="h-5 w-5 text-slate-400" />
-                    </div>
-                    <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-1">
-                      Chronicle Editorial Access
-                    </h4>
-                    <p className="text-[11px] text-slate-500 max-w-[220px] mb-4 leading-normal">
-                      Log in with authorized editor account to compose, edit, or delete live world dispatches.
-                    </p>
-
-                    <button 
-                      onClick={handleLogin}
-                      className="w-full flex items-center justify-center space-x-2 py-2.5 px-4 bg-slate-950 text-white hover:bg-slate-800 text-xs font-semibold rounded-full cursor-pointer transition-colors shadow-xs mb-3"
+                {/* Profile Header Details on seamless white / dark background */}
+                <div className="w-full px-5 pt-5 pb-0 sm:px-6 sm:pt-6 relative shrink-0">
+                  {/* Top Bar: Back button (phone only) and Close button (larger screens) */}
+                  <div className="flex items-center justify-between w-full mb-3">
+                    {/* Back Button (Phone screen shows liquid glass Back button, hidden on larger screens) */}
+                    <button
+                      type="button"
+                      onClick={() => setIsDropdownOpen(false)}
+                      className="sm:hidden inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 backdrop-blur-md border border-slate-200/80 dark:border-slate-700/80 text-slate-700 dark:text-slate-200 text-xs font-semibold shadow-2xs transition-all cursor-pointer z-10"
+                      id="profile-back-button"
                     >
-                      <LogIn className="h-3.5 w-3.5" />
-                      <span>Sign In</span>
+                      <ArrowLeft className="h-3.5 w-3.5 text-slate-700 dark:text-slate-200" />
+                      <span>Back</span>
                     </button>
 
-                    <div className="w-full border-t border-slate-100 dark:border-slate-800 pt-3 flex flex-col gap-2.5" id="guest-links-container">
-                      <Link
-                        to="/liked"
-                        onClick={() => setIsDropdownOpen(false)}
-                        className="w-full flex items-center space-x-3 p-2.5 rounded-xl text-slate-700 hover:text-indigo-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-900 text-xs font-semibold tracking-wide transition-colors cursor-pointer"
-                        id="liked-dispatches-guest-button"
-                      >
-                        <ThumbsUp className="h-4 w-4 text-rose-550 shrink-0" />
-                        <span>Liked</span>
-                      </Link>
-
-                      {/* Setting Button */}
+                    {/* Desktop Close Button (Only on larger screens, hidden on phone screens) */}
+                    <div className="ml-auto flex items-center z-10">
                       <button
-                        type="button"
-                        onClick={() => {
-                          setIsDropdownOpen(false);
-                          setIsSettingsOpen(true);
-                        }}
-                        className="w-full flex items-center space-x-3 p-2.5 rounded-xl text-slate-700 hover:text-indigo-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-900 text-xs font-semibold tracking-wide transition-colors cursor-pointer text-left"
-                        id="guest-settings-trigger-button"
+                        onClick={() => setIsDropdownOpen(false)}
+                        className="hidden sm:inline-flex p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors cursor-pointer"
+                        title="Close menu"
+                        id="close-dropdown-button"
                       >
-                        <SettingsIcon className="h-4 w-4 text-purple-500 shrink-0" />
-                        <span>Setting</span>
+                        <X className="h-4 w-4" />
                       </button>
                     </div>
                   </div>
-                )}
+
+                  {user ? (
+                    /* User Info: Avatar, Name, and Email all centered in the middle of this page */
+                    <div className="flex flex-col items-center justify-center text-center w-full pt-1 pb-1">
+                      {/* Avatar with single Golden Ring in middle */}
+                      <div className="h-20 w-20 sm:h-20 sm:w-20 rounded-full border-2 border-amber-400 overflow-hidden shrink-0 shadow-md bg-slate-100 dark:bg-slate-800 mb-3">
+                        {user.photoURL ? (
+                          <img 
+                            src={user.photoURL} 
+                            alt="Profile Avatar" 
+                            className="h-full w-full object-cover" 
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : (
+                          <div className="h-full w-full bg-indigo-700 text-white flex items-center justify-center font-bold text-2xl">
+                            {user.displayName?.charAt(0).toUpperCase() || 'U'}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* User Name below avatar */}
+                      <h4 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white tracking-wide uppercase leading-tight truncate max-w-[280px]">
+                        {user.displayName || 'Chronicle Reader'}
+                      </h4>
+
+                      {/* Email address below name */}
+                      <div className="flex items-center justify-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 font-mono mt-1.5 max-w-[280px]">
+                        <span className="truncate">{user.email}</span>
+                        <CheckCircle2 className="h-3.5 w-3.5 text-sky-500 fill-sky-500 text-white shrink-0" />
+                      </div>
+                    </div>
+                  ) : (
+                    /* Guest View in Middle */
+                    <div className="flex flex-col items-center justify-center text-center w-full pt-1 pb-1">
+                      <div className="h-16 w-16 rounded-full border-2 border-amber-400 bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0 shadow-md mb-2.5">
+                        <User className="h-7 w-7 text-slate-600 dark:text-slate-300" />
+                      </div>
+                      <h4 className="text-base font-bold text-slate-900 dark:text-white uppercase tracking-wide">
+                        Chronicle Portal
+                      </h4>
+                      <span className="text-xs text-slate-500 dark:text-slate-400 font-mono mt-0.5">
+                        Guest Reader
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Grey / subtle liquid glass horizontal line below email distinguishing profile details and buttons */}
+                  <div className="w-full border-t border-slate-200/90 dark:border-slate-800/90 mt-4 mb-2" />
+                </div>
+
+                {/* Content Card for Navigation Buttons */}
+                <div className="px-5 pb-5 pt-1 sm:px-6 sm:pb-6 flex-1 bg-white dark:bg-slate-950 sm:rounded-b-[28px]">
+                  {user ? (
+                    <div className="w-full max-w-sm mx-auto flex flex-col">
+                      {/* Navigation Actions List */}
+                      <div className="w-full space-y-2 align-left text-left">
+                        <button
+                          onClick={() => { setIsDropdownOpen(false); navigate('/'); }}
+                          className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/80 hover:bg-slate-150/80 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                          id="public-news-feed-button"
+                        >
+                          <Newspaper className="h-4 w-4 text-slate-400 shrink-0" />
+                          <span>Public News Feed</span>
+                        </button>
+
+                        {/* Liked Button (placed between News Feed and Setting) */}
+                        <Link
+                          to="/liked"
+                          onClick={() => setIsDropdownOpen(false)}
+                          className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/80 hover:bg-slate-150/80 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                          id="liked-dispatches-button"
+                        >
+                          <ThumbsUp className="h-4 w-4 text-rose-550 shrink-0" />
+                          <span>Liked</span>
+                        </Link>
+
+                        {isAdmin && (
+                          <>
+                            <button
+                              onClick={() => { setIsDropdownOpen(false); navigate('/admin?focus=dashboard'); }}
+                              className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/80 hover:bg-slate-150/80 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                            >
+                              <Shield className="h-4 w-4 text-indigo-500 shrink-0" />
+                              <span>Admin Dashboard</span>
+                            </button>
+
+                            <button
+                              onClick={() => { setIsDropdownOpen(false); navigate('/admin?focus=draft'); }}
+                              className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/80 hover:bg-slate-150/80 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                            >
+                              <PlusCircle className="h-4 w-4 text-emerald-500 shrink-0" />
+                              <span>Draft New Publication</span>
+                            </button>
+
+                            <button
+                              onClick={() => { setIsDropdownOpen(false); navigate('/admin?focus=publications'); }}
+                              className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/80 hover:bg-slate-150/80 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                            >
+                              <Newspaper className="h-4 w-4 text-blue-500 shrink-0" />
+                              <span>Current Publications</span>
+                            </button>
+
+                            <button
+                              onClick={() => { setIsDropdownOpen(false); navigate('/admin?focus=audience'); }}
+                              className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/80 hover:bg-slate-150/80 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                            >
+                              <Users className="h-4 w-4 text-purple-500 shrink-0" />
+                              <span>Audience Registry</span>
+                            </button>
+                          </>
+                        )}
+
+                        {/* Setting Button */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsDropdownOpen(false);
+                            setIsSettingsOpen(true);
+                          }}
+                          className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/80 hover:bg-slate-150/80 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer text-left"
+                          id="settings-trigger-button"
+                        >
+                          <SettingsIcon className="h-4 w-4 text-purple-500 shrink-0" />
+                          <span>Setting</span>
+                        </button>
+
+                        {/* Privacy Policy Button */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsDropdownOpen(false);
+                            navigate('/privacy');
+                          }}
+                          className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/80 hover:bg-slate-150/80 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer text-left"
+                          id="privacy-policy-button"
+                        >
+                          <ShieldCheck className="h-4 w-4 text-emerald-500 shrink-0" />
+                          <span>Privacy Policy</span>
+                        </button>
+
+                        {/* Terms of Service Button */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsDropdownOpen(false);
+                            navigate('/terms');
+                          }}
+                          className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/80 hover:bg-slate-150/80 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer text-left"
+                          id="terms-of-service-button"
+                        >
+                          <FileText className="h-4 w-4 text-blue-500 shrink-0" />
+                          <span>Terms of Service</span>
+                        </button>
+
+                        {/* Account Delete Button */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsDropdownOpen(false);
+                            navigate('/delete-account');
+                          }}
+                          className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 hover:text-rose-600 bg-slate-50/80 hover:bg-slate-150/80 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer text-left"
+                          id="account-delete-button"
+                        >
+                          <Trash2 className="h-4 w-4 text-rose-500 shrink-0" />
+                          <span>Account Delete</span>
+                        </button>
+                      </div>
+
+                      {/* In last: Sign Out Button */}
+                      <div className="w-full border-t border-slate-100 dark:border-slate-800 pt-3.5 mt-3">
+                        <button 
+                          onClick={handleLogout}
+                          className="w-full flex items-center justify-center space-x-2 py-2.5 px-4 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white text-xs font-bold rounded-full cursor-pointer transition-all shadow-xs hover:shadow-md border border-red-700"
+                          id="signout-button"
+                        >
+                          <LogOut className="h-3.5 w-3.5 text-white" />
+                          <span>Sign Out</span>
+                        </button>
+                      </div>
+
+                    </div>
+                  ) : (
+                    <div className="w-full max-w-sm mx-auto flex flex-col items-center text-center py-2">
+                      <p className="text-xs text-slate-600 dark:text-slate-400 mb-4 leading-relaxed">
+                        Log in with your authorized editor account to compose, edit, or publish live dispatches.
+                      </p>
+
+                      <button 
+                        onClick={handleLogin}
+                        className="w-full flex items-center justify-center space-x-2 py-2.5 px-4 bg-slate-950 text-white hover:bg-slate-800 text-xs font-semibold rounded-full cursor-pointer transition-colors shadow-xs mb-3"
+                      >
+                        <LogIn className="h-3.5 w-3.5" />
+                        <span>Sign In</span>
+                      </button>
+
+                      <div className="w-full border-t border-slate-100 dark:border-slate-800 pt-3 flex flex-col gap-2" id="guest-links-container">
+                        <Link
+                          to="/liked"
+                          onClick={() => setIsDropdownOpen(false)}
+                          className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/80 hover:bg-slate-150/80 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                          id="liked-dispatches-guest-button"
+                        >
+                          <ThumbsUp className="h-4 w-4 text-rose-550 shrink-0" />
+                          <span>Liked</span>
+                        </Link>
+
+                        {/* Setting Button */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsDropdownOpen(false);
+                            setIsSettingsOpen(true);
+                          }}
+                          className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/80 hover:bg-slate-150/80 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer text-left"
+                          id="guest-settings-trigger-button"
+                        >
+                          <SettingsIcon className="h-4 w-4 text-purple-500 shrink-0" />
+                          <span>Setting</span>
+                        </button>
+
+                        {/* Privacy Policy Button (appears for everyone) */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsDropdownOpen(false);
+                            navigate('/privacy');
+                          }}
+                          className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/80 hover:bg-slate-150/80 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer text-left"
+                          id="guest-privacy-policy-button"
+                        >
+                          <ShieldCheck className="h-4 w-4 text-emerald-500 shrink-0" />
+                          <span>Privacy Policy</span>
+                        </button>
+
+                        {/* Terms of Service Button (appears for everyone) */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsDropdownOpen(false);
+                            navigate('/terms');
+                          }}
+                          className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/80 hover:bg-slate-150/80 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer text-left"
+                          id="guest-terms-of-service-button"
+                        >
+                          <FileText className="h-4 w-4 text-blue-500 shrink-0" />
+                          <span>Terms of Service</span>
+                        </button>
+
+                        {/* Account Delete Button (appears for everyone) */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsDropdownOpen(false);
+                            navigate('/delete-account');
+                          }}
+                          className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 hover:text-rose-600 bg-slate-50/80 hover:bg-slate-150/80 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer text-left"
+                          id="guest-account-delete-button"
+                        >
+                          <Trash2 className="h-4 w-4 text-rose-500 shrink-0" />
+                          <span>Account Delete</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>

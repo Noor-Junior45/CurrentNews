@@ -12,8 +12,24 @@
 /* Custom modern transitions and scrollbars */
 body {
   font-family: var(--font-sans);
-  background-color: #f8fafc;
+  background-color: #ffffff;
   color: #0f172a;
+}
+
+/* Hide horizontal scroll indicators, scroll bars, and scroll buttons across all devices & browsers */
+.no-scrollbar::-webkit-scrollbar,
+#category-filter-header ::-webkit-scrollbar,
+#category-filter-tabs::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.no-scrollbar,
+#category-filter-header,
+#category-filter-tabs {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
 }
 
 /* Highlight style for custom rich text */
@@ -338,6 +354,21 @@ html.dark .newspaper-paper .text-slate-550 {
   color: #57534e !important; /* Stone-600 / Muted newspaper ink */
 }
 
+/* Ensure read full article link is styled in red */
+.newspaper-paper a.read-full-article-link,
+html.dark .newspaper-paper a.read-full-article-link,
+.newspaper-paper a.read-full-article-link span,
+html.dark .newspaper-paper a.read-full-article-link span {
+  color: #dc2626 !important; /* Red-600 */
+}
+
+.newspaper-paper a.read-full-article-link:hover,
+html.dark .newspaper-paper a.read-full-article-link:hover,
+.newspaper-paper a.read-full-article-link:hover span,
+html.dark .newspaper-paper a.read-full-article-link:hover span {
+  color: #b91c1c !important; /* Red-700 */
+}
+
 /* Ensure standard links (like "Read Full Article") hover elegantly */
 .newspaper-paper a:hover,
 html.dark .newspaper-paper a:hover {
@@ -368,6 +399,48 @@ html.dark .newspaper-paper button:hover,
 html.dark .newspaper-paper .share-btn:hover {
   background-color: #e7e5e4 !important;
   color: #1c1917 !important;
+}
+
+/* Specific exemption: remove background box and border from like and dislike buttons */
+.newspaper-paper #card-reactions button,
+html.dark .newspaper-paper #card-reactions button,
+.newspaper-paper button.reaction-btn-clean,
+html.dark .newspaper-paper button.reaction-btn-clean {
+  background-color: transparent !important;
+  background: transparent !important;
+  border: none !important;
+  border-width: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+.newspaper-paper #card-reactions button:hover,
+html.dark .newspaper-paper #card-reactions button:hover,
+.newspaper-paper button.reaction-btn-clean:hover,
+html.dark .newspaper-paper button.reaction-btn-clean:hover {
+  background-color: transparent !important;
+  background: transparent !important;
+  border: none !important;
+  border-width: 0 !important;
+  box-shadow: none !important;
+}
+
+/* Category tag inside newspaper paper: text-only without background box */
+.newspaper-paper .card-category-tag,
+html.dark .newspaper-paper .card-category-tag,
+html.dark [id^="post-card-"].newspaper-paper .card-category-tag {
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+  color: #4f46e5 !important; /* Indigo text */
+}
+
+.newspaper-paper .card-category-tag:hover,
+html.dark .newspaper-paper .card-category-tag:hover,
+html.dark [id^="post-card-"].newspaper-paper .card-category-tag:hover {
+  color: #4338ca !important;
 }
 
 /* Category badges inside newspaper paper */
@@ -431,6 +504,63 @@ html.dark .newspaper-paper #custom-embeds-box .text-slate-400 {
 html.dark .newspaper-paper #custom-embeds-box .bg-indigo-50 {
   background-color: #eae6db !important;
   color: #44403c !important;
+}
+
+/* Phone screen: articles touch screen edges, no card rounded corners, black horizontal line */
+@media (max-width: 639px) {
+  #posts-grid > article,
+  #posts-grid > [id^="post-card-"],
+  html.dark #posts-grid > article,
+  html.dark #posts-grid > [id^="post-card-"] {
+    border-top: 0 !important;
+    border-left: 0 !important;
+    border-right: 0 !important;
+    border-bottom: 1px solid #000000 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+}
+
+/* Tag Filter Box Area: white background with no border */
+#tag-filter-box-area {
+  background-color: #ffffff !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+html.dark #tag-filter-box-area {
+  background-color: #1e293b !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+#stacked-tag-filter-buttons button {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+#stacked-tag-filter-buttons button.text-emerald-600,
+html.dark #stacked-tag-filter-buttons button.text-emerald-400 {
+  color: #059669 !important;
+}
+
+#filter-footer-green-divider {
+  background-color: #10b981 !important;
+  border: none !important;
+}
+
+#article-main-box {
+  border: none !important;
+  border-width: 0 !important;
+  box-shadow: none !important;
+}
+
+html.dark #article-main-box {
+  border: none !important;
+  border-width: 0 !important;
+  box-shadow: none !important;
 }
 
 

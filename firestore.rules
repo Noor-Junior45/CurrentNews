@@ -2,17 +2,21 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    function isAdmin() {
+      return request.auth != null && 
+             request.auth.token.email != null &&
+             request.auth.token.email.lower() in ["mdhassan1738@gmail.com", "alifraja404@gmail.com", "mdnoor4860@gmail.com"];
+    }
+
     match /posts/{postId} {
       // Anyone can read posts
       allow read: if true;
 
-      // Only the authenticated admin client can create or delete posts
-      allow create, delete: if request.auth != null && 
-                            request.auth.token.email != null &&
-                            request.auth.token.email in ["mdhassan1738@gmail.com", "alifraja404@gmail.com", "mdnoor4860@gmail.com", "Alifraja404@gmail.com", "Mdnoor4860@gmail.com", "AlifRaja404@gmail.com", "MdNoor4860@gmail.com"];
+      // Only authenticated admin clients can create or delete posts
+      allow create, delete: if isAdmin();
 
       // Anyone can update likes, dislikes, or views to react to/view posts, but only admin can update any other fields
-      allow update: if (request.auth != null && request.auth.token.email != null && request.auth.token.email in ["mdhassan1738@gmail.com", "alifraja404@gmail.com", "mdnoor4860@gmail.com", "Alifraja404@gmail.com", "Mdnoor4860@gmail.com", "AlifRaja404@gmail.com", "MdNoor4860@gmail.com"]) ||
+      allow update: if isAdmin() ||
                     (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'dislikes', 'views']));
     }
 
@@ -21,9 +25,7 @@ service cloud.firestore {
       allow read: if true;
 
       // Only the authenticated admin can write config settings
-      allow write: if request.auth != null && 
-                    request.auth.token.email != null &&
-                    request.auth.token.email in ["mdhassan1738@gmail.com", "alifraja404@gmail.com", "mdnoor4860@gmail.com", "Alifraja404@gmail.com", "Mdnoor4860@gmail.com", "AlifRaja404@gmail.com", "MdNoor4860@gmail.com"];
+      allow write: if isAdmin();
     }
 
     match /subscribers/{subscriberId} {
@@ -33,14 +35,12 @@ service cloud.firestore {
       // Only the admin or the subscriber themselves can read or delete their subscription
       allow read, delete: if (request.auth != null && 
                              request.auth.token.email != null &&
-                             (request.auth.token.email in ["mdhassan1738@gmail.com", "alifraja404@gmail.com", "mdnoor4860@gmail.com", "Alifraja404@gmail.com", "Mdnoor4860@gmail.com", "AlifRaja404@gmail.com", "MdNoor4860@gmail.com"] ||
+                             (isAdmin() ||
                               resource.data.email == request.auth.token.email.lower() ||
                               resource.data.email == request.auth.token.email));
 
       // Only the admin can update subscribers (or write completely)
-      allow update: if request.auth != null && 
-                       request.auth.token.email != null &&
-                       request.auth.token.email in ["mdhassan1738@gmail.com", "alifraja404@gmail.com", "mdnoor4860@gmail.com", "Alifraja404@gmail.com", "Mdnoor4860@gmail.com", "AlifRaja404@gmail.com", "MdNoor4860@gmail.com"];
+      allow update: if isAdmin();
     }
 
     match /reactions/{reactionId} {
@@ -52,6 +52,11 @@ service cloud.firestore {
                             request.resource.data.userId == request.auth.uid;
       allow delete: if request.auth != null && 
                        resource.data.userId == request.auth.uid;
+    }
+
+    match /test/{testId} {
+      // Allow startup health connection check
+      allow read: if true;
     }
   }
 }

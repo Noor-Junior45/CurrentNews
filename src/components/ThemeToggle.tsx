@@ -1,9 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { Sun, Moon } from 'lucide-react';
+import { motion } from 'motion/react';
+import { Sun, MoonStar } from 'lucide-react';
 
-export default function ThemeToggle() {
+interface GlassThemeToggleProps {
+  className?: string;
+  onThemeChange?: (isDark: boolean) => void;
+}
+
+export default function GlassThemeToggle({ className = '', onThemeChange }: GlassThemeToggleProps) {
   const [isDark, setIsDark] = useState<boolean>(() => {
-    // Check initial preference from localStorage or documentElement
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('theme');
       if (saved) {
@@ -14,42 +19,7 @@ export default function ThemeToggle() {
     return false;
   });
 
-  const [isActive, setIsActive] = useState<boolean>(true);
-
-  // Monitor user movement & interactions to handle auto-hiding
-  useEffect(() => {
-    let idleTimer: NodeJS.Timeout;
-
-    const handleUserActivity = () => {
-      setIsActive(true);
-      clearTimeout(idleTimer);
-      // Wait 3 seconds of inactivity before hiding the theme toggle
-      idleTimer = setTimeout(() => {
-        setIsActive(false);
-      }, 3000);
-    };
-
-    if (typeof window !== 'undefined') {
-      window.addEventListener('mousemove', handleUserActivity, { passive: true });
-      window.addEventListener('scroll', handleUserActivity, { passive: true });
-      window.addEventListener('keydown', handleUserActivity, { passive: true });
-      window.addEventListener('touchstart', handleUserActivity, { passive: true });
-      
-      // Initial trigger to start the timer
-      handleUserActivity();
-    }
-
-    return () => {
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('mousemove', handleUserActivity);
-        window.removeEventListener('scroll', handleUserActivity);
-        window.removeEventListener('keydown', handleUserActivity);
-        window.removeEventListener('touchstart', handleUserActivity);
-      }
-      clearTimeout(idleTimer);
-    };
-  }, []);
-
+  // Apply theme to document and persist in storage
   useEffect(() => {
     const root = document.documentElement;
     if (isDark) {
@@ -59,31 +29,55 @@ export default function ThemeToggle() {
       root.classList.remove('dark');
       localStorage.setItem('theme', 'light');
     }
-  }, [isDark]);
+    window.dispatchEvent(new CustomEvent('theme-changed', { detail: { isDark } }));
+    if (onThemeChange) {
+      onThemeChange(isDark);
+    }
+  }, [isDark, onThemeChange]);
+
+  const toggleTheme = () => {
+    setIsDark(prev => !prev);
+  };
 
   return (
-    <button
-      onClick={() => setIsDark(prev => !prev)}
-      className={`fixed bottom-6 right-6 z-50 p-4 rounded-full transition-all duration-500 flex items-center justify-center border backdrop-blur-xl hover:scale-110 active:scale-95 cursor-pointer ${
-        isActive 
-          ? "opacity-100 scale-100 translate-y-0" 
-          : "opacity-0 scale-75 translate-y-4 pointer-events-none"
-      } ${
-        isDark 
-          ? "bg-slate-900/60 border-slate-700/40 text-slate-100 shadow-[inset_0_1px_1px_rgba(255,255,255,0.1),0_12px_24px_-4px_rgba(0,0,0,0.6)]" 
-          : "bg-amber-100/70 border-amber-300/50 text-amber-600 shadow-[inset_0_1px_1px_rgba(255,255,255,0.6),0_12px_24px_-4px_rgba(245,158,11,0.2)]"
-      }`}
-      id="floating-theme-toggle"
-      title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
-      aria-label="Toggle Theme"
-    >
-      {isDark ? (
-        // User in dark mode: Show soft-white moon with glow
-        <Moon className="h-5 w-5 text-white fill-white drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]" />
-      ) : (
-        // User in light mode: Show light-yellow/orange sun
-        <Sun className="h-5 w-5 text-amber-500 animate-spin-slow drop-shadow-[0_0_8px_rgba(245,158,11,0.9)]" />
-      )}
-    </button>
+    <div className={`inline-flex items-center shrink-0 ${className}`}>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={isDark}
+        aria-label="Toggle light and dark theme"
+        onClick={toggleTheme}
+        className={`group relative flex items-center h-7 w-14 p-[3px] rounded-full cursor-pointer select-none transition-all duration-300 outline-hidden shrink-0 active:scale-95 ${
+          isDark
+            ? 'bg-slate-900/70 border border-white/20 shadow-[inset_0_2px_4px_rgba(0,0,0,0.6),inset_0_-1px_2px_rgba(255,255,255,0.08),0_2px_6px_rgba(0,0,0,0.3)]'
+            : 'bg-slate-300/70 border border-white/80 shadow-[inset_0_2px_4px_rgba(0,0,0,0.08),inset_0_-1px_2px_rgba(255,255,255,0.9),0_2px_6px_rgba(0,0,0,0.06)]'
+        } backdrop-blur-md`}
+        id="settings-theme-toggle"
+        title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
+      >
+        {/* Static Ambient Track Background Glyphs */}
+        <div className="absolute inset-0 flex items-center justify-between px-2 pointer-events-none opacity-30 dark:opacity-25">
+          <Sun className="h-3 w-3 text-slate-800 dark:text-white" />
+          <MoonStar className="h-3 w-3 text-slate-800 dark:text-white" />
+        </div>
+
+        {/* Sliding Frosted Glass Disc Knob */}
+        <motion.div
+          animate={{ x: isDark ? 28 : 0 }}
+          transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+          className={`relative z-10 flex items-center justify-center w-[22px] h-[22px] rounded-full pointer-events-none transition-colors duration-300 ${
+            isDark
+              ? 'bg-gradient-to-b from-slate-700/90 via-slate-800/95 to-slate-900/95 border border-white/25 text-white shadow-[0_2px_5px_rgba(0,0,0,0.5),inset_0_1px_2px_rgba(255,255,255,0.3)]'
+              : 'bg-gradient-to-b from-white via-white/95 to-slate-100/90 border border-white/90 text-slate-750 shadow-[0_2px_5px_rgba(0,0,0,0.15),inset_0_1px_2px_rgba(255,255,255,1)]'
+          }`}
+        >
+          {isDark ? (
+            <MoonStar className="h-3.5 w-3.5 text-white drop-shadow-[0_0_4px_rgba(255,255,255,0.8)]" />
+          ) : (
+            <Sun className="h-3.5 w-3.5 text-amber-600 drop-shadow-[0_1px_1px_rgba(0,0,0,0.1)]" />
+          )}
+        </motion.div>
+      </button>
+    </div>
   );
 }

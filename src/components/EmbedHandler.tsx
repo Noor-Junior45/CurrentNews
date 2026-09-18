@@ -82,7 +82,7 @@ export default function EmbedHandler({ youtubeUrl, facebookUrl, customLinks, isH
   }
 
   return (
-    <div className={isHeader ? "mb-8 pb-8 border-b border-slate-200" : "mt-12 pt-8 border-t border-slate-200"} id="embeds-section">
+    <div className={isHeader ? "mb-8" : "mt-10 pt-6 border-t border-slate-200 dark:border-slate-800"} id="embeds-section">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* YouTube Video Embed */}
         {hasYouTube && (
@@ -153,10 +153,10 @@ export default function EmbedHandler({ youtubeUrl, facebookUrl, customLinks, isH
 
         {/* Custom Integrations List */}
         {hasCustom && (
-          <div className="col-span-1 md:col-span-2 flex flex-col bg-slate-50 border border-slate-200 rounded-xl p-5 shadow-2xs" id="custom-embeds-box">
-            <div className="flex items-center space-x-2 text-indigo-600 mb-4 pb-2 border-b border-slate-200/65">
-              <Link2 className="h-5 w-5" />
-              <span className="text-xs font-semibold uppercase tracking-wider font-mono">Links / References ({validCustomLinks.length})</span>
+          <div className="col-span-1 md:col-span-2 flex flex-col bg-transparent border-0 p-0 shadow-none" id="custom-embeds-box">
+            <div className="flex items-center space-x-2 text-emerald-600 dark:text-emerald-400 mb-3 pb-2 border-b border-slate-200 dark:border-slate-800">
+              <Link2 className="h-4 w-4" />
+              <span className="text-xs font-semibold uppercase tracking-wider font-mono">Links &amp; References ({validCustomLinks.length})</span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -172,13 +172,11 @@ export default function EmbedHandler({ youtubeUrl, facebookUrl, customLinks, isH
                     href={link}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-3 p-3 bg-white hover:bg-indigo-50/40 border border-slate-200 hover:border-indigo-300 rounded-xl transition-all duration-200 shadow-3xs group cursor-pointer"
+                    className="flex items-center gap-2.5 py-2 px-1 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors group cursor-pointer"
                   >
-                    <div className="h-8 w-8 rounded-lg bg-indigo-50 group-hover:bg-indigo-100/85 text-indigo-600 flex items-center justify-center shrink-0 transition-colors">
-                      <Globe className="h-4 w-4" />
-                    </div>
+                    <Globe className="h-3.5 w-3.5 text-slate-400 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 shrink-0 transition-colors" />
                     <div className="min-w-0 flex-1">
-                      <span className="block text-xs font-semibold text-slate-800 group-hover:text-indigo-600 truncate">
+                      <span className="block text-xs font-medium text-slate-800 dark:text-slate-200 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 truncate">
                         {domain}
                       </span>
                       <span className="block text-[10px] text-slate-400 font-mono truncate" title={link}>

@@ -22,12 +22,29 @@
     <meta name="author" content="Independent Chronicle Staff" />
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
 
+    <!-- Canonical Tag (Standardized on live canonical domain) -->
+    <link rel="canonical" href="https://www.currentnews.blog/" />
+
+    <!-- Theme Initialization to prevent flash of wrong theme -->
+    <script>
+      (function() {
+        try {
+          const theme = localStorage.getItem('theme');
+          if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+          } else {
+            document.documentElement.classList.remove('dark');
+          }
+        } catch (e) {}
+      })();
+    </script>
+
     <!-- Open Graph (Global Standard) -->
     <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="Current News Live" />
+    <meta property="og:site_name" content="Current News" />
     <meta property="og:title" content="Current News Live - Independent Ledger" />
     <meta property="og:description" content="Premium uncorrupted journalism, real-time investigative disclosures, opinion dispatches, and geopolitical analysis." />
-    <meta property="og:url" content="https://currentnewslive.com" />
+    <meta property="og:url" content="https://www.currentnews.blog/" />
     <meta property="og:image" content="https://i.imgur.com/gFgShoZ.jpeg" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />

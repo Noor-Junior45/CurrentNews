@@ -1,3 +1,3 @@
 User-agent: *
 Allow: /
-Sitemap: https://currentnews.blog/sitemap.xml
+Sitemap: https://www.currentnews.blog/sitemap.xml

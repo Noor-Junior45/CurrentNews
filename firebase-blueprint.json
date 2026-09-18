@@ -33,12 +33,83 @@
         }
       },
       "required": ["title", "content", "createdAt"]
+    },
+    "Setting": {
+      "title": "Setting",
+      "description": "Platform settings including editor pen names and system configuration",
+      "type": "object",
+      "properties": {
+        "penName": {
+          "type": "string",
+          "description": "Author display pen name"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last updated timestamp"
+        }
+      }
+    },
+    "Subscriber": {
+      "title": "Subscriber",
+      "description": "Audience newsletter subscribers",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Subscriber email address"
+        },
+        "subscribedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Date subscribed"
+        }
+      },
+      "required": ["email"]
+    },
+    "Reaction": {
+      "title": "Reaction",
+      "description": "User like or dislike reaction on an article",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "User UID who reacted"
+        },
+        "postId": {
+          "type": "string",
+          "description": "Article ID"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["like", "dislike"],
+          "description": "Reaction type"
+        }
+      },
+      "required": ["userId", "postId", "type"]
     }
   },
   "firestore": {
     "posts/{postId}": {
       "schema": "Post",
       "description": "Collection of all news posts sorted and filtered for public reader or admin"
+    },
+    "settings/{settingsId}": {
+      "schema": "Setting",
+      "description": "Editor profiles and public configuration settings"
+    },
+    "subscribers/{subscriberId}": {
+      "schema": "Subscriber",
+      "description": "Newsletter mailing list subscribers"
+    },
+    "reactions/{reactionId}": {
+      "schema": "Reaction",
+      "description": "User reaction tracking to prevent double voting"
+    },
+    "test/{testId}": {
+      "schema": "Setting",
+      "description": "Health check connection document"
     }
   }
 }

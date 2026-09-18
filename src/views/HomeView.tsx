@@ -15,9 +15,22 @@ function getHtmlTextPreview(htmlString: string, maxLength: number = 160): string
   return excerpt.substring(0, maxLength).trim() + '...';
 }
 
+function getPaginationRange(current: number, total: number): (number | string)[] {
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }
+  if (current <= 4) {
+    return [1, 2, 3, 4, 5, '...', total];
+  }
+  if (current >= total - 3) {
+    return [1, '...', total - 4, total - 3, total - 2, total - 1, total];
+  }
+  return [1, '...', current - 1, current, current + 1, '...', total];
+}
+
 function BlogPostCardSkeleton() {
   return (
-    <div className="bg-white border border-slate-200/80 rounded-xl overflow-hidden shadow-3xs p-6 flex flex-col justify-between h-[255px] animate-pulse">
+    <div className="bg-white border-0 border-b border-black dark:border-black sm:border sm:border-slate-200/80 rounded-none sm:rounded-xl overflow-hidden shadow-none sm:shadow-3xs p-4 sm:p-6 flex flex-col justify-between h-[255px] animate-pulse">
       <div>
         <div className="flex items-center justify-between mb-4">
           <div className="h-4 bg-slate-100 rounded-md w-24"></div>
@@ -56,11 +69,11 @@ export default function HomeView() {
   const navigate = useNavigate();
   const selectedCategory = searchParams.get('category') || 'All';
 
-  // Support sharing/opening posts via robust query parameters
+  // Support opening posts via legacy query parameters with history replacement
   useEffect(() => {
     const postIdFromQuery = searchParams.get('post') || searchParams.get('p') || searchParams.get('id');
     if (postIdFromQuery) {
-      navigate(`/post/${postIdFromQuery}`);
+      navigate(`/post/${postIdFromQuery}`, { replace: true });
     }
   }, [searchParams, navigate]);
   const setSelectedCategory = (cat: string) => {
@@ -72,13 +85,45 @@ export default function HomeView() {
     }
     setSearchParams(nextParams);
   };
-  const [currentPage, setCurrentPage] = useState(1);
+  const pageParam = searchParams.get('page');
+  const initialPage = pageParam ? Math.max(1, parseInt(pageParam, 10) || 1) : 1;
+  const [currentPage, setCurrentPage] = useState(initialPage);
   const postsPerPage = 20;
+
+  // Sync page state when URL parameter changes
+  useEffect(() => {
+    const pageFromUrl = searchParams.get('page');
+    if (pageFromUrl) {
+      const parsed = parseInt(pageFromUrl, 10);
+      if (!isNaN(parsed) && parsed > 0 && parsed !== currentPage) {
+        setCurrentPage(parsed);
+      }
+    } else if (currentPage !== 1) {
+      setCurrentPage(1);
+    }
+  }, [searchParams]);
 
   // Reset to first page when category or search changes
   useEffect(() => {
     setCurrentPage(1);
+    if (searchParams.has('page')) {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete('page');
+      setSearchParams(nextParams, { replace: true });
+    }
   }, [selectedCategory, searchTerm]);
+
+  const handlePageChange = (newPage: number) => {
+    setCurrentPage(newPage);
+    const nextParams = new URLSearchParams(searchParams);
+    if (newPage <= 1) {
+      nextParams.delete('page');
+    } else {
+      nextParams.set('page', newPage.toString());
+    }
+    setSearchParams(nextParams);
+    document.getElementById('posts-grid')?.scrollIntoView({ behavior: 'smooth' });
+  };
 
   const fetchPosts = async () => {
     setLoading(true);
@@ -96,7 +141,8 @@ export default function HomeView() {
         console.warn('Failed to load global profile name', settingsErr);
       }
 
-      const q = query(collection(db, path), orderBy('createdAt', 'desc'), limit(100));
+      // Variable pagination unbounded by arbitrary 100 limit - fetches all publications for infinite scalable pagination
+      const q = query(collection(db, path), orderBy('createdAt', 'desc'));
       const querySnapshot = await getDocs(q);
       const fetchedPosts: Post[] = [];
       querySnapshot.forEach((doc) => {
@@ -166,11 +212,11 @@ export default function HomeView() {
     .filter((p) => p.status !== 'draft' && (p.likes || 0) >= 100)
     .sort((a, b) => (b.likes || 0) - (a.likes || 0));
 
-  const totalPages = Math.ceil(filteredPosts.length / postsPerPage);
+  const totalPages = Math.max(1, Math.ceil(filteredPosts.length / postsPerPage));
   const paginatedPosts = filteredPosts.slice((currentPage - 1) * postsPerPage, currentPage * postsPerPage);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-10" id="homepage-view">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-0" id="homepage-view">
 
       {isOfflineCached && (
         <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-900/60 rounded-xl p-3 px-4 mb-4 flex items-center justify-between gap-3 text-amber-900 dark:text-amber-200 text-xs font-medium mt-4" id="offline-banner">
@@ -189,7 +235,7 @@ export default function HomeView() {
 
       {/* Category Filter Tabs positioned below the main header, above Today's Dispatch */}
       <div className="sticky top-[72px] z-40 bg-slate-50/95 backdrop-blur-md border-b border-slate-200/80 dark:bg-slate-900/95 dark:border-slate-800/80 py-2 mb-8 shadow-3xs px-4 -mx-4 sm:-mx-8 lg:-mx-8" id="category-filter-header">
-        <div className="max-w-7xl mx-auto flex items-center space-x-1 sm:space-x-1.5 overflow-x-auto pb-0.5 scroll-smooth no-scrollbar" id="category-filter-tabs">
+        <div className="max-w-7xl mx-auto flex items-center space-x-1 sm:space-x-1.5 overflow-x-auto pb-0.5 scroll-smooth no-scrollbar [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]" id="category-filter-tabs">
           {['All', 'General', 'Politics', 'Tech', 'Sports', 'Opinion', 'Business', 'Health', 'World'].map((cat) => {
             const count = posts.filter(p => {
               const postCategory = p.category || 'General';
@@ -290,7 +336,7 @@ export default function HomeView() {
           <p className="text-slate-400 text-xs font-mono font-bold uppercase tracking-widest text-center animate-pulse mb-6">
             Connecting to live independent dispatches...
           </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-0 sm:gap-8 -mx-4 sm:mx-0">
             {Array.from({ length: 6 }).map((_, i) => (
               <BlogPostCardSkeleton key={i} />
             ))}
@@ -316,9 +362,9 @@ export default function HomeView() {
             {searchTerm ? `No stories match current search query: "${searchTerm}"` : 'The independent ledger is clean. Check back soon for the latest stories.'}
           </p>
           {searchTerm && (
-            <button
+            <button 
               onClick={() => setSearchTerm('')}
-              className="mt-4 text-sm font-semibold text-indigo-600 hover:text-indigo-800"
+              className="mt-4 text-sm font-semibold text-indigo-600 hover:text-indigo-800 cursor-pointer"
             >
               Clear Search Guard
             </button>
@@ -326,66 +372,108 @@ export default function HomeView() {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8" id="posts-grid">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-0 sm:gap-8 -mx-4 sm:mx-0" id="posts-grid">
             {paginatedPosts.map((post) => (
               <BlogPostCard key={post.id} post={post} globalPenName={globalPenName} />
             ))}
           </div>
 
-          {/* Premium Page-by-Page Dispatch Navigator */}
-          {totalPages > 1 && (
-            <div className="mt-12 pt-6 border-t border-slate-200/65 flex flex-col sm:flex-row items-center justify-between gap-4 font-sans text-xs text-slate-500" id="feed-pagination">
-              <div>
-                Showing <strong className="text-slate-800 dark:text-slate-200 font-semibold">{(currentPage - 1) * postsPerPage + 1}</strong> to <strong className="text-slate-800 dark:text-slate-200 font-semibold">{Math.min(currentPage * postsPerPage, filteredPosts.length)}</strong> of <strong className="text-slate-800 dark:text-slate-200 font-semibold">{filteredPosts.length}</strong> active dispatches
+          {/* Page-by-Page Dispatch Navigator - Variable dynamic pagination */}
+          <div className="mt-10 pt-6 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 font-sans text-xs" id="feed-pagination">
+            <div className="text-slate-500 font-medium">
+              Showing <strong className="text-slate-900 dark:text-slate-100 font-semibold">{filteredPosts.length > 0 ? (currentPage - 1) * postsPerPage + 1 : 0}</strong>–<strong className="text-slate-900 dark:text-slate-100 font-semibold">{Math.min(currentPage * postsPerPage, filteredPosts.length)}</strong> of <strong className="text-slate-900 dark:text-slate-100 font-semibold">{filteredPosts.length}</strong> articles{totalPages > 1 ? ` (Page ${currentPage} of ${totalPages})` : ''}
+            </div>
+            
+            <div className="flex items-center gap-1.5 flex-wrap justify-center" id="pagination-controls">
+              <button
+                disabled={currentPage <= 1}
+                onClick={() => handlePageChange(currentPage - 1)}
+                className="px-3 py-1.5 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-semibold text-xs transition-colors cursor-pointer flex items-center gap-1"
+                id="pagination-prev-btn"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+                <span>Prev</span>
+              </button>
+
+              {getPaginationRange(currentPage, totalPages).map((item, idx) => {
+                if (item === '...') {
+                  return (
+                    <span key={`dots-${idx}`} className="px-1.5 py-1 text-slate-400 font-mono text-xs select-none">
+                      ...
+                    </span>
+                  );
+                }
+                const pageNum = Number(item);
+                const isActive = currentPage === pageNum;
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => handlePageChange(pageNum)}
+                    className={`h-8 min-w-[32px] px-2 rounded-md font-bold text-xs transition-all flex items-center justify-center cursor-pointer ${
+                      isActive
+                        ? 'bg-slate-900 text-white border border-slate-900 dark:bg-white dark:text-slate-950 dark:border-white shadow-xs'
+                        : 'bg-white text-slate-700 border border-slate-300 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-300 hover:bg-slate-50'
+                    }`}
+                    id={`pagination-page-${pageNum}`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+
+              <button
+                disabled={currentPage >= totalPages}
+                onClick={() => handlePageChange(currentPage + 1)}
+                className="px-3 py-1.5 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-semibold text-xs transition-colors cursor-pointer flex items-center gap-1"
+                id="pagination-next-btn"
+              >
+                <span>Next</span>
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Dedicated Tag Filter Area: White background box matching page background, touching both sides of screen, text-only buttons stacked vertically with margin gap from screen */}
+          <div 
+            className="mt-8 mb-0 py-7 bg-white dark:bg-slate-950 rounded-none border-0 w-screen relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw] box-border" 
+            id="tag-filter-box-area"
+          >
+            <div className="max-w-7xl mx-auto px-6 sm:px-10 lg:px-12">
+              <div className="flex items-center space-x-2.5 mb-4">
+                <span className="w-1 h-3.5 bg-emerald-500 rounded-xs shrink-0"></span>
+                <h3 className="font-display font-bold text-sm sm:text-base text-slate-900 dark:text-white">
+                  Categories
+                </h3>
               </div>
-              
-              <div className="flex items-center gap-2">
-                <button
-                  disabled={currentPage === 1}
-                  onClick={() => {
-                    setCurrentPage(prev => Math.max(prev - 1, 1));
-                    window.scrollTo({ top: 300, behavior: 'smooth' });
-                  }}
-                  className="px-3 py-1.5 border border-slate-350 hover:bg-slate-50 text-slate-700 disabled:opacity-45 dark:border-slate-800 dark:text-slate-300 bg-white dark:bg-slate-950 rounded-lg transition-all flex items-center gap-1 cursor-pointer font-medium disabled:cursor-not-allowed"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  <span>Newer</span>
-                </button>
 
-                {/* Individual numerical pager list */}
-                <div className="flex items-center gap-1">
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((pgNum) => (
+              <div className="flex flex-col items-start space-y-2.5 pl-1.5 sm:pl-3" id="stacked-tag-filter-buttons">
+                {['All', 'General', 'Politics', 'Tech', 'Sports', 'Opinion', 'Business', 'Health', 'World'].map((cat) => {
+                  const isSelected = selectedCategory.toLowerCase() === cat.toLowerCase();
+                  return (
                     <button
-                      key={pgNum}
+                      key={cat}
                       onClick={() => {
-                        setCurrentPage(pgNum);
-                        window.scrollTo({ top: 300, behavior: 'smooth' });
+                        setSelectedCategory(cat);
+                        setCurrentPage(1);
+                        document.getElementById('posts-grid')?.scrollIntoView({ behavior: 'smooth' });
                       }}
-                      className={`h-7 w-7 rounded-md font-semibold text-xs transition-all flex items-center justify-center cursor-pointer ${
-                        currentPage === pgNum 
-                          ? 'bg-amber-50/70 text-amber-900 border border-amber-300 dark:bg-amber-950/20 dark:text-amber-250 dark:border-amber-900 shadow-3xs'
-                          : 'bg-white text-slate-600 border border-slate-200 dark:bg-slate-950 dark:border-slate-850 dark:text-slate-400 hover:bg-slate-50'
+                      className={`text-left bg-transparent border-0 p-0 text-xs sm:text-sm transition-colors cursor-pointer inline-flex items-center ${
+                        isSelected
+                          ? 'text-emerald-600 dark:text-emerald-400 font-bold'
+                          : 'text-slate-700 hover:text-emerald-600 dark:text-slate-300 dark:hover:text-emerald-400 font-medium'
                       }`}
+                      id={`stacked-tag-${cat.toLowerCase()}`}
                     >
-                      {pgNum}
+                      <span>{cat}</span>
                     </button>
-                  ))}
-                </div>
-
-                <button
-                  disabled={currentPage === totalPages}
-                  onClick={() => {
-                    setCurrentPage(prev => Math.min(prev + 1, totalPages));
-                    window.scrollTo({ top: 300, behavior: 'smooth' });
-                  }}
-                  className="px-3 py-1.5 border border-slate-350 hover:bg-slate-50 text-slate-700 disabled:opacity-45 dark:border-slate-800 dark:text-slate-300 bg-white dark:bg-slate-950 rounded-lg transition-all flex items-center gap-1 cursor-pointer font-medium disabled:cursor-not-allowed"
-                >
-                  <span>Older</span>
-                  <ChevronRight className="h-4 w-4" />
-                </button>
+                  );
+                })}
               </div>
             </div>
-          )}
+          </div>
+
+          {/* Green colour horizontal line between new filter box area and footer touching both sides of screen */}
+          <div className="w-screen relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw] h-1 sm:h-1.5 bg-emerald-500 shrink-0" id="filter-footer-green-divider"></div>
         </>
       )}
 

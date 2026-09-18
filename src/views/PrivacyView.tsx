@@ -160,7 +160,27 @@ export default function PrivacyView() {
 
         <section className="space-y-2">
           <h2 className="font-display font-bold text-sm uppercase tracking-wider text-slate-950 dark:text-slate-50 border-b border-slate-100 dark:border-slate-800 pb-1.5 flex items-center gap-2">
-            <span className="text-indigo-600 font-mono">06.</span> Contact & Desk Details
+            <span className="text-indigo-600 font-mono">06.</span> Google Play Store Data Safety: Account & Personal Data Deletion
+          </h2>
+          <p>
+            In compliance with Google Play Store User Data Policy, users of the Current News native application and website can request complete and permanent deletion of their account credentials, registered email address, active newsletter subscriptions, and recorded interactions at any time.
+          </p>
+          <p>
+            You can initiate immediate self-service account deletion or submit an email request via our dedicated portal:
+          </p>
+          <div className="pt-1">
+            <Link 
+              to="/delete-account" 
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-lg transition-colors"
+            >
+              <span>Go to Account & Data Deletion Portal</span>
+            </Link>
+          </div>
+        </section>
+
+        <section className="space-y-2">
+          <h2 className="font-display font-bold text-sm uppercase tracking-wider text-slate-950 dark:text-slate-50 border-b border-slate-100 dark:border-slate-800 pb-1.5 flex items-center gap-2">
+            <span className="text-indigo-600 font-mono">07.</span> Contact & Desk Details
           </h2>
           <p>
             For privacy inquiries, newsletter removals, or editorial corrections, please reach out to the Current News desk directly:

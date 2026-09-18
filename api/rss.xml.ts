@@ -1,14 +1,21 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'GET') {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
     return res.status(405).send('Method Not Allowed');
+  }
+
+  res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=59');
+
+  if (req.method === 'HEAD') {
+    return res.status(200).end();
   }
 
   try {
     const protocol = req.headers['x-forwarded-proto'] || 'https';
-    const host = req.headers.host || 'currentnews.blog';
-    const siteUrl = `${protocol}://${host}`;
+    const host = req.headers.host || 'www.currentnews.blog';
+    const siteUrl = `${protocol}://${host.includes('localhost') ? host : 'www.currentnews.blog'}`;
     
     // Configuration extracted dynamically
     const config = {
@@ -86,7 +93,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let xml = `<?xml version="1.0" encoding="UTF-8" ?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
 <channel>
-  <title>Current News Live - Independent Ledger</title>
+  <title>Current News - Independent Ledger</title>
   <link>${siteUrl}</link>
   <description>Serving the public interest with transparent, accurate, and autonomous journalism.</description>
   <language>en-us</language>
@@ -94,13 +101,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   <atom:link href="${siteUrl}/rss.xml" rel="self" type="application/rss+xml" />
 `;
 
+    const slugify = (text: string) => {
+      return text
+        .toString()
+        .toLowerCase()
+        .trim()
+        .replace(/\s+/g, '-')
+        .replace(/[^\w-]+/g, '')
+        .replace(/--+/g, '-')
+        .replace(/^-+/, '')
+        .replace(/-+$/, '');
+    };
+
     for (const item of items) {
       const title = item.title || 'Untitled Dispatch';
       const rawContent = item.content || '';
       const author = item.authorName || 'Chronicle Staff Report';
       const category = item.category || 'General';
       const pubDate = item.createdAt ? new Date(item.createdAt).toUTCString() : new Date().toUTCString();
-      const postLink = `${siteUrl}/post/${item.id}`;
+      const slug = slugify(title);
+      const postLink = slug ? `${siteUrl}/post/${item.id}/${slug}` : `${siteUrl}/post/${item.id}`;
 
       xml += `  <item>
     <title>${escapeXml(title)}</title>

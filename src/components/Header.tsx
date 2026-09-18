@@ -15,43 +15,74 @@ import {
   Search, 
   ThumbsUp, 
   X, 
+  ArrowLeft,
   Settings as SettingsIcon, 
   Bell, 
-  Loader2 
+  Loader2,
+  Sun,
+  MoonStar
 } from 'lucide-react';
 import { GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
+import { motion } from 'motion/react';
+import GlassThemeToggle from './ThemeToggle';
 
-// Compact ToggleSwitch component matching the user's uploaded reference screenshot
+// Glassmorphism ToggleSwitch matching the frosted glass theme toggle button
 interface ToggleSwitchProps {
   checked: boolean;
   onChange: () => void;
   disabled?: boolean;
+  ariaLabel?: string;
+  id?: string;
 }
 
-const ToggleSwitch: React.FC<ToggleSwitchProps> = ({ checked, onChange, disabled = false }) => {
+const ToggleSwitch: React.FC<ToggleSwitchProps> = ({ 
+  checked, 
+  onChange, 
+  disabled = false, 
+  ariaLabel = "Toggle setting",
+  id 
+}) => {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
+      aria-label={ariaLabel}
       disabled={disabled}
       onClick={onChange}
-      className={`relative inline-flex h-6 w-12 shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out select-none focus:outline-hidden disabled:opacity-60 shrink-0 ${
-        checked ? 'bg-purple-600' : 'bg-slate-400'
-      }`}
+      id={id}
+      className={`group relative flex items-center h-7 w-14 p-[3px] rounded-full cursor-pointer select-none transition-all duration-300 outline-hidden shrink-0 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
+        checked
+          ? 'bg-indigo-600/85 dark:bg-indigo-500/85 border border-white/60 dark:border-white/30 shadow-[inset_0_2px_4px_rgba(0,0,0,0.2),0_2px_8px_rgba(99,102,241,0.35)]'
+          : 'bg-slate-300/70 dark:bg-slate-800/70 border border-white/80 dark:border-white/15 shadow-[inset_0_2px_4px_rgba(0,0,0,0.08),inset_0_-1px_2px_rgba(255,255,255,0.9),0_2px_6px_rgba(0,0,0,0.06)]'
+      } backdrop-blur-md`}
     >
-      {/* Sliding handle */}
-      <span
-        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out absolute top-1 ${
-          checked ? 'translate-x-7' : 'translate-x-1'
+      {/* Ambient track ON / OFF labels */}
+      <div className="absolute inset-0 flex items-center justify-between px-2 pointer-events-none text-[8.5px] font-bold font-mono tracking-wider">
+        <span className={`transition-opacity duration-200 ${checked ? 'opacity-90 text-white' : 'opacity-0'}`}>
+          ON
+        </span>
+        <span className={`transition-opacity duration-200 ${!checked ? 'opacity-50 text-slate-700 dark:text-slate-300' : 'opacity-0'}`}>
+          OFF
+        </span>
+      </div>
+
+      {/* Sliding Frosted Glass Disc Knob */}
+      <motion.div
+        animate={{ x: checked ? 28 : 0 }}
+        transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+        className={`relative z-10 flex items-center justify-center w-[22px] h-[22px] rounded-full pointer-events-none transition-colors duration-300 ${
+          checked
+            ? 'bg-gradient-to-b from-white via-white/95 to-indigo-50/95 border border-white/90 shadow-[0_2px_6px_rgba(0,0,0,0.25),inset_0_1px_2px_rgba(255,255,255,1)]'
+            : 'bg-gradient-to-b from-white via-white/95 to-slate-100/90 dark:from-slate-700/90 dark:via-slate-800/95 dark:to-slate-900/95 border border-white/90 dark:border-white/20 shadow-[0_2px_5px_rgba(0,0,0,0.15),inset_0_1px_2px_rgba(255,255,255,0.8)]'
         }`}
-      />
-      {/* Label Text inside the pill switch */}
-      <span className={`absolute top-1 text-[8px] font-bold tracking-wider select-none leading-none flex items-center h-4 uppercase pointer-events-none ${
-        checked ? 'left-1.5 text-white' : 'right-1.5 text-slate-100'
-      }`}>
-        {checked ? 'ON' : 'OFF'}
-      </span>
+      >
+        <span
+          className={`w-2 h-2 rounded-full transition-colors ${
+            checked ? 'bg-indigo-600 shadow-[0_0_4px_rgba(79,70,229,0.8)]' : 'bg-slate-400 dark:bg-slate-500'
+          }`}
+        />
+      </motion.div>
     </button>
   );
 };
@@ -373,14 +404,8 @@ export default function Header() {
     <header className="sticky top-0 z-50 bg-white border-b border-slate-200 shadow-xs" id="main-header">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between">
         
-        {/* Brand Logo & Name */}
-        <Link to="/" className="flex items-center space-x-2.5 sm:space-x-3 text-slate-900 hover:opacity-90 transition-opacity min-w-0" id="header-brand-link">
-          <img 
-            src="https://i.imgur.com/gq2X5nE.jpeg" 
-            alt="Current News Logo" 
-            className="h-9 w-9 sm:h-11 sm:w-11 rounded-lg object-cover border border-slate-200 shrink-0"
-            referrerPolicy="no-referrer"
-          />
+        {/* Brand Name */}
+        <Link to="/" className="flex items-center text-slate-900 hover:opacity-90 transition-opacity min-w-0" id="header-brand-link">
           <div className="flex flex-col min-w-0">
             <span className="font-display font-bold text-base sm:text-lg md:text-xl tracking-tight leading-none uppercase text-slate-950">
               Current News
@@ -461,9 +486,11 @@ export default function Header() {
                 {user ? (
                   <div className="flex flex-col items-center text-center">
                     {/* User Profile Header */}
-                    <span className="text-[10px] font-mono font-bold tracking-wider text-indigo-600 uppercase mb-3 bg-indigo-50 dark:bg-indigo-950/40 px-2.5 py-1 rounded-full border border-indigo-100/30">
-                      {isAdmin ? '🛡️ AUTHORIZED EDITOR' : '👤 PUBLIC READER'}
-                    </span>
+                    {isAdmin && (
+                      <span className="text-[10px] font-mono font-bold tracking-wider text-indigo-600 uppercase mb-3 bg-indigo-50 dark:bg-indigo-950/40 px-2.5 py-1 rounded-full border border-indigo-100/30">
+                        🛡️ AUTHORIZED EDITOR
+                      </span>
+                    )}
                     
                     {/* Large profile avatar */}
                     <div className="h-16 w-16 rounded-full border border-slate-200 overflow-hidden mb-3 shadow-xs">
@@ -493,13 +520,22 @@ export default function Header() {
                       <button
                         onClick={() => { setIsDropdownOpen(false); navigate('/'); }}
                         className="w-full flex items-center space-x-3 p-2.5 rounded-xl text-slate-700 hover:text-indigo-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-900 text-xs font-semibold tracking-wide transition-colors cursor-pointer"
+                        id="public-news-feed-button"
                       >
                         <Newspaper className="h-4 w-4 text-slate-400 shrink-0" />
-                        <div className="flex flex-col text-left min-w-0">
-                          <span>Public News Feed</span>
-                          <span className="text-[10px] text-slate-400 font-normal">Return to the original homepage</span>
-                        </div>
+                        <span>Public News Feed</span>
                       </button>
+
+                      {/* Liked Button (placed between News Feed and Setting) */}
+                      <Link
+                        to="/liked"
+                        onClick={() => setIsDropdownOpen(false)}
+                        className="w-full flex items-center space-x-3 p-2.5 rounded-xl text-slate-700 hover:text-indigo-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-900 text-xs font-semibold tracking-wide transition-colors cursor-pointer"
+                        id="liked-dispatches-button"
+                      >
+                        <ThumbsUp className="h-4 w-4 text-rose-550 shrink-0" />
+                        <span>Liked</span>
+                      </Link>
 
                       {isAdmin && (
                         <>
@@ -549,22 +585,7 @@ export default function Header() {
                         </>
                       )}
 
-                      {/* RSS Feed Resource Shortcut */}
-                      <a
-                        href="/rss.xml"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="w-full flex items-center space-x-3 p-2.5 rounded-xl text-slate-700 hover:text-indigo-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-900 text-xs font-semibold tracking-wide transition-colors"
-                        onClick={() => setIsDropdownOpen(false)}
-                      >
-                        <Rss className="h-4 w-4 text-amber-500 shrink-0" />
-                        <div className="flex flex-col text-left min-w-0">
-                          <span>Follow via RSS Feed</span>
-                          <span className="text-[10px] text-slate-400 font-normal">Subscribe with feed reader apps</span>
-                        </div>
-                      </a>
-
-                      {/* Settings Button - Located Below RSS Feed and Above Liked History */}
+                      {/* Setting Button */}
                       <button
                         type="button"
                         onClick={() => {
@@ -575,27 +596,8 @@ export default function Header() {
                         id="settings-trigger-button"
                       >
                         <SettingsIcon className="h-4 w-4 text-purple-500 shrink-0" />
-                        <div className="flex flex-col text-left min-w-0">
-                          <span>Settings & Preferences</span>
-                          <span className="text-[10px] text-slate-400 font-normal">Manage alerts, notifications and cookie policies</span>
-                        </div>
+                        <span>Setting</span>
                       </button>
-                    </div>
-
-                    {/* ❤️ Dynamic Liked Articles Link Button (Renamed to Liked History) */}
-                    <div className="w-full border-t border-slate-100 dark:border-slate-800 pt-3 mt-2 text-left" id="liked-posts-history-container">
-                      <Link
-                        to="/liked"
-                        onClick={() => setIsDropdownOpen(false)}
-                        className="w-full flex items-center space-x-3 p-2.5 rounded-xl text-slate-700 hover:text-indigo-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-900 text-xs font-semibold tracking-wide transition-colors cursor-pointer"
-                        id="liked-dispatches-button"
-                      >
-                        <ThumbsUp className="h-4 w-4 text-rose-550 shrink-0" />
-                        <div className="flex flex-col text-left min-w-0">
-                          <span>Liked History</span>
-                          <span className="text-[10px] text-slate-400 font-normal">Previously liked history and bookmarks</span>
-                        </div>
-                      </Link>
                     </div>
 
                     <div className="w-full border-t border-slate-100 dark:border-slate-800 pt-4 mt-1">
@@ -632,21 +634,17 @@ export default function Header() {
                     </button>
 
                     <div className="w-full border-t border-slate-100 dark:border-slate-800 pt-3 flex flex-col gap-2.5" id="guest-links-container">
-                      <a 
-                        href="/rss.xml" 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="w-full flex items-center space-x-3 p-2.5 rounded-xl text-slate-700 hover:text-indigo-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-900 text-xs font-semibold tracking-wide transition-colors cursor-pointer"
+                      <Link
+                        to="/liked"
                         onClick={() => setIsDropdownOpen(false)}
+                        className="w-full flex items-center space-x-3 p-2.5 rounded-xl text-slate-700 hover:text-indigo-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-900 text-xs font-semibold tracking-wide transition-colors cursor-pointer"
+                        id="liked-dispatches-guest-button"
                       >
-                        <Rss className="h-4 w-4 text-amber-550 shrink-0" />
-                        <div className="flex flex-col text-left min-w-0">
-                          <span>Get RSS Feed XML</span>
-                          <span className="text-[10px] text-slate-400 font-normal">Subscribe with feed reader apps</span>
-                        </div>
-                      </a>
+                        <ThumbsUp className="h-4 w-4 text-rose-550 shrink-0" />
+                        <span>Liked</span>
+                      </Link>
 
-                      {/* Settings Button - Located Below RSS Feed and Above Liked History */}
+                      {/* Setting Button */}
                       <button
                         type="button"
                         onClick={() => {
@@ -657,24 +655,8 @@ export default function Header() {
                         id="guest-settings-trigger-button"
                       >
                         <SettingsIcon className="h-4 w-4 text-purple-500 shrink-0" />
-                        <div className="flex flex-col text-left min-w-0">
-                          <span>Settings & Preferences</span>
-                          <span className="text-[10px] text-slate-400 font-normal">Manage alerts, notifications and cookie policies</span>
-                        </div>
+                        <span>Setting</span>
                       </button>
-
-                      <Link
-                        to="/liked"
-                        onClick={() => setIsDropdownOpen(false)}
-                        className="w-full flex items-center space-x-3 p-2.5 rounded-xl text-slate-700 hover:text-indigo-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-900 text-xs font-semibold tracking-wide transition-colors cursor-pointer"
-                        id="liked-dispatches-guest-button"
-                      >
-                        <ThumbsUp className="h-4 w-4 text-rose-550 shrink-0" />
-                        <div className="flex flex-col text-left min-w-0">
-                          <span>Liked History</span>
-                          <span className="text-[10px] text-slate-400 font-normal">Previously liked history and bookmarks</span>
-                        </div>
-                      </Link>
                     </div>
                   </div>
                 )}
@@ -697,7 +679,7 @@ export default function Header() {
             <button
               onClick={() => setIsSettingsOpen(false)}
               className="absolute top-4 right-4 p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-900 rounded-full transition-colors cursor-pointer z-10"
-              title="Close Settings"
+              title="Close Setting"
             >
               <X className="h-4 w-4" />
             </button>
@@ -705,15 +687,28 @@ export default function Header() {
             <div className="mb-6 text-left">
               <h3 className="text-lg font-display font-bold text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
                 <SettingsIcon className="h-5 w-5 text-purple-500" />
-                <span>Preferences & Settings</span>
+                <span>Setting</span>
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                Customize reading preferences, browser alerts, and data policies.
-              </p>
+              <div className="mt-4 border-b border-slate-100 dark:border-slate-800" />
             </div>
 
             {/* List of Toggles - BORDERLESS */}
             <div className="space-y-6 text-left">
+
+              {/* Theme Mode (Light / Dark) with custom glassmorphism toggle */}
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex space-x-3">
+                  <Sun className="h-4.5 w-4.5 text-amber-500 mt-0.5 shrink-0 dark:hidden" />
+                  <MoonStar className="h-4.5 w-4.5 text-indigo-400 mt-0.5 shrink-0 hidden dark:block" />
+                  <div>
+                    <h4 className="text-xs font-semibold text-slate-800 dark:text-slate-200">Theme Appearance</h4>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-normal mt-0.5">
+                      Toggle between daylight brightness and night mode.
+                    </p>
+                  </div>
+                </div>
+                <GlassThemeToggle />
+              </div>
               
               {/* 1. Browser Notifications & App Alerts */}
               <div className="flex flex-col space-y-2">
@@ -721,7 +716,7 @@ export default function Header() {
                   <div className="flex space-x-3">
                     <Bell className="h-4.5 w-4.5 text-indigo-500 mt-0.5 shrink-0" />
                     <div>
-                      <h4 className="text-xs font-semibold text-slate-800 dark:text-slate-200">Browser Notifications</h4>
+                      <h4 className="text-xs font-semibold text-slate-800 dark:text-slate-200">Notifications</h4>
                       <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-normal mt-0.5">
                         Receive instant push updates when fresh world dispatches are published.
                       </p>
@@ -730,6 +725,8 @@ export default function Header() {
                   <ToggleSwitch 
                     checked={notificationsEnabled}
                     onChange={toggleNotifications}
+                    ariaLabel="Toggle Notifications"
+                    id="browser-notifications-toggle"
                   />
                 </div>
                 
@@ -767,6 +764,8 @@ export default function Header() {
                   checked={isSubscribed}
                   onChange={handleToggleNewsletter}
                   disabled={isSubscribing}
+                  ariaLabel="Toggle Newsletter Alerts"
+                  id="newsletter-alerts-toggle"
                 />
               </div>
 
@@ -784,19 +783,11 @@ export default function Header() {
                 <ToggleSwitch 
                   checked={adsConsent === 'granted'}
                   onChange={toggleAdsConsent}
+                  ariaLabel="Toggle Personalized Ads"
+                  id="personalized-ads-toggle"
                 />
               </div>
 
-            </div>
-
-            <div className="mt-8 pt-4 border-t border-slate-100 dark:border-slate-900 text-center">
-              <button
-                type="button"
-                onClick={() => setIsSettingsOpen(false)}
-                className="px-6 py-2 bg-slate-950 hover:bg-slate-800 text-white dark:bg-white dark:text-slate-950 dark:hover:bg-slate-100 text-xs font-semibold rounded-full cursor-pointer transition-colors shadow-sm"
-              >
-                Save Preferences
-              </button>
             </div>
           </div>
         </div>
@@ -805,81 +796,92 @@ export default function Header() {
       {/* YouTube-style Search Overlay Pop-up Modal */}
       {isSearchOpen && (
         <div 
-          className="fixed inset-0 z-55 bg-[#faf8f2]/98 dark:bg-[#121211]/98 backdrop-blur-md flex flex-col pt-16 sm:pt-24 px-4 sm:px-6 transition-all duration-300"
+          className="fixed inset-0 z-55 bg-[#faf8f2]/98 dark:bg-[#121211]/98 backdrop-blur-md flex flex-col pt-3 sm:pt-5 px-3 sm:px-6 transition-all duration-300"
           id="search-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setIsSearchOpen(false);
+            }
+          }}
         >
-          {/* Inner Search Box */}
+          {/* Top Header of Search Page holding the Search Bar */}
           <div className="max-w-2xl w-full mx-auto" id="search-modal-box">
-            <div className="flex items-center justify-between border-b-2 border-amber-900/10 dark:border-slate-800 pb-3 mb-6">
-              <h3 className="font-display font-black text-xl text-slate-900 dark:text-slate-100 uppercase tracking-widest flex items-center gap-2">
-                <Search className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
-                <span>Search Chronicles</span>
-              </h3>
+            <div className="flex items-center gap-2.5 sm:gap-3 w-full mb-6 pb-2" id="search-header-bar">
+              {/* Back / Close button */}
               <button
+                type="button"
                 onClick={() => setIsSearchOpen(false)}
-                className="p-1 px-3 bg-slate-200/80 hover:bg-slate-300 dark:bg-slate-800/80 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white rounded-lg font-mono text-xs font-black transition-all cursor-pointer shadow-3xs"
-                title="Close search [Esc]"
+                className="p-2 sm:p-2.5 rounded-full text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-200/70 dark:hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
+                title="Back / Close search"
+                id="search-back-arrow-button"
               >
-                ESC ×
+                <ArrowLeft className="h-5 w-5" />
               </button>
-            </div>
 
-            <form 
-              onSubmit={(e) => {
-                e.preventDefault();
-                navigate(`/?search=${encodeURIComponent(headerSearch)}`);
-                if (location.pathname === '/' || location.pathname === '') {
-                  const nextParams = new URLSearchParams(searchParams);
-                  if (!headerSearch) {
-                    nextParams.delete('search');
-                  } else {
-                    nextParams.set('search', headerSearch);
-                  }
-                  setSearchParams(nextParams);
-                }
-                setIsSearchOpen(false);
-              }}
-              className="relative w-full mb-8 animate-fade-in"
-            >
-              <input
-                type="text"
-                placeholder="Search report titles, tags, or topics..."
-                autoFocus
-                value={headerSearch}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setHeaderSearch(val);
+              {/* Top Search Bar */}
+              <form 
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  navigate(`/?search=${encodeURIComponent(headerSearch)}`);
                   if (location.pathname === '/' || location.pathname === '') {
                     const nextParams = new URLSearchParams(searchParams);
-                    if (!val) {
+                    if (!headerSearch) {
                       nextParams.delete('search');
                     } else {
-                      nextParams.set('search', val);
+                      nextParams.set('search', headerSearch);
                     }
                     setSearchParams(nextParams);
                   }
+                  setIsSearchOpen(false);
                 }}
-                className="w-full pl-12 pr-12 py-3.5 text-base sm:text-lg rounded-2xl bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-hidden focus:ring-4 focus:ring-indigo-500/15 focus:border-indigo-600 dark:focus:ring-indigo-500/30 transition-all placeholder-slate-400 font-medium"
-                id="overlay-search-input"
-              />
-              <Search className="absolute left-4 top-4.5 h-5 w-5 text-slate-400 dark:text-slate-500 pointer-events-none" />
-              {headerSearch && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setHeaderSearch('');
+                className="relative flex-1"
+                id="search-form-top"
+              >
+                <Search className="absolute left-3.5 sm:left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 dark:text-slate-500 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Search report titles, tags, or topics..."
+                  autoFocus
+                  value={headerSearch}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setHeaderSearch(val);
                     if (location.pathname === '/' || location.pathname === '') {
                       const nextParams = new URLSearchParams(searchParams);
-                      nextParams.delete('search');
+                      if (!val) {
+                        nextParams.delete('search');
+                      } else {
+                        nextParams.set('search', val);
+                      }
                       setSearchParams(nextParams);
                     }
                   }}
-                  className="absolute right-4 top-4 text-slate-400 hover:text-slate-700 dark:hover:text-white font-bold"
-                >
-                  ×
-                </button>
-              )}
-            </form>
+                  className="w-full pl-11 sm:pl-12 pr-11 sm:pr-12 py-3 text-base sm:text-lg rounded-2xl bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-hidden focus:ring-4 focus:ring-indigo-500/15 focus:border-indigo-600 dark:focus:ring-indigo-500/30 transition-all placeholder-slate-400 font-medium shadow-2xs"
+                  id="overlay-search-input"
+                />
+
+                {/* Cross button inside search bar to clear text & search results */}
+                {headerSearch && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHeaderSearch('');
+                      const nextParams = new URLSearchParams(searchParams);
+                      nextParams.delete('search');
+                      setSearchParams(nextParams);
+                      if (location.pathname !== '/' && location.pathname !== '') {
+                        navigate('/');
+                      }
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 h-7 w-7 flex items-center justify-center rounded-full text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                    title="Clear text and search results"
+                    id="search-clear-cross-button"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </form>
+            </div>
 
             {/* Suggested Popular Topics */}
             <div>

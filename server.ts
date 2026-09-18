@@ -2,11 +2,14 @@ import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
+import multer from 'multer';
 
 // Import Vercel serverless handlers
 import sendAlertHandler from './api/mail/send-alert.js';
 import rssHandler from './api/rss.xml.js';
 import adsHandler from './api/ads.txt.js';
+import sitemapHandler from './api/sitemap.xml.js';
+import { handleR2Upload } from './src/server/r2Upload.js';
 
 // Load environment variables
 dotenv.config();
@@ -33,14 +36,37 @@ async function startServer() {
   // Enable JSON request body parsing
   app.use(express.json());
 
+  // Configure Multer for Cloudflare R2 image upload (15MB max, image types only)
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+      fileSize: 15 * 1024 * 1024, // 15MB max file size
+    },
+    fileFilter: (_req, file, cb) => {
+      if (file.mimetype.startsWith('image/')) {
+        cb(null, true);
+      } else {
+        cb(new Error('Only image files (JPEG, PNG, WebP, GIF, SVG) are permitted.'));
+      }
+    },
+  });
+
+  // Cloudflare R2 image upload endpoint
+  app.post('/api/upload', upload.single('image'), (req, res) => {
+    handleR2Upload(req, res);
+  });
+
   // Backend mail endpoint for automated subscriber alerting adapted from the Vercel handler
   app.post('/api/mail/send-alert', adaptVercelHandler(sendAlertHandler));
 
+  // Dynamically serve dynamic XML Sitemap endpoint adapted from the Vercel handler
+  app.all('/sitemap.xml', adaptVercelHandler(sitemapHandler));
+
   // Dynamically serve dynamic RSS Feed endpoint adapted from the Vercel handler
-  app.get('/rss.xml', adaptVercelHandler(rssHandler));
+  app.all('/rss.xml', adaptVercelHandler(rssHandler));
 
   // Serve the ads.txt file adapted from the Vercel handler
-  app.get('/ads.txt', adaptVercelHandler(adsHandler));
+  app.all('/ads.txt', adaptVercelHandler(adsHandler));
 
   // Connect Vite configuration dynamically to support dev vs prod modes
   if (process.env.NODE_ENV !== "production") {

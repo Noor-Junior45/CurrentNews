@@ -1,0 +1,19 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="0.5"
+        android:scaleY="0.5"
+        android:translateX="27"
+        android:translateY="27">
+        <!-- Newspaper / News Emblem Icon in Crisp Minimal White & Indigo -->
+        <path
+            android:fillColor="#4F46E5"
+            android:pathData="M24,16h60a4,4 0,0 1,4 4v68a4,4 0,0 1,-4 4H24a4,4 0,0 1,-4 -4V20a4,4 0,0 1,4 -4z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M32,28h44v8H32zM32,44h44v6H32zM32,56h24v6H32zM32,68h44v6H32z" />
+    </group>
+</vector>

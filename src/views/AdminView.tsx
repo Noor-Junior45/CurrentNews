@@ -4,6 +4,7 @@ import { useAuthState } from '../hooks/useAuthState';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
 import { Post, slugify } from '../types';
 import RichTextEditor from '../components/RichTextEditor';
+import PhotoAttachmentSection from '../components/PhotoAttachmentSection';
 import { 
   collection, 
   getDocs, 
@@ -934,98 +935,24 @@ export default function AdminView() {
                 </select>
               </div>
 
-              {/* Image Attachment Options group */}
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-5" id="image-attachment-group">
-                <label className="block text-xs font-semibold text-indigo-700 uppercase tracking-wider mb-1 font-mono flex items-center space-x-1.5">
-                  <ImageIcon className="h-4 w-4" />
-                  <span>Attach Feature Illustration / Imgur / Image URL</span>
-                </label>
-                <span className="block text-[10px] text-slate-400 mb-3 leading-relaxed">
-                  Paste a direct photo URL or Imgur link (e.g., <code>https://i.imgur.com/xxxxx.jpg</code>).
-                </span>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="md:col-span-2">
-                    <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1 font-mono">
-                      Image Web URL
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. https://i.imgur.com/aBcDeFg.jpg"
-                      value={imageUrl}
-                      onChange={(e) => setImageUrl(e.target.value)}
-                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-xs bg-white focus:ring-1 focus:ring-indigo-500 font-sans font-medium text-slate-850 placeholder:text-slate-400"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1 font-mono">
-                      Photo Flow Placement
-                    </label>
-                    <select
-                      value={imagePosition}
-                      onChange={(e) => setImagePosition(e.target.value as 'top' | 'middle' | 'bottom')}
-                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-xs bg-white focus:ring-1 focus:ring-indigo-500 font-sans font-medium text-slate-800"
-                    >
-                      <option value="top">🏞️ Top of Article</option>
-                      <option value="middle">🏞️ Middle of Article</option>
-                      <option value="bottom">🏞️ Last (Bottom of Article)</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Additional photo gallery links list */}
-                <div className="mt-4 pt-4 border-t border-slate-200/60">
-                  <div className="mb-3">
-                    <label className="block text-[10px] uppercase font-bold text-slate-500 font-mono">
-                      Additional Photo Links / Gallery ({imageUrls.length})
-                    </label>
-                  </div>
-
-                  {imageUrls.length === 0 ? (
-                    <div className="text-center py-5 border border-dashed border-slate-200 bg-white/35 rounded-lg mb-3">
-                      <span className="text-[11px] font-mono text-slate-400 block">No additional photos attached yet.</span>
-                    </div>
-                  ) : (
-                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1 mb-3">
-                      {imageUrls.map((lnk, idx) => (
-                        <div key={idx} className="flex items-center gap-2">
-                          <span className="text-[11px] font-semibold text-slate-500 font-mono w-4 text-center">{idx + 1}</span>
-                          <input
-                            type="text"
-                            placeholder="e.g. https://i.imgur.com/anotherImageUrl.jpg"
-                            value={lnk}
-                            onChange={(e) => {
-                              const updated = [...imageUrls];
-                              updated[idx] = e.target.value;
-                              setImageUrls(updated);
-                            }}
-                            className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white focus:ring-1 focus:ring-indigo-500 font-sans"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setImageUrls(imageUrls.filter((_, i) => i !== idx));
-                            }}
-                            className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/25 rounded-lg transition-colors cursor-pointer flex items-center justify-center shrink-0"
-                            title="Remove image"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={() => setImageUrls([...imageUrls, ''])}
-                    className="w-full justify-center px-5 py-2.5 border border-slate-300 dark:border-slate-700 bg-white/45 dark:bg-slate-900/45 backdrop-blur-md text-slate-800 dark:text-slate-200 text-xs font-bold rounded-full transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 hover:bg-white/70 dark:hover:bg-slate-800/70 shadow-2xs"
-                    id="add-extra-photo-button"
-                  >
-                    <PlusCircle className="h-4 w-4 text-indigo-500" />
-                    <span>Add Image Link</span>
-                  </button>
-                </div>
-              </div>
+              {/* Redesigned Clean Photo Attachment Section */}
+              <PhotoAttachmentSection
+                primaryImageUrl={imageUrl}
+                onPrimaryImageUrlChange={(url) => {
+                  setImageUrl(url);
+                  if (url) setSuccessMsg('Photo uploaded and set as primary image.');
+                }}
+                galleryUrls={imageUrls}
+                onGalleryUrlsChange={(urls) => {
+                  setImageUrls(urls);
+                }}
+                imagePosition={imagePosition}
+                onImagePositionChange={(pos) => setImagePosition(pos)}
+                onInsertFigureIntoContent={(figTag) => {
+                  setContent(prev => (prev || '') + `<p>${figTag}</p><p><br></p>`);
+                  setSuccessMsg(`Inserted ${figTag} into article content`);
+                }}
+              />
 
               {/* Rich-Text content editor block */}
               <div>
@@ -1033,10 +960,14 @@ export default function AdminView() {
                   Article Content Prose *
                 </label>
                 <div className="border border-slate-300 rounded-lg overflow-hidden bg-white">
-                  <RichTextEditor value={content} onChange={setContent} />
+                  <RichTextEditor 
+                    value={content} 
+                    onChange={setContent} 
+                    availablePhotoCount={(imageUrl ? 1 : 0) + imageUrls.length}
+                  />
                 </div>
                 <p className="text-[10px] text-slate-400 mt-1 font-mono leading-relaxed">
-                  Provide rich formats, quotes, and layouts for reader retention.
+                  Provide rich formats, quotes, and layouts for reader retention. You can place photos anywhere in the story using <code className="bg-slate-100 px-1 py-0.5 rounded text-indigo-600 font-bold">[fig. 1]</code>, <code className="bg-slate-100 px-1 py-0.5 rounded text-indigo-600 font-bold">[fig. 2]</code>, etc.
                 </p>
               </div>
 

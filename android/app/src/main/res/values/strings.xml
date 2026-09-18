@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">Current News</string>
+    <string name="web_url">https://www.currentnews.blog/</string>
+    <string name="fallback_title">Current News Live - Independent Ledger</string>
+    <string name="network_error_title">Connection Lost</string>
+    <string name="network_error_msg">Please check your internet connection and try again.</string>
+    <string name="retry_btn">Retry Connection</string>
+    <string name="channel_name">Breaking News Alerts</string>
+    <string name="channel_description">Notifications for major investigative journalism and breaking dispatches.</string>
+</resources>

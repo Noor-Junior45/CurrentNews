@@ -7,16 +7,18 @@ import {
   ListTodo, 
   Quote, 
   HelpCircle, 
-  Sparkles 
+  Sparkles,
+  Image as ImageIcon
 } from 'lucide-react';
 
 interface RichTextEditorProps {
   value: string;
   onChange: (content: string) => void;
   placeholder?: string;
+  availablePhotoCount?: number;
 }
 
-export default function RichTextEditor({ value, onChange, placeholder }: RichTextEditorProps) {
+export default function RichTextEditor({ value, onChange, placeholder, availablePhotoCount = 0 }: RichTextEditorProps) {
   
   // Enriched format capabilities for beautiful styling choices (colors, highlights, alignments, links, blockquotes, code blocks)
   const formats = [
@@ -101,6 +103,23 @@ export default function RichTextEditor({ value, onChange, placeholder }: RichTex
           </span>
         </div>
         <div className="flex flex-wrap gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+          {/* Photo Figure insertion shortcuts if photos are uploaded */}
+          {availablePhotoCount > 0 && Array.from({ length: availablePhotoCount }).map((_, i) => {
+            const figNum = i + 1;
+            return (
+              <button
+                key={`insert-fig-${figNum}`}
+                type="button"
+                onClick={() => injectTemplate(`<p>[fig. ${figNum}]</p><p><br></p>`)}
+                className="inline-flex items-center gap-1 text-[10px] font-mono font-bold px-2.5 py-1.5 border rounded-full transition-all duration-200 hover:scale-[1.02] cursor-pointer shadow-2xs shrink-0 text-indigo-700 border-indigo-200 bg-indigo-50/80 hover:bg-indigo-100"
+                title={`Insert Photo Figure ${figNum} at cursor`}
+              >
+                <ImageIcon className="h-3 w-3 text-indigo-600 shrink-0" />
+                <span>Insert [fig. {figNum}]</span>
+              </button>
+            );
+          })}
+
           {templates.map((tpl) => {
             const IconComponent = tpl.icon;
             return (

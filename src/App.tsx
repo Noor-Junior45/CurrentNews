@@ -4,8 +4,6 @@ import { getDocFromServer, doc } from 'firebase/firestore';
 import { db } from './firebase';
 import Header from './components/Header';
 import Footer from './components/Footer';
-import ThemeToggle from './components/ThemeToggle';
-import ScrollHelper from './components/ScrollHelper';
 import NewsletterPopup from './components/NewsletterPopup';
 import ConsentBanner from './components/ConsentBanner';
 import HomeView from './views/HomeView';
@@ -14,12 +12,13 @@ import AdminView from './views/AdminView';
 import LikedView from './views/LikedView';
 import PrivacyView from './views/PrivacyView';
 import TermsView from './views/TermsView';
+import DeleteAccountView from './views/DeleteAccountView';
 
 import { useLocation } from 'react-router-dom';
 
 function ConditionalFooter() {
   const location = useLocation();
-  if (location.pathname !== '/' && location.pathname !== '/privacy' && location.pathname !== '/terms') {
+  if (location.pathname !== '/' && location.pathname !== '/privacy' && location.pathname !== '/terms' && location.pathname !== '/delete-account') {
     return null;
   }
   return <Footer />;
@@ -47,7 +46,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <div className="flex flex-col min-h-screen bg-slate-50 text-slate-900" id="app-root-container">
+      <div className="flex flex-col min-h-screen bg-white text-slate-900 overflow-x-hidden" id="app-root-container">
         
         {/* Persistent Premium Responsive Header */}
         <Header />
@@ -71,6 +70,7 @@ export default function App() {
             {/* 5. Legal & Policies Pages */}
             <Route path="/privacy" element={<PrivacyView />} />
             <Route path="/terms" element={<TermsView />} />
+            <Route path="/delete-account" element={<DeleteAccountView />} />
             
             {/* Fallback route back to home */}
             <Route path="*" element={<HomeView />} />
@@ -79,12 +79,6 @@ export default function App() {
 
         {/* Persistent Dynamic Footer (Hidden in Admin Panel) */}
         <ConditionalFooter />
-
-        {/* Floating Light/Dark Mode Switcher */}
-        <ThemeToggle />
-
-        {/* Dynamic Samsung-style Scroll Controller */}
-        <ScrollHelper />
 
         {/* Floating pop-up modal newsletter invite for first-time visitors */}
         <NewsletterPopup />

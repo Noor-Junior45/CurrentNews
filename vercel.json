@@ -1,5 +1,9 @@
 {
+  "trailingSlash": false,
   "rewrites": [
-    { "source": "/((?!api|rss.xml|ads.txt|assets|.*\\.).*)", "destination": "/index.html" }
+    { "source": "/sitemap.xml", "destination": "/api/sitemap.xml" },
+    { "source": "/rss.xml", "destination": "/api/rss.xml" },
+    { "source": "/ads.txt", "destination": "/api/ads.txt" },
+    { "source": "/((?!api|assets|favicon|robots\\.txt|manifest\\.json|sw\\.js|.*\\.).*)", "destination": "/index.html" }
   ]
 }

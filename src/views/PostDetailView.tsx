@@ -174,7 +174,11 @@ export default function PostDetailView() {
       }
     }
 
-    const currentUrl = window.location.href;
+    const postSlug = slugify(post.title || '');
+    const baseOrigin = typeof window !== 'undefined' && window.location.origin && !window.location.origin.includes('localhost')
+      ? 'https://www.currentnews.blog'
+      : (typeof window !== 'undefined' ? window.location.origin : 'https://www.currentnews.blog');
+    const canonicalUrl = postSlug ? `${baseOrigin}/post/${post.id}/${postSlug}` : `${baseOrigin}/post/${post.id}`;
     const postKeywords = `current news, news, independent ledger, journalism, ${post.category || 'general'}, ${post.title.toLowerCase().split(' ').slice(0, 6).join(', ')}`;
     const siteLogo = 'https://i.imgur.com/gq2X5nE.jpeg';
     const mainImg = post.imageUrl || siteLogo;
@@ -184,16 +188,16 @@ export default function PostDetailView() {
     setMetaTag('name', 'keywords', postKeywords);
     setMetaTag('name', 'author', authorVal);
     setMetaTag('name', 'robots', 'index, follow');
-    setLinkTag('canonical', currentUrl);
+    setLinkTag('canonical', canonicalUrl);
 
     // 3. OpenGraph Tags mapped to Firestore / Dynamic values
     setMetaTag('property', 'og:title', post.title);
     setMetaTag('property', 'og:description', summary);
     setMetaTag('property', 'og:type', 'article');
-    setMetaTag('property', 'og:url', currentUrl);
+    setMetaTag('property', 'og:url', canonicalUrl);
     setMetaTag('property', 'og:image', mainImg);
     setMetaTag('property', 'og:image:alt', `Illustration for ${post.title}`);
-    setMetaTag('property', 'og:site_name', 'Current News Live');
+    setMetaTag('property', 'og:site_name', 'Current News');
     
     // Core OpenGraph Social Discovery tags requested by the user
     if (publishedIso) {
@@ -219,7 +223,7 @@ export default function PostDetailView() {
       "@type": "NewsArticle",
       "mainEntityOfPage": {
         "@type": "WebPage",
-        "@id": currentUrl
+        "@id": canonicalUrl
       },
       "headline": post.title,
       "description": summary,
@@ -233,7 +237,7 @@ export default function PostDetailView() {
       },
       "publisher": {
         "@type": "Organization",
-        "name": "Current News Live",
+        "name": "Current News",
         "logo": {
           "@type": "ImageObject",
           "url": siteLogo
@@ -348,9 +352,18 @@ export default function PostDetailView() {
     }
   };
 
+  const getCanonicalPostShareUrl = () => {
+    if (!post) return 'https://www.currentnews.blog';
+    const postSlug = slugify(post.title || '');
+    const baseOrigin = typeof window !== 'undefined' && window.location.origin && !window.location.origin.includes('localhost')
+      ? 'https://www.currentnews.blog'
+      : (typeof window !== 'undefined' ? window.location.origin : 'https://www.currentnews.blog');
+    return postSlug ? `${baseOrigin}/post/${post.id}/${postSlug}` : `${baseOrigin}/post/${post.id}`;
+  };
+
   const handleCopyLink = () => {
     if (post) {
-      const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}/?post=${post.id}` : `https://currentnewslive.vercel.app/?post=${post.id}`;
+      const shareUrl = getCanonicalPostShareUrl();
       navigator.clipboard.writeText(shareUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -359,7 +372,7 @@ export default function PostDetailView() {
 
   const handleNativeShare = async () => {
     if (post) {
-      const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}/?post=${post.id}` : `https://currentnewslive.vercel.app/?post=${post.id}`;
+      const shareUrl = getCanonicalPostShareUrl();
       if (typeof navigator !== 'undefined' && navigator.share) {
         try {
           await navigator.share({
@@ -516,7 +529,6 @@ export default function PostDetailView() {
   if (post.createdAt) {
     const d = typeof post.createdAt.toDate === 'function' ? post.createdAt.toDate() : new Date(post.createdAt);
     publishDate = d.toLocaleDateString('en-US', {
-      weekday: 'long',
       month: 'long',
       day: 'numeric',
       year: 'numeric'
@@ -526,6 +538,19 @@ export default function PostDetailView() {
   const renderArticleContent = () => {
     if (!post) return null;
     let contentHtml = post.content || '';
+
+    // Map all available post photos: fig. 1 = imageUrl, fig. 2+ = imageUrls[0+]
+    const allPhotos: string[] = [];
+    if (post.imageUrl && post.imageUrl.trim().length > 0) {
+      allPhotos.push(post.imageUrl.trim());
+    }
+    if (post.imageUrls && Array.isArray(post.imageUrls)) {
+      post.imageUrls.forEach(u => {
+        if (u && u.trim().length > 0) allPhotos.push(u.trim());
+      });
+    }
+
+    const inlineFiguresRendered = new Set<number>();
 
     // Parse bare Imgur URLs or raw image links pasted in copy/text
     const replaceBareUrls = (htmlText: string) => {
@@ -548,13 +573,41 @@ export default function PostDetailView() {
         return `<div class="my-8 flex justify-center"><img src="${url}" alt="Attached Chronicle Image" class="rounded-2xl max-w-full h-auto border border-slate-200 shadow-md transform hover:scale-[1.01] transition-all duration-300 md:max-h-[500px]" referrerPolicy="no-referrer" /></div>`;
       });
 
+      // Handle inline [fig. N] or [fig N] markers in prose
+      const figPattern = /\[fig(?:\.|\s+)?\s*(\d+)\]/gi;
+      text = text.replace(figPattern, (match, numStr) => {
+        const figNum = parseInt(numStr, 10);
+        const photoIdx = figNum - 1;
+        if (photoIdx >= 0 && photoIdx < allPhotos.length) {
+          inlineFiguresRendered.add(photoIdx);
+          let pUrl = allPhotos[photoIdx];
+          if (pUrl.includes('imgur.com') && !/\.(png|jpg|jpeg|gif|webp)$/i.test(pUrl)) {
+            pUrl = pUrl.replace('imgur.com', 'i.imgur.com') + '.jpg';
+          }
+          return `
+            <figure class="my-8 block text-center not-prose" id="article-figure-${figNum}">
+              <div class="flex justify-center">
+                <img src="${pUrl}" alt="Figure ${figNum}" class="rounded-2xl max-w-full h-auto border border-slate-250 shadow-md hover:shadow-lg transition-all duration-300 md:max-h-[520px] cursor-pointer" referrerPolicy="no-referrer" />
+              </div>
+              <figcaption class="mt-2 text-center text-xs font-mono text-slate-500 italic">
+                Fig. ${figNum}
+              </figcaption>
+            </figure>
+          `;
+        }
+        return match;
+      });
+
       return text;
     };
 
     contentHtml = replaceBareUrls(contentHtml);
 
+    // If primary photo was already placed inline via [fig. 1], we don't need to inject it again at top/middle/bottom
+    const isPrimaryRenderedInline = inlineFiguresRendered.has(0);
+
     // Render based on imageUrl and imagePosition configuration
-    if (post.imageUrl && post.imageUrl.trim().length > 0) {
+    if (!isPrimaryRenderedInline && post.imageUrl && post.imageUrl.trim().length > 0) {
       let resolvedSrc = post.imageUrl.trim();
       if (resolvedSrc.includes('imgur.com') && !/\.(png|jpg|jpeg|gif|webp)$/i.test(resolvedSrc)) {
         resolvedSrc = resolvedSrc.replace('imgur.com', 'i.imgur.com') + '.jpg';
@@ -613,398 +666,366 @@ export default function PostDetailView() {
     );
   };
 
-  const dynamicShareUrl = typeof window !== 'undefined' ? `${window.location.origin}/?post=${post.id}` : `https://currentnewslive.vercel.app/?post=${post.id}`;
+  const dynamicShareUrl = getCanonicalPostShareUrl();
 
   return (
-    <div className="newspaper-paper w-full min-h-screen" id={`article-page-outer-container-${post.id}`}>
-      <article className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8" id={`article-${post.id}`}>
+    <div className="w-full min-h-screen bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100" id={`article-page-outer-container-${post.id}`}>
+      <article className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8" id={`article-${post.id}`}>
         
-        {/* Editorial Breadcrumbs & Back Trigger */}
-        <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4" id="breadcrumbs-header">
-          <nav className="flex items-center space-x-2 text-xs font-semibold uppercase tracking-wider text-stone-600">
-            <Link 
-              to="/" 
-              className="hover:text-stone-900 transition-colors"
-            >
-              Home
-            </Link>
-            <span className="text-stone-400 font-normal">/</span>
-            <Link 
-              to={`/?category=${encodeURIComponent(post.category || 'General')}`} 
-              className="hover:text-indigo-600 text-indigo-500 transition-colors"
-            >
-              {post.category || 'General'}
-            </Link>
-            <span className="text-stone-400 font-normal">/</span>
-            <span className="text-stone-900 font-extrabold truncate max-w-[150px] xs:max-w-[200px] sm:max-w-xs md:max-w-md">
-              Current dispatch
-            </span>
-          </nav>
-          <span className="text-[10px] bg-stone-200 text-stone-700 font-bold font-mono px-2.5 py-1 rounded-sm uppercase tracking-widest shrink-0 self-start sm:self-auto">
-            Independent Edition
+        {/* Article Breadcrumbs Path */}
+        <nav className="flex items-center space-x-2 text-xs font-semibold uppercase tracking-wider text-slate-500 mb-6" id="breadcrumbs-header">
+          <Link 
+            to="/" 
+            className="hover:text-slate-900 dark:hover:text-white transition-colors"
+          >
+            Home
+          </Link>
+          <span className="text-slate-400 font-normal">/</span>
+          <Link 
+            to={`/?category=${encodeURIComponent(post.category || 'General')}`} 
+            className="hover:text-emerald-600 dark:hover:text-emerald-400 text-slate-600 dark:text-slate-400 transition-colors"
+          >
+            {post.category || 'General'}
+          </Link>
+          <span className="text-slate-400 font-normal">/</span>
+          <span className="text-slate-900 dark:text-white font-extrabold truncate max-w-[160px] xs:max-w-[220px] sm:max-w-xs md:max-w-md">
+            Current dispatch
           </span>
-        </div>
+        </nav>
 
         {isOfflineCached && (
           <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-900/60 rounded-xl p-3 px-4 mb-6 flex items-center gap-2.5 text-amber-900 dark:text-amber-200 text-xs font-medium" id="offline-banner">
             <WifiOff className="h-4 w-4 text-amber-500 shrink-0 animate-pulse" />
-            <span><strong>Offline Mode:</strong> Viewing a saved copy of this dispatch retrieved from local memory. Please reconnect to view live updates and submit ratings.</span>
+            <span><strong>Offline Mode:</strong> Viewing a saved copy of this dispatch retrieved from local memory.</span>
           </div>
         )}
 
-        {/* ⚠️ AD PLACEMENT: Leaderboard top cover */}
-        <AdSpace type="leaderboard" />
+        {/* Article Heading */}
+        <h1 className="font-display font-black text-2xl sm:text-3xl md:text-4xl lg:text-5xl text-slate-900 dark:text-white tracking-tight leading-tight mb-4">
+          {post.title}
+        </h1>
 
-        {/* Main Grid: Left for article detail, Right for sticky sidebar banner */}
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-10 mt-8">
-          
-          {/* Left main area: takes 3/4 layout */}
-          <div className="lg:col-span-3">
-            
-            {/* Article Header */}
-            <header className="border-b border-stone-300 pb-6 mb-8">
-              <h1 className="font-display font-black text-3xl sm:text-4xl lg:text-5xl text-stone-900 tracking-tight leading-tight mb-4">
-                {post.title}
-              </h1>
-
-              {/* Author Meta */}
-              <div className="flex flex-wrap items-center gap-4 text-xs text-stone-600 font-sans mt-6">
-                <div className="flex items-center space-x-2.5">
-                  <img 
-                    src="https://i.imgur.com/gq2X5nE.jpeg" 
-                    alt="Current News Avatar" 
-                    className="h-9 w-9 rounded-full object-cover border border-stone-350 shadow-xs"
-                    referrerPolicy="no-referrer"
-                  />
-                  <div>
-                    <span className="font-semibold text-stone-900 block leading-tight">
-                      {post.authorName || globalPenName || 'Chronicle Staff Report'}
-                    </span>
-                    <span className="text-[10px] text-stone-500 font-mono tracking-wider flex items-center gap-1 uppercase">
-                      <Award className="h-3 w-3 text-amber-500" /> Ground Journalism
-                    </span>
-                  </div>
-                </div>
-
-                <div className="h-4 w-px bg-stone-300 hidden sm:block" />
-
-                <span className="flex items-center space-x-1">
-                  <Calendar className="h-4 w-4 text-stone-500" />
-                  <span>{publishDate}</span>
-                </span>
-
-                <div className="h-4 w-px bg-stone-300 hidden sm:block" />
-
-                <span className="flex items-center space-x-1">
-                  <Clock className="h-4 w-4 text-stone-500" />
-                  <span>3 min read</span>
-                </span>
-              </div>
-
-            {/* Share action bar */}
-            <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-4">
-              {/* Readers Reaction Buttons */}
-              <div className="flex items-center gap-2" id="article-reactions-group">
-                <button
-                  onClick={() => handleReaction('liked')}
-                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-sans font-semibold transition-all border cursor-pointer ${
-                    myReaction === 'liked'
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300 shadow-3xs'
-                      : 'bg-slate-50 text-slate-500 hover:text-slate-700 hover:bg-slate-100 border-slate-200'
-                  }`}
-                  title="Like this dispatch"
-                >
-                  <ThumbsUp className={`h-4 w-4 ${myReaction === 'liked' ? 'fill-emerald-600 animate-pulse' : ''}`} />
-                  <span className="font-sans">{likes} Likes</span>
-                </button>
-
-                <button
-                  onClick={() => handleReaction('disliked')}
-                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-sans font-semibold transition-all border cursor-pointer ${
-                    myReaction === 'disliked'
-                      ? 'bg-rose-50 text-rose-700 border-rose-300 shadow-3xs'
-                      : 'bg-slate-50 text-slate-500 hover:text-slate-700 hover:bg-slate-100 border-slate-200'
-                  }`}
-                  title="Dislike this dispatch"
-                >
-                  <ThumbsDown className={`h-4 w-4 ${myReaction === 'disliked' ? 'fill-rose-600' : ''}`} />
-                  <span className="font-sans">{dislikes} Dislikes</span>
-                </button>
-
-                {/* Dynamic Views count beside reactions */}
-                <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-slate-400 dark:text-slate-500 font-medium ml-2" title="Total article views">
-                  <Eye className="h-4 w-4 text-slate-400" />
-                  <span className="font-sans">{post.views || 0} Views</span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                {/* Native Mobile Share */}
-                {typeof navigator !== 'undefined' && navigator.share && (
-                  <button
-                    onClick={handleNativeShare}
-                    className="p-2.5 bg-indigo-50/50 hover:bg-indigo-100/70 text-indigo-600 dark:bg-indigo-950/20 dark:text-indigo-400 dark:hover:bg-indigo-900/40 rounded-full border border-indigo-200/30 hover:border-indigo-400 transition-all duration-300 cursor-pointer flex items-center justify-center shrink-0 shadow-3xs hover:scale-115 active:scale-95 hover:shadow-xs"
-                    title="Share via device apps"
-                  >
-                    <Share2 className="h-4 w-4" />
-                  </button>
-                )}
-
-                {/* X (formerly Twitter) Share */}
-                <a
-                  href={`https://x.com/intent/tweet?url=${encodeURIComponent(dynamicShareUrl)}&text=${encodeURIComponent(post.title)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-2.5 bg-slate-100/50 dark:bg-slate-800/40 text-slate-850 dark:text-slate-100 rounded-full border border-slate-200 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-500 transition-all duration-300 cursor-pointer flex items-center justify-center shrink-0 shadow-3xs hover:scale-115 active:scale-95 hover:shadow-xs"
-                  title="Share on X"
-                >
-                  <svg className="h-4 w-4 fill-current" viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-                  </svg>
-                </a>
-
-                {/* WhatsApp Share */}
-                <a
-                  href={`https://api.whatsapp.com/send?text=${encodeURIComponent(post.title + ' ' + dynamicShareUrl)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-2.5 bg-emerald-50/50 dark:bg-emerald-950/20 text-[#25D366] rounded-full border border-emerald-200/30 hover:border-emerald-400/50 transition-all duration-300 cursor-pointer flex items-center justify-center shrink-0 shadow-3xs hover:scale-115 active:scale-95 hover:shadow-xs"
-                  title="Share on WhatsApp"
-                >
-                  <svg className="h-4 w-4 fill-current" viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.73-1.45L0 24zm6.59-4.846c1.6.95 3.188 1.449 4.825 1.451 5.436 0 9.86-4.37 9.864-9.799.002-2.63-1.023-5.101-2.885-6.966a9.9 9.9 0 0 0-6.98-2.82c-5.443 0-9.874 4.372-9.878 9.802-.001 1.77.463 3.5 1.34 5.023l-.99 3.616 3.704-.971zm11.367-6.405c-.31-.156-1.834-.905-2.119-1.008-.285-.104-.493-.156-.7.156-.207.312-.802 1.008-.984 1.217-.181.21-.362.235-.672.079-.31-.156-1.31-.483-2.496-1.542-.923-.824-1.546-1.841-1.727-2.153-.182-.312-.02-.481.136-.636.14-.139.31-.363.466-.546.156-.182.208-.312.31-.52.105-.209.052-.39-.026-.547-.078-.156-.7-1.691-.958-2.315-.252-.607-.51-.523-.7-.533l-.597-.01c-.207 0-.544.078-.83.39-.285.312-1.088 1.066-1.088 2.602 0 1.537 1.114 3.02 1.27 3.228.155.208 2.192 3.348 5.31 4.697.741.321 1.32.513 1.77.656.745.236 1.423.203 1.958.123.596-.089 1.834-.75 2.093-1.437.26-.687.26-1.277.182-1.402-.078-.125-.285-.208-.595-.364z" />
-                  </svg>
-                </a>
-
-                {/* Copy Link */}
-                <button
-                  onClick={handleCopyLink}
-                  className={`p-2.5 rounded-full transition-all duration-300 cursor-pointer flex items-center justify-center shrink-0 shadow-3xs border hover:scale-115 active:scale-95 hover:shadow-xs ${
-                    copied
-                      ? 'bg-emerald-500/10 dark:bg-emerald-500/15 border-emerald-500/50 dark:border-emerald-500/40 text-emerald-600 dark:text-emerald-400'
-                      : 'bg-slate-100/50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700 text-slate-650 dark:text-slate-300 hover:border-slate-400 dark:hover:border-slate-500'
-                  }`}
-                  title="Copy Link to Clipboard"
-                >
-                  {copied ? (
-                    <Check className="h-4 w-4 animate-bounce text-emerald-500" />
-                  ) : (
-                    <Copy className="h-4 w-4" />
-                  )}
-                </button>
-              </div>
-            </div>
-          </header>
-
-          {/* Clean Rendered HTML Article Body & Embed Handler in same box */}
-          <div 
-            className="newspaper-paper rounded-2xl border border-slate-100 shadow-xs p-6 sm:p-10 overflow-hidden" 
-            id="article-main-box"
-            onClick={(e) => {
-              const target = e.target as HTMLElement;
-              if (target.tagName === 'IMG') {
-                const src = target.getAttribute('src');
-                if (src) {
-                  setLightboxImage(src);
-                }
-              }
-            }}
-          >
-            {/* AUTO-EMBED SECTION: Injects custom YouTube and FaceBook players natively above the text */}
-            <EmbedHandler youtubeUrl={post.youtubeUrl} facebookUrl={post.facebookUrl} isHeader={true} />
-
-            {/* Main Rich Text Content & Image Inline integration */}
-            {renderArticleContent()}
-
-            {/* Custom References shown at the very end of the article, below the content body */}
-            {post.customLinks && post.customLinks.length > 0 && (
-              <EmbedHandler customLinks={post.customLinks} isHeader={false} />
-            )}
-
-            {/* Instagram/Reddit/Quora-Style Hashtags */}
-            {post.hashtags && post.hashtags.length > 0 && (
-              <div className="mt-8 pt-4 border-t border-slate-100 flex flex-wrap gap-2 items-center" id="article-hashtags">
-                <span className="text-xs font-bold text-slate-400 flex items-center gap-1 uppercase tracking-wider font-mono mr-1">
-                  <Hash className="h-3.5 w-3.5 text-indigo-500 font-bold" /> Tags:
-                </span>
-                {post.hashtags.map((tag, idx) => (
-                  <Link
-                    key={idx}
-                    to={`/?search=${encodeURIComponent(tag)}`}
-                    className="inline-flex items-center text-xs font-bold bg-slate-50 hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 px-3 py-1.5 rounded-full border border-slate-200 hover:border-indigo-200 transition-all cursor-pointer"
-                  >
-                    {tag}
-                  </Link>
-                ))}
-              </div>
-            )}
-
-            {/* End of Article Reactions Toolbar */}
-            <div className="mt-12 pt-8 border-t border-slate-100 flex flex-col items-center justify-center text-center space-y-4" id="article-bottom-reactions">
-              <h4 className="text-sm font-semibold text-slate-800 uppercase tracking-wider">
-                Enjoyed this dispatch? Give a reaction below
-              </h4>
-              <div className="flex items-center justify-center gap-3">
-                <button
-                  onClick={() => handleReaction('liked')}
-                  className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-sans font-semibold transition-all border cursor-pointer ${
-                    myReaction === 'liked'
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300 shadow-3xs'
-                      : 'bg-slate-50 text-slate-500 hover:text-slate-700 hover:bg-slate-100 border-slate-200'
-                  }`}
-                  title="Like this dispatch"
-                >
-                  <ThumbsUp className={`h-4 w-4 ${myReaction === 'liked' ? 'fill-emerald-600 animate-pulse' : ''}`} />
-                  <span className="font-sans">{likes} Likes</span>
-                </button>
-
-                <button
-                  onClick={() => handleReaction('disliked')}
-                  className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-sans font-semibold transition-all border cursor-pointer ${
-                    myReaction === 'disliked'
-                      ? 'bg-rose-50 text-rose-700 border-rose-300 shadow-3xs'
-                      : 'bg-slate-50 text-slate-500 hover:text-slate-700 hover:bg-slate-100 border-slate-200'
-                  }`}
-                  title="Dislike this dispatch"
-                >
-                  <ThumbsDown className={`h-4 w-4 ${myReaction === 'disliked' ? 'fill-rose-600' : ''}`} />
-                  <span className="font-sans">{dislikes} Dislikes</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Additional gallery if attached */}
-            {post.imageUrls && post.imageUrls.length > 0 && (
-              <div className="mt-8 pt-8 border-t border-slate-150" id="article-gallery-container">
-                <h4 className="text-xs font-mono font-extrabold text-indigo-650 uppercase tracking-widest mb-4 flex items-center gap-1.5">
-                  📁 Dispatch Photo Evidence & Gallery ({post.imageUrls.length})
-                </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {post.imageUrls.map((extraUrl, idx) => {
-                    let rSrc = extraUrl.trim();
-                    if (rSrc.includes('imgur.com') && !/\.(png|jpg|jpeg|gif|webp)$/i.test(rSrc)) {
-                      rSrc = rSrc.replace('imgur.com', 'i.imgur.com') + '.jpg';
-                    }
-                    return (
-                      <div 
-                        key={idx} 
-                        className="group overflow-hidden rounded-xl border border-slate-200 bg-slate-50 cursor-pointer"
-                        onClick={() => setLightboxImage(rSrc)}
-                      >
-                        <img 
-                          src={rSrc} 
-                          alt={`Evidence Image #${idx + 1}`} 
-                          className="w-full h-44 sm:h-52 object-cover transition-transform duration-300 hover:scale-105 pointer-events-none" 
-                          referrerPolicy="no-referrer"
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* ⚠️ AD PLACEMENT: Footer bottom ad zone */}
-          <AdSpace type="footer" />
-
-        </div>
-
-        {/* Right Area: Sticky sidebar takes 1/4 layout */}
-        <div className="lg:col-span-1">
-          <div className="sticky top-24 space-y-6">
-            
-            {/* ⚠️ AD PLACEMENT: Sidebar ad zone */}
-            <AdSpace type="sidebar" />
-
-            {/* Additional informational widgets */}
-            <div className="bg-stone-100/40 border border-stone-250/60 rounded-xl p-5 shadow-3xs">
-              <h4 className="font-display font-extrabold text-sm text-stone-900 uppercase tracking-widest border-b border-stone-200/50 pb-3 mb-3">
-                Editorial Disclaimer
-              </h4>
-              <p className="text-xs text-stone-600 leading-relaxed font-sans">
-                The views, positions, and contents disclosed inside this publication correspond directly to raw press reportings and are filed on our secure servers under autonomous, zero-bias journalism guidelines.
-              </p>
-            </div>
-
-          </div>
-        </div>
-
-      </div>
-
-      {/* Related Articles Section */}
-      {relatedPosts.length > 0 && (
-        <div className="mt-16 pt-10 border-t border-stone-300" id="related-articles-section">
-          <h3 className="font-display font-extrabold text-xl text-stone-900 uppercase tracking-wider mb-8 flex items-center gap-2">
-            <span className="w-2.5 h-6 bg-indigo-650 rounded-sm"></span>
-            <span>Related Coverage</span>
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {relatedPosts.map((relatedPost) => (
-              <Link
-                key={relatedPost.id}
-                to={`/post/${relatedPost.id}/${slugify(relatedPost.title)}`}
-                className="group flex flex-col newspaper-paper hover:bg-stone-50 border border-stone-200 hover:border-stone-300 rounded-2xl p-6 shadow-3xs hover:shadow-xs transition-all duration-200"
-              >
-                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 block mb-2 font-mono">
-                  {relatedPost.category || 'General'}
-                </span>
-                <h4 className="font-display font-black text-slate-900 group-hover:text-indigo-650 text-base leading-snug line-clamp-2 transition-colors duration-150 mb-3">
-                  {relatedPost.title}
-                </h4>
-                <p className="text-xs text-slate-550 line-clamp-3 leading-relaxed mb-4 grow font-sans">
-                  {getHtmlTextPreview(relatedPost.content, 120)}
-                </p>
-                <div className="flex items-center justify-between mt-auto pt-4 border-t border-slate-100 text-[10px] text-slate-400 font-mono">
-                  <span>{relatedPost.authorName || globalPenName || 'Staff Report'}</span>
-                  <span className="font-bold text-indigo-500 group-hover:text-indigo-600 inline-flex items-center gap-1">
-                    <span>Read</span>
-                    <ArrowRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
-                  </span>
-                </div>
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Dynamic Lightbox Modal Overlay */}
-      {lightboxImage && (
-        <div 
-          className="fixed inset-0 z-[1000] flex flex-col items-center justify-center bg-slate-950/85 backdrop-blur-md transition-opacity duration-300"
-          id="image-lightbox-overlay"
-          onClick={() => setLightboxImage(null)}
-        >
-          {/* Close button top right */}
-          <button 
-            onClick={() => setLightboxImage(null)}
-            className="absolute top-6 right-6 p-2.5 rounded-full bg-slate-900/60 hover:bg-slate-800 text-white font-mono transition-colors border border-white/10 cursor-pointer flex items-center justify-center shadow-lg"
-            aria-label="Close lightbox"
-            title="Close zoom mode (Esc)"
-          >
-            <span className="text-xs font-bold tracking-wider mr-1.5 pl-1.5">CLOSE</span>
-            <span className="text-xl leading-none pr-1.5">×</span>
-          </button>
-          
-          {/* Zoomed-In Image Panel */}
-          <div className="max-w-[90vw] max-h-[80vh] relative flex flex-col justify-center items-center">
+        {/* Writer Name, Avatar, Tag, Date, Time Read (In single line) */}
+        <div className="flex items-center flex-wrap gap-x-3 gap-y-2 text-xs text-slate-600 dark:text-slate-400 font-sans mb-5" id="article-meta-line">
+          <div className="flex items-center space-x-2">
             <img 
-              src={lightboxImage} 
-              alt="Expanded High Resolution View" 
-              className="rounded-xl max-w-full max-h-[75vh] object-contain border border-white/10 shadow-2xl transition-transform duration-300 transform scale-100"
-              onClick={(e) => e.stopPropagation()}
+              src="https://i.imgur.com/gq2X5nE.jpeg" 
+              alt="Current News Avatar" 
+              className="h-7 w-7 sm:h-8 sm:w-8 rounded-full object-cover shrink-0"
               referrerPolicy="no-referrer"
             />
-            
-            {/* Download/Source Option bar */}
-            <div className="mt-4 flex justify-center text-xs font-mono">
-              <span className="bg-white text-slate-900 font-semibold px-4 py-1.5 rounded-full border border-slate-200 shadow-md text-xs tracking-wide">
-                Ground Report Image
-              </span>
+            <span className="font-semibold text-slate-900 dark:text-slate-200">
+              {post.authorName || globalPenName || 'Chronicle Staff Report'}
+            </span>
+          </div>
+
+          <span className="text-slate-300 dark:text-slate-700 hidden xs:inline">•</span>
+
+          <span className="font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider text-[11px] sm:text-xs">
+            {post.category || 'General'}
+          </span>
+
+          <span className="text-slate-300 dark:text-slate-700">•</span>
+
+          <span className="flex items-center space-x-1 text-slate-500 dark:text-slate-400">
+            <Calendar className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+            <span>{publishDate}</span>
+          </span>
+
+          <span className="text-slate-300 dark:text-slate-700">•</span>
+
+          <span className="flex items-center space-x-1 text-slate-500 dark:text-slate-400">
+            <Clock className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+            <span>3 min read</span>
+          </span>
+        </div>
+
+        {/* Reactions without background box, Views, Share (Twitter, WhatsApp) */}
+        <div className="flex flex-wrap items-center justify-between gap-4 py-2" id="article-actions-bar">
+          <div className="flex items-center gap-5 sm:gap-6 flex-wrap">
+            {/* Like Button without background box */}
+            <button
+              onClick={() => handleReaction('liked')}
+              className={`inline-flex items-center gap-1.5 text-xs font-semibold transition-colors cursor-pointer bg-transparent border-0 p-0 shadow-none ${
+                myReaction === 'liked' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+              title="Like this dispatch"
+              id="article-like-btn"
+            >
+              <ThumbsUp className={`h-4 w-4 ${myReaction === 'liked' ? 'fill-emerald-600 text-emerald-600 dark:fill-emerald-400 dark:text-emerald-400' : 'text-slate-500'}`} />
+              <span className="font-sans">{likes} Likes</span>
+            </button>
+
+            {/* Dislike Button without background box */}
+            <button
+              onClick={() => handleReaction('disliked')}
+              className={`inline-flex items-center gap-1.5 text-xs font-semibold transition-colors cursor-pointer bg-transparent border-0 p-0 shadow-none ${
+                myReaction === 'disliked' ? 'text-rose-600 dark:text-rose-400' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+              title="Dislike this dispatch"
+              id="article-dislike-btn"
+            >
+              <ThumbsDown className={`h-4 w-4 ${myReaction === 'disliked' ? 'fill-rose-600 text-rose-600 dark:fill-rose-400 dark:text-rose-400' : 'text-slate-500'}`} />
+              <span className="font-sans">{dislikes} Dislikes</span>
+            </button>
+
+            {/* Views */}
+            <div className="inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400" title="Total article views" id="article-views-count">
+              <Eye className="h-4 w-4 text-slate-400 shrink-0" />
+              <span className="font-sans">{post.views || 0} Views</span>
             </div>
           </div>
+
+          {/* Social Share Buttons */}
+          <div className="flex items-center gap-3" id="article-share-buttons">
+            {typeof navigator !== 'undefined' && navigator.share && (
+              <button
+                onClick={handleNativeShare}
+                className="p-1.5 text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors cursor-pointer flex items-center justify-center bg-transparent border-0"
+                title="Share dispatch"
+                id="native-share-btn"
+              >
+                <Share2 className="h-4 w-4" />
+              </button>
+            )}
+
+            <a
+              href={`https://x.com/intent/tweet?url=${encodeURIComponent(dynamicShareUrl)}&text=${encodeURIComponent(post.title)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-1.5 text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors cursor-pointer flex items-center justify-center bg-transparent border-0"
+              title="Share on X"
+              id="twitter-share-btn"
+            >
+              <svg className="h-4 w-4 fill-current" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+              </svg>
+            </a>
+
+            <a
+              href={`https://api.whatsapp.com/send?text=${encodeURIComponent(post.title + ' ' + dynamicShareUrl)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-1.5 text-[#25D366] hover:opacity-80 transition-opacity cursor-pointer flex items-center justify-center bg-transparent border-0"
+              title="Share on WhatsApp"
+              id="whatsapp-share-btn"
+            >
+              <svg className="h-4 w-4 fill-current" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.73-1.45L0 24zm6.59-4.846c1.6.95 3.188 1.449 4.825 1.451 5.436 0 9.86-4.37 9.864-9.799.002-2.63-1.023-5.101-2.885-6.966a9.9 9.9 0 0 0-6.98-2.82c-5.443 0-9.874 4.372-9.878 9.802-.001 1.77.463 3.5 1.34 5.023l-.99 3.616 3.704-.971zm11.367-6.405c-.31-.156-1.834-.905-2.119-1.008-.285-.104-.493-.156-.7.156-.207.312-.802 1.008-.984 1.217-.181.21-.362.235-.672.079-.31-.156-1.31-.483-2.496-1.542-.923-.824-1.546-1.841-1.727-2.153-.182-.312-.02-.481.136-.636.14-.139.31-.363.466-.546.156-.182.208-.312.31-.52.105-.209.052-.39-.026-.547-.078-.156-.7-1.691-.958-2.315-.252-.607-.51-.523-.7-.533l-.597-.01c-.207 0-.544.078-.83.39-.285.312-1.088 1.066-1.088 2.602 0 1.537 1.114 3.02 1.27 3.228.155.208 2.192 3.348 5.31 4.697.741.321 1.32.513 1.77.656.745.236 1.423.203 1.958.123.596-.089 1.834-.75 2.093-1.437.26-.687.26-1.277.182-1.402-.078-.125-.285-.208-.595-.364z" />
+              </svg>
+            </a>
+          </div>
         </div>
-      )}
+
+        {/* Horizontal Line Dividing Heading and Description */}
+        <hr className="my-6 border-0 h-px bg-slate-200 dark:bg-slate-800" />
+
+        {/* YouTube and Facebook Embeds: stacked on phone, side-by-side on large screen */}
+        <EmbedHandler youtubeUrl={post.youtubeUrl} facebookUrl={post.facebookUrl} isHeader={true} />
+
+        {/* Whole Story Content (No box design) */}
+        <div 
+          className="w-full bg-transparent border-0 p-0 shadow-none overflow-hidden" 
+          id="article-main-box"
+          onClick={(e) => {
+            const target = e.target as HTMLElement;
+            if (target.tagName === 'IMG') {
+              const src = target.getAttribute('src');
+              if (src) {
+                setLightboxImage(src);
+              }
+            }
+          }}
+        >
+          {renderArticleContent()}
+
+          {/* Custom References if any */}
+          {post.customLinks && post.customLinks.length > 0 && (
+            <EmbedHandler customLinks={post.customLinks} isHeader={false} />
+          )}
+        </div>
+
+        {/* Additional Gallery if present */}
+        {post.imageUrls && post.imageUrls.length > 0 && (
+          <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-800" id="article-gallery-container">
+            <h4 className="text-xs font-mono font-bold text-slate-500 uppercase tracking-widest mb-4">
+              Photo Evidence & Gallery ({post.imageUrls.length})
+            </h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {post.imageUrls.map((extraUrl, idx) => {
+                let rSrc = extraUrl.trim();
+                if (rSrc.includes('imgur.com') && !/\.(png|jpg|jpeg|gif|webp)$/i.test(rSrc)) {
+                  rSrc = rSrc.replace('imgur.com', 'i.imgur.com') + '.jpg';
+                }
+                return (
+                  <div 
+                    key={idx} 
+                    className="group overflow-hidden rounded-xl bg-slate-100 dark:bg-slate-900 cursor-pointer"
+                    onClick={() => setLightboxImage(rSrc)}
+                  >
+                    <img 
+                      src={rSrc} 
+                      alt={`Evidence Image #${idx + 1}`} 
+                      className="w-full h-44 sm:h-52 object-cover transition-transform duration-300 hover:scale-105 pointer-events-none" 
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Tags Section without pill shapes, with comma between tags */}
+        {post.hashtags && post.hashtags.length > 0 && (
+          <div className="mt-8 pt-4 flex flex-wrap items-center gap-1 text-xs text-slate-600 dark:text-slate-400 font-medium" id="article-hashtags">
+            <span className="font-bold text-slate-900 dark:text-white mr-1">#tags:</span>
+            {post.hashtags.map((tag, idx) => {
+              const cleanTag = tag.trim().replace(/^#/, '');
+              const isLast = idx === post.hashtags.length - 1;
+              return (
+                <span key={idx} className="inline-flex items-center">
+                  <Link
+                    to={`/?search=${encodeURIComponent(cleanTag)}`}
+                    className="text-slate-600 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:underline transition-colors"
+                  >
+                    #{cleanTag}
+                  </Link>
+                  {!isLast && <span className="text-slate-400 mr-1.5">,</span>}
+                </span>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Bottom Reactions Section with message */}
+        <div className="mt-10 py-4 flex flex-col items-center justify-center text-center space-y-3.5 w-full mx-auto" id="article-bottom-reactions">
+          <p className="text-sm sm:text-base font-bold text-slate-900 dark:text-white text-center">
+            Enjoyed this articles? give a reaction below.
+          </p>
+          <div className="flex items-center justify-center gap-3.5">
+            <button
+              onClick={() => handleReaction('liked')}
+              className={`inline-flex items-center gap-2 px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer border-0 shadow-none ${
+                myReaction === 'liked'
+                  ? 'bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+              title="Like this dispatch"
+              id="bottom-like-btn"
+            >
+              <ThumbsUp className={`h-4 w-4 ${myReaction === 'liked' ? 'fill-emerald-600 text-emerald-600 dark:fill-emerald-400 dark:text-emerald-400' : 'text-slate-500'}`} />
+              <span className="font-sans">{likes} Likes</span>
+            </button>
+
+            <button
+              onClick={() => handleReaction('disliked')}
+              className={`inline-flex items-center gap-2 px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer border-0 shadow-none ${
+                myReaction === 'disliked'
+                  ? 'bg-rose-100 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+              title="Dislike this dispatch"
+              id="bottom-dislike-btn"
+            >
+              <ThumbsDown className={`h-4 w-4 ${myReaction === 'disliked' ? 'fill-rose-600 text-rose-600 dark:fill-rose-400 dark:text-rose-400' : 'text-slate-500'}`} />
+              <span className="font-sans">{dislikes} Dislikes</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Horizontal Grey Colour Line */}
+        <hr className="my-8 border-0 h-px bg-slate-200 dark:bg-slate-800" />
+
+        {/* Editorial Disclaimer and Description (No box design) */}
+        <div className="my-2" id="editorial-disclaimer-section">
+          <h4 className="font-display font-bold text-sm text-slate-900 dark:text-white uppercase tracking-wider mb-2">
+            Editorial Disclaimer
+          </h4>
+          <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed font-sans max-w-3xl">
+            The views, positions, and contents disclosed inside this publication correspond directly to raw press reportings and are filed on our secure servers under autonomous, zero-bias journalism guidelines.
+          </p>
+        </div>
+
+        {/* Again Horizontal Grey Colour Line */}
+        <hr className="my-8 border-0 h-px bg-slate-200 dark:bg-slate-800" />
+
+        {/* Related Coverage Section (No box design, articles divided by horizontal grey lines) */}
+        {relatedPosts.length > 0 && (
+          <div className="mt-4" id="related-articles-section">
+            <h3 className="font-display font-bold text-lg sm:text-xl text-slate-900 dark:text-white mb-6 flex items-center gap-2">
+              <span className="w-1.5 h-4 bg-emerald-500 rounded-xs"></span>
+              <span>Related Coverage</span>
+            </h3>
+            <div className="flex flex-col" id="related-articles-list">
+              {relatedPosts.map((relatedPost, idx) => (
+                <div key={relatedPost.id} id={`related-article-item-${relatedPost.id}`}>
+                  <Link
+                    to={`/post/${relatedPost.id}/${slugify(relatedPost.title)}`}
+                    className="group block bg-transparent border-0 p-0 transition-colors"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1 mb-1.5">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 font-mono">
+                        {relatedPost.category || 'General'}
+                      </span>
+                      <span className="text-[11px] text-slate-400 font-mono">
+                        {relatedPost.authorName || globalPenName || 'Staff Report'}
+                      </span>
+                    </div>
+                    <h4 className="font-display font-bold text-slate-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 text-base sm:text-lg leading-snug line-clamp-2 transition-colors duration-150 mb-2">
+                      {relatedPost.title}
+                    </h4>
+                    <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-2 sm:line-clamp-3 leading-relaxed mb-3 grow font-sans">
+                      {getHtmlTextPreview(relatedPost.content, 140)}
+                    </p>
+                    <div className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 group-hover:underline inline-flex items-center gap-1">
+                      <span>Read article</span>
+                      <ArrowRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
+                    </div>
+                  </Link>
+                  {idx < relatedPosts.length - 1 && (
+                    <hr className="my-6 border-0 h-px bg-slate-200 dark:bg-slate-800" />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Dynamic Lightbox Modal Overlay */}
+        {lightboxImage && (
+          <div 
+            className="fixed inset-0 z-[1000] flex flex-col items-center justify-center bg-slate-950/85 backdrop-blur-md transition-opacity duration-300"
+            id="image-lightbox-overlay"
+            onClick={() => setLightboxImage(null)}
+          >
+            <button 
+              onClick={() => setLightboxImage(null)}
+              className="absolute top-6 right-6 p-2.5 rounded-full bg-slate-900/60 hover:bg-slate-800 text-white font-mono transition-colors border border-white/10 cursor-pointer flex items-center justify-center shadow-lg"
+              aria-label="Close lightbox"
+              title="Close zoom mode (Esc)"
+            >
+              <span className="text-xs font-bold tracking-wider mr-1.5 pl-1.5">CLOSE</span>
+              <span className="text-xl leading-none pr-1.5">×</span>
+            </button>
+            
+            <div className="max-w-[90vw] max-h-[80vh] relative flex flex-col justify-center items-center">
+              <img 
+                src={lightboxImage} 
+                alt="Expanded High Resolution View" 
+                className="rounded-xl max-w-full max-h-[75vh] object-contain border border-white/10 shadow-2xl transition-transform duration-300 transform scale-100"
+                onClick={(e) => e.stopPropagation()}
+                referrerPolicy="no-referrer"
+              />
+              
+              <div className="mt-4 flex justify-center text-xs font-mono">
+                <span className="bg-white text-slate-900 font-semibold px-4 py-1.5 rounded-full border border-slate-200 shadow-md text-xs tracking-wide">
+                  Ground Report Image
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
 
       </article>
     </div>

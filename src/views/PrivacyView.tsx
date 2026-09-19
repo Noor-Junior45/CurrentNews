@@ -1,6 +1,7 @@
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, ShieldCheck, Mail, Lock, Eye, ScrollText } from 'lucide-react';
+import { Lock, Eye, ScrollText, Mail } from 'lucide-react';
+import ProfilePageNavbar from '../components/ProfilePageNavbar';
 
 export default function PrivacyView() {
   useEffect(() => {
@@ -8,39 +9,16 @@ export default function PrivacyView() {
   }, []);
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-10" id="privacy-policy-view">
-      
-      {/* Editorial Header Navigation */}
-      <div className="mb-8" id="privacy-nav-container">
-        <Link 
-          to="/" 
-          className="inline-flex items-center gap-2 text-xs font-mono font-bold text-slate-500 hover:text-indigo-600 transition-colors uppercase"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" />
-          <span>Back to Ledger Feed</span>
-        </Link>
-      </div>
+    <div className="min-h-screen bg-white dark:bg-slate-950" id="privacy-policy-view">
+      {/* Top Header with liquid glass Back button and short heading */}
+      <ProfilePageNavbar title="Privacy" />
 
-      <div className="border-b-4 border-double border-slate-900 dark:border-slate-800 pb-6 mb-8" id="privacy-title-header">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-xl border border-indigo-100 dark:border-indigo-900/60">
-            <ShieldCheck className="h-6 w-6" />
-          </div>
-          <div>
-            <span className="text-[10px] font-mono font-bold tracking-widest text-indigo-600 uppercase block mb-1">
-              Legal Disclosures & Guidelines
-            </span>
-            <h1 className="font-display font-black text-3xl sm:text-4xl text-slate-950 dark:text-slate-50 uppercase tracking-tight">
-              Privacy Policy
-            </h1>
-          </div>
-        </div>
-        <p className="text-xs sm:text-sm text-slate-500 mt-3 font-sans leading-relaxed">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
+        <p className="text-xs sm:text-sm text-slate-500 mb-8 font-sans leading-relaxed">
           Last updated: June 24, 2026. This Privacy Policy details our protocols surrounding the collection, use, and disclosure of reader data when visiting or installing the Current News Live application.
         </p>
-      </div>
 
-      {/* Grid of Key Privacy Principles */}
+        {/* Grid of Key Privacy Principles */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8" id="privacy-highlights">
         <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
           <Lock className="h-5 w-5 text-indigo-500 mb-2" />
@@ -195,6 +173,7 @@ export default function PrivacyView() {
 
       </div>
 
+      </div>
     </div>
   );
 }

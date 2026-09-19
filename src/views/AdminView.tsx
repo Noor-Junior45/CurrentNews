@@ -3,8 +3,10 @@ import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuthState } from '../hooks/useAuthState';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
 import { Post, slugify } from '../types';
+import { cleanImageUrl, getFallbackImageUrl, sanitizePostImages } from '../utils/imageUrl';
 import RichTextEditor from '../components/RichTextEditor';
 import PhotoAttachmentSection from '../components/PhotoAttachmentSection';
+import ProfilePageNavbar from '../components/ProfilePageNavbar';
 import { 
   collection, 
   getDocs, 
@@ -53,7 +55,7 @@ export default function AdminView() {
     if (!loading && user && !isAdmin) {
       console.warn('Unauthorized user blocked from admin console', user.email);
       const timer = setTimeout(() => {
-        navigate('/');
+        navigate('/profile');
       }, 3000);
       return () => clearTimeout(timer);
     }
@@ -81,7 +83,9 @@ export default function AdminView() {
   const [targetStatus, setTargetStatus] = useState<'published' | 'draft'>('published');
   const [sendEmailAlert, setSendEmailAlert] = useState(true);
   const [imageUrl, setImageUrl] = useState('');
+  const [imageUrlFallback, setImageUrlFallback] = useState('');
   const [imageUrls, setImageUrls] = useState<string[]>([]);
+  const [imageUrlsFallback, setImageUrlsFallback] = useState<string[]>([]);
   const [imagePosition, setImagePosition] = useState<'top' | 'middle' | 'bottom'>('top');
   const [pubListFilter, setPubListFilter] = useState<'all' | 'published' | 'drafts'>('all');
 
@@ -161,10 +165,10 @@ export default function AdminView() {
       const querySnapshot = await getDocs(q);
       const fetched: Post[] = [];
       querySnapshot.forEach((doc) => {
-        fetched.push({
+        fetched.push(sanitizePostImages({
           id: doc.id,
           ...doc.data()
-        } as Post);
+        } as Post));
       });
 
       // Filter publications so each admin only sees their own posts
@@ -364,7 +368,9 @@ export default function AdminView() {
     setAuthorName('');
     setCategory('General');
     setImageUrl('');
+    setImageUrlFallback('');
     setImageUrls([]);
+    setImageUrlsFallback([]);
     setImagePosition('top');
     setEditingPostId(null);
     setIsEditing(false);
@@ -391,7 +397,12 @@ export default function AdminView() {
     setSuccessMsg(null);
 
     const filteredCustomLinks = customLinks.filter(lnk => lnk && lnk.trim().length > 0);
-    const filteredImageUrls = imageUrls.filter(url => url && url.trim().length > 0);
+    const cleanPrimaryImg = cleanImageUrl(imageUrl);
+    const cleanPrimaryFallback = getFallbackImageUrl(cleanPrimaryImg, imageUrlFallback);
+    const filteredImageUrls = imageUrls
+      .filter(url => url && url.trim().length > 0)
+      .map(cleanImageUrl);
+    const filteredImageUrlsFallback = filteredImageUrls.map((u, i) => getFallbackImageUrl(u, imageUrlsFallback[i]));
     const filteredHashtags = hashtags
       .map(tag => tag.trim())
       .filter(tag => tag.length > 0)
@@ -409,8 +420,10 @@ export default function AdminView() {
       authorId: user?.uid || '',
       category: category,
       status: targetStatus,
-      imageUrl: imageUrl.trim(),
+      imageUrl: cleanPrimaryImg,
+      imageUrlFallback: cleanPrimaryFallback,
       imageUrls: filteredImageUrls,
+      imageUrlsFallback: filteredImageUrlsFallback,
       imagePosition: imagePosition,
     };
 
@@ -535,8 +548,11 @@ export default function AdminView() {
     setAuthorName(post.authorName || '');
     setCategory(post.category || 'General');
     setTargetStatus(post.status || 'published');
-    setImageUrl(post.imageUrl || '');
-    setImageUrls(post.imageUrls || []);
+    const sanitizedPost = sanitizePostImages(post);
+    setImageUrl(sanitizedPost.imageUrl || '');
+    setImageUrlFallback(sanitizedPost.imageUrlFallback || '');
+    setImageUrls(sanitizedPost.imageUrls || []);
+    setImageUrlsFallback(sanitizedPost.imageUrlsFallback || []);
     setImagePosition(post.imagePosition || 'top');
     setEditingPostId(post.id);
     setIsEditing(true);
@@ -618,36 +634,20 @@ export default function AdminView() {
   ];
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10" id="admin-board-view">
-      
-      {/* Title Panel */}
-      <div className="border-b-4 border-double border-slate-900 pb-6 mb-10 flex flex-col md:flex-row md:items-center justify-between gap-4 relative">
-        <div>
-          <span className="text-xs font-mono font-bold text-indigo-600 uppercase tracking-widest block mb-1">Editor-In-Chief Console</span>
-          <h1 className="font-display font-extrabold text-3xl text-slate-950 tracking-tight leading-none uppercase">
-            Ledger Content Architect
-          </h1>
-        </div>
-        
-        {/* Connection health visual indicator and close button */}
-        <div className="flex items-center gap-3.5" id="admin-header-controls">
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 border border-green-200 text-green-800 text-xs font-semibold rounded-lg font-mono">
+    <div className="min-h-screen bg-white dark:bg-slate-950" id="admin-board-view">
+      {/* Top Header with liquid glass Back button and short heading */}
+      <ProfilePageNavbar 
+        title="Admin" 
+        rightAction={
+          <div className="flex items-center gap-2 px-2.5 py-1 bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-900 text-green-800 dark:text-green-300 text-[11px] font-semibold rounded-full font-mono">
             <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-            <span>Firestore Real-Time Authorized</span>
+            <span className="hidden sm:inline">Firestore Authorized</span>
           </div>
+        }
+      />
 
-          <button
-            onClick={() => navigate('/')}
-            className="p-1.5 text-red-600 hover:text-white hover:bg-red-600 border-2 border-red-500 hover:border-red-600 rounded-lg bg-red-50 transition-all duration-200 cursor-pointer flex items-center justify-center font-bold"
-            id="close-admin-portal-btn"
-            title="Close page and exit portal"
-          >
-            <X className="h-5 w-5 stroke-[3]" />
-          </button>
-        </div>
-      </div>
-
-      {/* 🧭 Segment Switcher Navigation Deck */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* 🧭 Segment Switcher Navigation Deck */}
       <div className="mb-10 bg-white/45 dark:bg-slate-900/40 backdrop-blur-md p-1.5 border border-white/60 dark:border-white/10 rounded-2xl md:rounded-full flex flex-col md:flex-row gap-2 shadow-lg shadow-slate-150/40 dark:shadow-none md:items-center w-full" id="segment-deck">
         {segments.map((seg) => {
           const isActive = currentSegment === seg.id;
@@ -942,10 +942,14 @@ export default function AdminView() {
                   setImageUrl(url);
                   if (url) setSuccessMsg('Photo uploaded and set as primary image.');
                 }}
+                primaryImageUrlFallback={imageUrlFallback}
+                onPrimaryImageUrlFallbackChange={setImageUrlFallback}
                 galleryUrls={imageUrls}
                 onGalleryUrlsChange={(urls) => {
                   setImageUrls(urls);
                 }}
+                galleryUrlsFallback={imageUrlsFallback}
+                onGalleryUrlsFallbackChange={setImageUrlsFallback}
                 imagePosition={imagePosition}
                 onImagePositionChange={(pos) => setImagePosition(pos)}
                 onInsertFigureIntoContent={(figTag) => {
@@ -1528,6 +1532,7 @@ export default function AdminView() {
         </div>
       )}
 
+      </div>
     </div>
   );
 }

@@ -10,6 +10,7 @@ import rssHandler from './api/rss.xml.js';
 import adsHandler from './api/ads.txt.js';
 import sitemapHandler from './api/sitemap.xml.js';
 import { handleR2Upload } from './src/server/r2Upload.js';
+import { handleSocialPreview } from './src/server/socialPreview.js';
 
 // Load environment variables
 dotenv.config();
@@ -67,6 +68,9 @@ async function startServer() {
 
   // Serve the ads.txt file adapted from the Vercel handler
   app.all('/ads.txt', adaptVercelHandler(adsHandler));
+
+  // Dynamic Open Graph and Twitter Card tags injection for social crawlers (Facebook, X, WhatsApp, LinkedIn, Discord, Telegram, etc.)
+  app.use(handleSocialPreview);
 
   // Connect Vite configuration dynamically to support dev vs prod modes
   if (process.env.NODE_ENV !== "production") {

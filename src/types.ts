@@ -15,7 +15,9 @@ export interface Post {
   likes?: number; // Upvotes count
   dislikes?: number; // Downvotes count
   imageUrl?: string; // Opt to attach image/link
+  imageUrlFallback?: string; // Secondary self-healing fallback URL
   imageUrls?: string[]; // Multiple extra image links
+  imageUrlsFallback?: string[]; // Secondary self-healing fallback URLs for gallery
   imagePosition?: 'top' | 'middle' | 'bottom'; // Position mapping: top, middle, bottom
   views?: number; // Total article views
   hashtags?: string[]; // Custom social/instagram hashtags

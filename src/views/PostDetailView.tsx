@@ -4,6 +4,7 @@ import { doc, getDoc, setDoc, deleteDoc, updateDoc, increment, collection, query
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged } from 'firebase/auth';
 import { Post, slugify } from '../types';
+import { cleanImageUrl, getFallbackImageUrl, sanitizePostImages } from '../utils/imageUrl';
 import AdSpace from '../components/AdSpace';
 import EmbedHandler from '../components/EmbedHandler';
 import { Calendar, ChevronLeft, Award, Clock, Send, Copy, Check, Share2, ThumbsUp, ThumbsDown, ArrowRight, WifiOff, Eye, Hash } from 'lucide-react';
@@ -13,8 +14,9 @@ function getHtmlTextPreview(htmlString: string, maxLength: number = 160): string
   const tempDiv = document.createElement('div');
   tempDiv.innerHTML = htmlString;
   const excerpt = tempDiv.textContent || tempDiv.innerText || '';
-  if (excerpt.length <= maxLength) return excerpt;
-  return excerpt.substring(0, maxLength).trim() + '...';
+  const clean = excerpt.replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+  if (clean.length <= maxLength) return clean;
+  return clean.substring(0, maxLength).trim() + '...';
 }
 
 export default function PostDetailView() {
@@ -63,7 +65,7 @@ export default function PostDetailView() {
         const fetched: Post[] = [];
         snapshot.forEach((docSnap) => {
           if (docSnap.id !== post.id) {
-            fetched.push({ id: docSnap.id, ...docSnap.data() } as Post);
+            fetched.push(sanitizePostImages({ id: docSnap.id, ...docSnap.data() } as Post));
           }
         });
         setRelatedPosts(fetched.slice(0, 3));
@@ -123,7 +125,7 @@ export default function PostDetailView() {
     document.title = `${post.title} | Current News Live`;
 
     // Helpers to manage HTML head tags
-    const setMetaTag = (attribute: string, attrVal: string, content: string) => {
+    const setMetaTag = (attribute: 'property' | 'name', attrVal: string, content: string) => {
       let element = document.querySelector(`meta[${attribute}="${attrVal}"]`);
       if (!element) {
         element = document.createElement('meta');
@@ -155,7 +157,8 @@ export default function PostDetailView() {
     };
 
     // Calculate metadata values
-    const summary = getHtmlTextPreview(post.content || '', 160);
+    const rawExcerpt = getHtmlTextPreview(post.content || '', 160);
+    const summary = rawExcerpt.replace(/\s+/g, ' ').trim();
     const authorVal = post.authorName || globalPenName || 'Chronicle Staff Report';
     
     let publishedIso = '';
@@ -180,26 +183,39 @@ export default function PostDetailView() {
       : (typeof window !== 'undefined' ? window.location.origin : 'https://www.currentnews.blog');
     const canonicalUrl = postSlug ? `${baseOrigin}/post/${post.id}/${postSlug}` : `${baseOrigin}/post/${post.id}`;
     const postKeywords = `current news, news, independent ledger, journalism, ${post.category || 'general'}, ${post.title.toLowerCase().split(' ').slice(0, 6).join(', ')}`;
-    const siteLogo = 'https://i.imgur.com/gq2X5nE.jpeg';
-    const mainImg = post.imageUrl || siteLogo;
+    const siteLogo = 'https://i.imgur.com/gFgShoZ.jpeg';
+    const mainImg = cleanImageUrl(post.imageUrl || siteLogo);
+    const secureImg = mainImg.startsWith('http:') ? mainImg.replace('http:', 'https:') : mainImg;
+    const imgType = mainImg.toLowerCase().endsWith('.png')
+      ? 'image/png'
+      : mainImg.toLowerCase().endsWith('.webp')
+      ? 'image/webp'
+      : 'image/jpeg';
 
-    // 2. Base SEO Tags & Mappings to Firestore Data
+    // 2. Base SEO Tags & Canonical Mappings
     setMetaTag('name', 'description', summary);
     setMetaTag('name', 'keywords', postKeywords);
     setMetaTag('name', 'author', authorVal);
-    setMetaTag('name', 'robots', 'index, follow');
+    setMetaTag('name', 'robots', 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1');
     setLinkTag('canonical', canonicalUrl);
 
-    // 3. OpenGraph Tags mapped to Firestore / Dynamic values
+    // 3. OpenGraph Tags mapped specifically for individual article social sharing
+    setMetaTag('property', 'og:site_name', 'Current News Live');
+    setMetaTag('property', 'og:type', 'article');
     setMetaTag('property', 'og:title', post.title);
     setMetaTag('property', 'og:description', summary);
-    setMetaTag('property', 'og:type', 'article');
     setMetaTag('property', 'og:url', canonicalUrl);
-    setMetaTag('property', 'og:image', mainImg);
-    setMetaTag('property', 'og:image:alt', `Illustration for ${post.title}`);
-    setMetaTag('property', 'og:site_name', 'Current News');
+    setMetaTag('property', 'og:locale', 'en_US');
     
-    // Core OpenGraph Social Discovery tags requested by the user
+    // Rich Image Specifications for OpenGraph (Facebook, LinkedIn, WhatsApp, iMessage)
+    setMetaTag('property', 'og:image', mainImg);
+    setMetaTag('property', 'og:image:secure_url', secureImg);
+    setMetaTag('property', 'og:image:type', imgType);
+    setMetaTag('property', 'og:image:width', '1200');
+    setMetaTag('property', 'og:image:height', '630');
+    setMetaTag('property', 'og:image:alt', `Illustration for ${post.title}`);
+
+    // Core Article Metadata Specifications
     if (publishedIso) {
       setMetaTag('property', 'article:published_time', publishedIso);
     }
@@ -210,14 +226,26 @@ export default function PostDetailView() {
     if (post.category) {
       setMetaTag('property', 'article:section', post.category);
     }
+    setMetaTag('property', 'article:publisher', 'https://www.currentnews.blog');
 
-    // 4. Twitter Card Tags
-    setMetaTag('name', 'twitter:card', post.imageUrl ? 'summary_large_image' : 'summary');
+    // Individual tags/hashtags
+    if (Array.isArray(post.hashtags) && post.hashtags.length > 0) {
+      post.hashtags.slice(0, 8).forEach((tag, idx) => {
+        setMetaTag('property', `article:tag:${idx}`, tag.replace(/^#/, ''));
+      });
+    }
+
+    // 4. Twitter Card Specific Tags (X / Twitter rich social cards)
+    setMetaTag('name', 'twitter:card', 'summary_large_image');
+    setMetaTag('name', 'twitter:site', '@currentnewsblog');
+    setMetaTag('name', 'twitter:creator', authorVal || '@currentnewsblog');
+    setMetaTag('name', 'twitter:url', canonicalUrl);
     setMetaTag('name', 'twitter:title', post.title);
     setMetaTag('name', 'twitter:description', summary);
     setMetaTag('name', 'twitter:image', mainImg);
+    setMetaTag('name', 'twitter:image:alt', `Illustration for ${post.title}`);
 
-    // 5. Schema.org JSON-LD structured microdata rich-results tag for top Google search indexation!
+    // 5. Schema.org JSON-LD structured microdata NewsArticle
     const jsonLdData = {
       "@context": "https://schema.org",
       "@type": "NewsArticle",
@@ -227,9 +255,11 @@ export default function PostDetailView() {
       },
       "headline": post.title,
       "description": summary,
-      "image": [mainImg],
+      "image": [mainImg, ...(post.imageUrls ? post.imageUrls.map(cleanImageUrl) : [])],
       "datePublished": publishedIso || new Date().toISOString(),
       "dateModified": modifiedIso || new Date().toISOString(),
+      "articleSection": post.category || 'General',
+      "keywords": post.hashtags && post.hashtags.length ? post.hashtags.join(', ') : postKeywords,
       "author": {
         "@type": "Person",
         "name": authorVal,
@@ -237,7 +267,7 @@ export default function PostDetailView() {
       },
       "publisher": {
         "@type": "Organization",
-        "name": "Current News",
+        "name": "Current News Live",
         "logo": {
           "@type": "ImageObject",
           "url": siteLogo
@@ -247,8 +277,39 @@ export default function PostDetailView() {
     setJsonLd('post-jsonld-schema', jsonLdData);
 
     return () => {
-      document.title = "Current News Live | Independent Journalism";
-      // Remove JSON-LD tag on unmount to prevent stale schema
+      // Restore default application title & canonical on unmount
+      document.title = "Current News Live - Independent Ledger";
+      setLinkTag('canonical', 'https://www.currentnews.blog/');
+
+      // Revert base SEO tags
+      setMetaTag('name', 'description', 'Current News Live - The independent ledger delivering premium uncorrupted journalism, real-time investigative disclosures, opinion dispatches, and geopolitical analysis.');
+      setMetaTag('name', 'author', 'Independent Chronicle Staff');
+
+      // Revert OpenGraph tags back to default site metadata
+      setMetaTag('property', 'og:site_name', 'Current News');
+      setMetaTag('property', 'og:type', 'website');
+      setMetaTag('property', 'og:title', 'Current News Live - Independent Ledger');
+      setMetaTag('property', 'og:description', 'Premium uncorrupted journalism, real-time investigative disclosures, opinion dispatches, and geopolitical analysis.');
+      setMetaTag('property', 'og:url', 'https://www.currentnews.blog/');
+      setMetaTag('property', 'og:image', 'https://i.imgur.com/gFgShoZ.jpeg');
+      setMetaTag('property', 'og:image:secure_url', 'https://i.imgur.com/gFgShoZ.jpeg');
+      setMetaTag('property', 'og:image:width', '1200');
+      setMetaTag('property', 'og:image:height', '630');
+      setMetaTag('property', 'og:image:alt', 'Current News Live Independent Ledger Emblem');
+
+      // Revert Twitter Card tags
+      setMetaTag('name', 'twitter:card', 'summary_large_image');
+      setMetaTag('name', 'twitter:title', 'Current News Live - Independent Ledger');
+      setMetaTag('name', 'twitter:description', 'Premium uncorrupted journalism, real-time investigative disclosures, opinion dispatches, and geopolitical analysis.');
+      setMetaTag('name', 'twitter:image', 'https://i.imgur.com/gFgShoZ.jpeg');
+      setMetaTag('name', 'twitter:image:alt', 'Current News Live Independent Ledger Emblem');
+      setMetaTag('name', 'twitter:creator', '@currentnewsblog');
+
+      // Clean up dynamic article:* meta tags
+      const articleMetas = document.querySelectorAll('meta[property^="article:"]');
+      articleMetas.forEach(el => el.remove());
+
+      // Clean up JSON-LD tag
       const staleLd = document.getElementById('post-jsonld-schema');
       if (staleLd) staleLd.remove();
     };
@@ -415,10 +476,26 @@ export default function PostDetailView() {
         const docRef = doc(db, 'posts', id);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
-          const postData = {
+          const rawDoc = docSnap.data();
+          let postData = {
             id: docSnap.id,
-            ...docSnap.data()
+            ...rawDoc
           } as Post;
+          
+          postData = sanitizePostImages(postData);
+
+          // If stored document had malformed URLs, auto-repair silently in Firestore
+          if (
+            (rawDoc.imageUrl && rawDoc.imageUrl !== postData.imageUrl) ||
+            (rawDoc.imageUrls && JSON.stringify(rawDoc.imageUrls) !== JSON.stringify(postData.imageUrls))
+          ) {
+            updateDoc(docRef, {
+              imageUrl: postData.imageUrl || '',
+              imageUrlFallback: postData.imageUrlFallback || '',
+              imageUrls: postData.imageUrls || [],
+              imageUrlsFallback: postData.imageUrlsFallback || []
+            }).catch((patchErr) => console.warn('Silent auto-repair of post image URLs in Firestore:', patchErr));
+          }
           
           // Increment and display views
           const viewedSessionKey = `viewed_post_${id}`;
@@ -447,7 +524,7 @@ export default function PostDetailView() {
         try {
           const cached = localStorage.getItem('cached_post_' + id);
           if (cached) {
-            setPost(JSON.parse(cached));
+            setPost(sanitizePostImages(JSON.parse(cached)));
             setIsOfflineCached(true);
           } else {
             setError('Failed to fetch article details. There might be a temporary server disconnection.');
@@ -541,12 +618,18 @@ export default function PostDetailView() {
 
     // Map all available post photos: fig. 1 = imageUrl, fig. 2+ = imageUrls[0+]
     const allPhotos: string[] = [];
+    const allFallbackPhotos: (string | undefined)[] = [];
+
     if (post.imageUrl && post.imageUrl.trim().length > 0) {
       allPhotos.push(post.imageUrl.trim());
+      allFallbackPhotos.push(post.imageUrlFallback?.trim());
     }
     if (post.imageUrls && Array.isArray(post.imageUrls)) {
-      post.imageUrls.forEach(u => {
-        if (u && u.trim().length > 0) allPhotos.push(u.trim());
+      post.imageUrls.forEach((u, i) => {
+        if (u && u.trim().length > 0) {
+          allPhotos.push(u.trim());
+          allFallbackPhotos.push(post.imageUrlsFallback?.[i]?.trim());
+        }
       });
     }
 
@@ -564,13 +647,13 @@ export default function PostDetailView() {
         if (src.includes('imgur.com') && !/\.(png|jpg|jpeg|gif|webp)$/i.test(src)) {
           src = src.replace('imgur.com', 'i.imgur.com') + '.jpg';
         }
-        return `<div class="my-8 flex justify-center"><img src="${src}" alt="Attached Chronicle Image" class="rounded-2xl max-w-full h-auto border border-slate-200 shadow-md transform hover:scale-[1.01] transition-all duration-300 md:max-h-[500px]" referrerPolicy="no-referrer" /></div>`;
+        return `<div class="my-8 flex justify-center"><img src="${src}" alt="Attached Chronicle Image" class="rounded-2xl max-w-full h-auto border border-slate-200 shadow-md transform hover:scale-[1.01] transition-all duration-300 md:max-h-[500px]" referrerPolicy="no-referrer" onerror="this.style.display='none'" /></div>`;
       });
 
       // Handle raw non-imgur direct image links inside paragraphs
       const pDirectImgPattern = /<p>\s*(https?:\/\/[^\s<>'"]+\.(?:png|jpg|jpeg|gif|webp))\s*<\/p>/gi;
       text = text.replace(pDirectImgPattern, (match, url) => {
-        return `<div class="my-8 flex justify-center"><img src="${url}" alt="Attached Chronicle Image" class="rounded-2xl max-w-full h-auto border border-slate-200 shadow-md transform hover:scale-[1.01] transition-all duration-300 md:max-h-[500px]" referrerPolicy="no-referrer" /></div>`;
+        return `<div class="my-8 flex justify-center"><img src="${url}" alt="Attached Chronicle Image" class="rounded-2xl max-w-full h-auto border border-slate-200 shadow-md transform hover:scale-[1.01] transition-all duration-300 md:max-h-[500px]" referrerPolicy="no-referrer" onerror="this.style.display='none'" /></div>`;
       });
 
       // Handle inline [fig. N] or [fig N] markers in prose
@@ -580,14 +663,15 @@ export default function PostDetailView() {
         const photoIdx = figNum - 1;
         if (photoIdx >= 0 && photoIdx < allPhotos.length) {
           inlineFiguresRendered.add(photoIdx);
-          let pUrl = allPhotos[photoIdx];
-          if (pUrl.includes('imgur.com') && !/\.(png|jpg|jpeg|gif|webp)$/i.test(pUrl)) {
-            pUrl = pUrl.replace('imgur.com', 'i.imgur.com') + '.jpg';
-          }
+          const pUrl = cleanImageUrl(allPhotos[photoIdx]);
+          const fbUrl = getFallbackImageUrl(allPhotos[photoIdx], allFallbackPhotos[photoIdx]);
+          const errorScript = fbUrl
+            ? `if (this.dataset.fallback && this.src !== this.dataset.fallback) { this.src = this.dataset.fallback; } else { this.style.display = 'none'; }`
+            : `this.style.display = 'none';`;
           return `
             <figure class="my-8 block text-center not-prose" id="article-figure-${figNum}">
               <div class="flex justify-center">
-                <img src="${pUrl}" alt="Figure ${figNum}" class="rounded-2xl max-w-full h-auto border border-slate-250 shadow-md hover:shadow-lg transition-all duration-300 md:max-h-[520px] cursor-pointer" referrerPolicy="no-referrer" />
+                <img src="${pUrl}" data-fallback="${fbUrl || ''}" alt="Figure ${figNum}" class="rounded-2xl max-w-full h-auto border border-slate-250 shadow-md hover:shadow-lg transition-all duration-300 md:max-h-[520px] cursor-pointer" referrerPolicy="no-referrer" onerror="${errorScript}" />
               </div>
               <figcaption class="mt-2 text-center text-xs font-mono text-slate-500 italic">
                 Fig. ${figNum}
@@ -608,21 +692,38 @@ export default function PostDetailView() {
 
     // Render based on imageUrl and imagePosition configuration
     if (!isPrimaryRenderedInline && post.imageUrl && post.imageUrl.trim().length > 0) {
-      let resolvedSrc = post.imageUrl.trim();
-      if (resolvedSrc.includes('imgur.com') && !/\.(png|jpg|jpeg|gif|webp)$/i.test(resolvedSrc)) {
-        resolvedSrc = resolvedSrc.replace('imgur.com', 'i.imgur.com') + '.jpg';
-      }
+      const resolvedSrc = cleanImageUrl(post.imageUrl);
+      const resolvedFallback = getFallbackImageUrl(post.imageUrl, post.imageUrlFallback);
 
-      const imageElementHtml = `
-        <div class="my-8 flex justify-center" id="featured-article-photo-container">
-          <img src="${resolvedSrc}" alt="Dispatch Feature Photo" class="rounded-2xl max-w-full h-auto border border-slate-250 shadow-md hover:shadow-lg transition-all duration-350 md:max-h-[550px]" referrerPolicy="no-referrer" />
+      const featureImageElement = (
+        <div className="my-8 flex justify-center" id="featured-article-photo-container">
+          <img
+            src={resolvedSrc}
+            alt="Dispatch Feature Photo"
+            className="rounded-2xl max-w-full h-auto border border-slate-250 shadow-md hover:shadow-lg transition-all duration-350 md:max-h-[550px]"
+            referrerPolicy="no-referrer"
+            onError={(e) => {
+              const target = e.currentTarget;
+              const fallback = resolvedFallback;
+              if (fallback && target.src !== fallback) {
+                target.src = fallback;
+              } else {
+                const defaultEmblem = 'https://i.imgur.com/gFgShoZ.jpeg';
+                if (target.src !== defaultEmblem) {
+                  target.src = defaultEmblem;
+                } else {
+                  target.style.display = 'none';
+                }
+              }
+            }}
+          />
         </div>
-      `;
+      );
 
       if (post.imagePosition === 'top') {
         return (
           <div>
-            <div dangerouslySetInnerHTML={{ __html: imageElementHtml }} />
+            {featureImageElement}
             <div dangerouslySetInnerHTML={{ __html: contentHtml }} className="article-rich-text prose max-w-none break-word break-words" id="article-content" />
           </div>
         );
@@ -630,7 +731,7 @@ export default function PostDetailView() {
         return (
           <div>
             <div dangerouslySetInnerHTML={{ __html: contentHtml }} className="article-rich-text prose max-w-none break-word break-words" id="article-content" />
-            <div dangerouslySetInnerHTML={{ __html: imageElementHtml }} />
+            {featureImageElement}
           </div>
         );
       } else { // 'middle' position split
@@ -642,14 +743,14 @@ export default function PostDetailView() {
           return (
             <div>
               <div dangerouslySetInnerHTML={{ __html: firstHalf }} className="article-rich-text prose max-w-none break-word break-words mb-4" />
-              <div dangerouslySetInnerHTML={{ __html: imageElementHtml }} />
+              {featureImageElement}
               <div dangerouslySetInnerHTML={{ __html: secondHalf }} className="article-rich-text prose max-w-none break-word break-words mt-4" id="article-content" />
             </div>
           );
         } else {
           return (
             <div>
-              <div dangerouslySetInnerHTML={{ __html: imageElementHtml }} />
+              {featureImageElement}
               <div dangerouslySetInnerHTML={{ __html: contentHtml }} className="article-rich-text prose max-w-none break-word break-words" id="article-content" />
             </div>
           );
@@ -853,10 +954,8 @@ export default function PostDetailView() {
             </h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {post.imageUrls.map((extraUrl, idx) => {
-                let rSrc = extraUrl.trim();
-                if (rSrc.includes('imgur.com') && !/\.(png|jpg|jpeg|gif|webp)$/i.test(rSrc)) {
-                  rSrc = rSrc.replace('imgur.com', 'i.imgur.com') + '.jpg';
-                }
+                const rSrc = cleanImageUrl(extraUrl);
+                const rFallback = getFallbackImageUrl(extraUrl, post.imageUrlsFallback?.[idx]);
                 return (
                   <div 
                     key={idx} 
@@ -868,6 +967,14 @@ export default function PostDetailView() {
                       alt={`Evidence Image #${idx + 1}`} 
                       className="w-full h-44 sm:h-52 object-cover transition-transform duration-300 hover:scale-105 pointer-events-none" 
                       referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        const target = e.currentTarget;
+                        if (rFallback && target.src !== rFallback) {
+                          target.src = rFallback;
+                        } else {
+                          target.style.display = 'none';
+                        }
+                      }}
                     />
                   </div>
                 );
@@ -1011,11 +1118,18 @@ export default function PostDetailView() {
             
             <div className="max-w-[90vw] max-h-[80vh] relative flex flex-col justify-center items-center">
               <img 
-                src={lightboxImage} 
+                src={cleanImageUrl(lightboxImage)} 
                 alt="Expanded High Resolution View" 
                 className="rounded-xl max-w-full max-h-[75vh] object-contain border border-white/10 shadow-2xl transition-transform duration-300 transform scale-100"
                 onClick={(e) => e.stopPropagation()}
                 referrerPolicy="no-referrer"
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  const fb = getFallbackImageUrl(target.src);
+                  if (fb && target.src !== fb) {
+                    target.src = fb;
+                  }
+                }}
               />
               
               <div className="mt-4 flex justify-center text-xs font-mono">

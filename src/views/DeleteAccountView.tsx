@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { 
-  ArrowLeft, 
   Trash2, 
   AlertTriangle, 
   CheckCircle2, 
@@ -24,6 +23,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { useAuthState } from '../hooks/useAuthState';
+import ProfilePageNavbar from '../components/ProfilePageNavbar';
 
 export default function DeleteAccountView() {
   const { user, loading: authLoading } = useAuthState();
@@ -115,39 +115,15 @@ export default function DeleteAccountView() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto px-4 sm:px-6 py-10" id="delete-account-view">
-      
-      {/* Editorial Navigation */}
-      <div className="mb-6">
-        <Link 
-          to="/" 
-          className="inline-flex items-center gap-2 text-xs font-mono font-bold text-slate-500 hover:text-indigo-600 transition-colors uppercase"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" />
-          <span>Back to Ledger Feed</span>
-        </Link>
-      </div>
+    <div className="min-h-screen bg-white dark:bg-slate-950" id="delete-account-view">
+      {/* Top Header with liquid glass Back button and short heading */}
+      <ProfilePageNavbar title="Delete Account" />
 
-      {/* Header Badge & Title */}
-      <div className="border-b border-slate-200 dark:border-slate-800 pb-6 mb-8">
-        <div className="flex items-center gap-3">
-          <div className="p-3 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 rounded-xl border border-rose-100 dark:border-rose-900/60">
-            <Trash2 className="h-6 w-6" />
-          </div>
-          <div>
-            <span className="text-[10px] font-mono font-bold tracking-widest text-rose-600 uppercase block mb-1">
-              Google Play Store & GDPR Compliance
-            </span>
-            <h1 className="font-display font-black text-2xl sm:text-3xl text-slate-950 dark:text-slate-50 uppercase tracking-tight">
-              Request Account & Data Deletion
-            </h1>
-          </div>
-        </div>
-        <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-3 leading-relaxed">
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
+        <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mb-8 leading-relaxed">
           In accordance with Google Play's User Data Policy and international data privacy regulations (GDPR & CCPA), 
           you have the absolute right to request the permanent deletion of your account and all associated personal records.
         </p>
-      </div>
 
       {/* Success Notification */}
       {deletionSuccess && (
@@ -341,6 +317,7 @@ export default function DeleteAccountView() {
         </div>
       )}
 
+      </div>
     </div>
   );
 }

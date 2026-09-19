@@ -9,6 +9,7 @@ import {
   AlertCircle 
 } from 'lucide-react';
 import { compressImage } from '../utils/imageCompressor';
+import { cleanImageUrl, getFallbackImageUrl } from '../utils/imageUrl';
 
 interface PhotoAttachmentSectionProps {
   primaryImageUrl: string;
@@ -18,6 +19,10 @@ interface PhotoAttachmentSectionProps {
   imagePosition: 'top' | 'middle' | 'bottom';
   onImagePositionChange: (pos: 'top' | 'middle' | 'bottom') => void;
   onInsertFigureIntoContent?: (figureTag: string) => void;
+  primaryImageUrlFallback?: string;
+  onPrimaryImageUrlFallbackChange?: (url: string) => void;
+  galleryUrlsFallback?: string[];
+  onGalleryUrlsFallbackChange?: (urls: string[]) => void;
 }
 
 export default function PhotoAttachmentSection({
@@ -28,6 +33,10 @@ export default function PhotoAttachmentSection({
   imagePosition,
   onImagePositionChange,
   onInsertFigureIntoContent,
+  primaryImageUrlFallback,
+  onPrimaryImageUrlFallbackChange,
+  galleryUrlsFallback = [],
+  onGalleryUrlsFallbackChange,
 }: PhotoAttachmentSectionProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [statusText, setStatusText] = useState('');
@@ -51,6 +60,7 @@ export default function PhotoAttachmentSection({
     }
 
     const uploadedUrls: string[] = [];
+    const uploadedFallbackUrls: string[] = [];
 
     for (let i = 0; i < validFiles.length; i++) {
       const file = validFiles[i];
@@ -77,7 +87,10 @@ export default function PhotoAttachmentSection({
           throw new Error(data.error || 'Upload error from server');
         }
 
-        uploadedUrls.push(data.url);
+        const cleanUrl = cleanImageUrl(data.url);
+        const cleanFallback = getFallbackImageUrl(cleanUrl, data.fallbackUrl);
+        uploadedUrls.push(cleanUrl);
+        uploadedFallbackUrls.push(cleanFallback);
       } catch (err: any) {
         console.error('Error uploading file:', err);
         setError(err.message || 'Failed to upload one or more images.');
@@ -88,12 +101,21 @@ export default function PhotoAttachmentSection({
       if (!primaryImageUrl) {
         // Set first as primary, remaining to gallery
         onPrimaryImageUrlChange(uploadedUrls[0]);
+        if (onPrimaryImageUrlFallbackChange) {
+          onPrimaryImageUrlFallbackChange(uploadedFallbackUrls[0]);
+        }
         if (uploadedUrls.length > 1) {
           onGalleryUrlsChange([...galleryUrls, ...uploadedUrls.slice(1)]);
+          if (onGalleryUrlsFallbackChange) {
+            onGalleryUrlsFallbackChange([...galleryUrlsFallback, ...uploadedFallbackUrls.slice(1)]);
+          }
         }
       } else {
         // If primary already exists, append all newly uploaded to gallery
         onGalleryUrlsChange([...galleryUrls, ...uploadedUrls]);
+        if (onGalleryUrlsFallbackChange) {
+          onGalleryUrlsFallbackChange([...galleryUrlsFallback, ...uploadedFallbackUrls]);
+        }
       }
     }
 
@@ -182,10 +204,19 @@ export default function PhotoAttachmentSection({
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-16 h-14 rounded-lg bg-slate-100 border border-slate-200 overflow-hidden shrink-0">
                   <img
-                    src={primaryImageUrl}
+                    src={cleanImageUrl(primaryImageUrl)}
                     alt="Preview"
                     className="w-full h-full object-cover"
                     referrerPolicy="no-referrer"
+                    onError={(e) => {
+                      const target = e.currentTarget;
+                      const fb = getFallbackImageUrl(primaryImageUrl, primaryImageUrlFallback);
+                      if (fb && target.src !== fb) {
+                        target.src = fb;
+                      } else {
+                        target.style.display = 'none';
+                      }
+                    }}
                   />
                 </div>
                 <div className="min-w-0">
@@ -233,8 +264,17 @@ export default function PhotoAttachmentSection({
                     if (galleryUrls.length > 0) {
                       onPrimaryImageUrlChange(galleryUrls[0]);
                       onGalleryUrlsChange(galleryUrls.slice(1));
+                      if (onPrimaryImageUrlFallbackChange) {
+                        onPrimaryImageUrlFallbackChange(galleryUrlsFallback[0] || galleryUrls[0]);
+                      }
+                      if (onGalleryUrlsFallbackChange) {
+                        onGalleryUrlsFallbackChange(galleryUrlsFallback.slice(1));
+                      }
                     } else {
                       onPrimaryImageUrlChange('');
+                      if (onPrimaryImageUrlFallbackChange) {
+                        onPrimaryImageUrlFallbackChange('');
+                      }
                     }
                   }}
                   className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
@@ -254,10 +294,19 @@ export default function PhotoAttachmentSection({
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="w-16 h-14 rounded-lg bg-slate-100 border border-slate-200 overflow-hidden shrink-0">
                     <img
-                      src={url}
+                      src={cleanImageUrl(url)}
                       alt={`Photo ${figNum}`}
                       className="w-full h-full object-cover"
                       referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        const target = e.currentTarget;
+                        const fb = getFallbackImageUrl(url, galleryUrlsFallback?.[idx]);
+                        if (fb && target.src !== fb) {
+                          target.src = fb;
+                        } else {
+                          target.style.display = 'none';
+                        }
+                      }}
                     />
                   </div>
                   <div className="min-w-0">
@@ -286,14 +335,29 @@ export default function PhotoAttachmentSection({
                     onClick={() => {
                       // Swap this photo to be the primary photo
                       const oldPrimary = primaryImageUrl;
+                      const oldPrimaryFb = primaryImageUrlFallback || primaryImageUrl;
+                      const thisFb = galleryUrlsFallback?.[idx] || url;
+
                       onPrimaryImageUrlChange(url);
+                      if (onPrimaryImageUrlFallbackChange) {
+                        onPrimaryImageUrlFallbackChange(thisFb);
+                      }
+
                       const newGallery = [...galleryUrls];
+                      const newGalleryFb = [...galleryUrlsFallback];
+
                       if (oldPrimary) {
                         newGallery[idx] = oldPrimary;
+                        newGalleryFb[idx] = oldPrimaryFb;
                       } else {
                         newGallery.splice(idx, 1);
+                        newGalleryFb.splice(idx, 1);
                       }
+
                       onGalleryUrlsChange(newGallery);
+                      if (onGalleryUrlsFallbackChange) {
+                        onGalleryUrlsFallbackChange(newGalleryFb);
+                      }
                     }}
                     className="text-[10px] font-mono font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1.5 rounded-lg border border-indigo-200 transition-colors"
                   >
@@ -301,7 +365,12 @@ export default function PhotoAttachmentSection({
                   </button>
                   <button
                     type="button"
-                    onClick={() => onGalleryUrlsChange(galleryUrls.filter((_, i) => i !== idx))}
+                    onClick={() => {
+                      onGalleryUrlsChange(galleryUrls.filter((_, i) => i !== idx));
+                      if (onGalleryUrlsFallbackChange) {
+                        onGalleryUrlsFallbackChange(galleryUrlsFallback.filter((_, i) => i !== idx));
+                      }
+                    }}
                     className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                     title="Remove photo"
                   >

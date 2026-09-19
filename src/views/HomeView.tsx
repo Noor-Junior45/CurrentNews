@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { collection, getDocs, query, orderBy, limit, doc, getDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { Post, slugify } from '../types';
+import { sanitizePostImages } from '../utils/imageUrl';
 import BlogPostCard from '../components/BlogPostCard';
 import { Newspaper, Search, RefreshCw, AlertTriangle, ChevronLeft, ChevronRight, ThumbsUp, WifiOff } from 'lucide-react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
@@ -146,10 +147,10 @@ export default function HomeView() {
       const querySnapshot = await getDocs(q);
       const fetchedPosts: Post[] = [];
       querySnapshot.forEach((doc) => {
-        fetchedPosts.push({
+        fetchedPosts.push(sanitizePostImages({
           id: doc.id,
           ...doc.data()
-        } as Post);
+        } as Post));
       });
       setPosts(fetchedPosts);
       
@@ -169,7 +170,7 @@ export default function HomeView() {
         const cached = localStorage.getItem('cached_posts');
         if (cached) {
           const cachedPosts = JSON.parse(cached);
-          setPosts(cachedPosts);
+          setPosts(Array.isArray(cachedPosts) ? cachedPosts.map(sanitizePostImages) : []);
           setIsOfflineCached(true);
         } else {
           setError('Could not retrieve publications. Please make sure the database is provisioned and active.');

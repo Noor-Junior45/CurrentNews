@@ -1,0 +1,242 @@
+import React from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { 
+  ThumbsUp, 
+  Shield, 
+  Settings as SettingsIcon, 
+  ShieldCheck, 
+  FileText, 
+  Trash2, 
+  LogOut, 
+  LogIn, 
+  CheckCircle2, 
+  User 
+} from 'lucide-react';
+import { signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
+import { auth } from '../firebase';
+import { useAuthState } from '../hooks/useAuthState';
+import ProfilePageNavbar from '../components/ProfilePageNavbar';
+
+export default function ProfileView(): React.JSX.Element {
+  const { user, loading, isAdmin } = useAuthState();
+  const navigate = useNavigate();
+
+  const handleLogin = async () => {
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      await signInWithPopup(auth, provider);
+    } catch (err: any) {
+      console.error('Sign in failed', err);
+      alert('Sign in failed: ' + (err?.message || 'Authentication error'));
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      navigate('/');
+    } catch (err) {
+      console.error('Sign out error', err);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-white dark:bg-slate-950 flex flex-col font-sans" id="profile-page-stage">
+      {/* Top Navbar with pill shaped liquid glass Back button that returns to Home */}
+      <ProfilePageNavbar title="Profile" fallbackUrl="/" />
+
+      <main className="flex-1 max-w-md mx-auto w-full px-5 py-8 flex flex-col items-center">
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-16">
+            <div className="h-20 w-20 rounded-full bg-slate-100 dark:bg-slate-800 animate-pulse border border-slate-200 dark:border-slate-700 mb-4" />
+            <div className="h-4 w-36 bg-slate-100 dark:bg-slate-800 animate-pulse rounded-md mb-2" />
+            <div className="h-3 w-48 bg-slate-100 dark:bg-slate-800 animate-pulse rounded-md" />
+          </div>
+        ) : user ? (
+          /* Logged In User Profile Details */
+          <div className="w-full flex flex-col items-center text-center">
+            {/* Avatar with single golden ring */}
+            <div className="h-22 w-22 sm:h-24 sm:w-24 rounded-full border-2 border-amber-400 overflow-hidden shrink-0 shadow-md bg-slate-100 dark:bg-slate-800 mb-3.5">
+              {user.photoURL ? (
+                <img 
+                  src={user.photoURL} 
+                  alt="Profile Avatar" 
+                  className="h-full w-full object-cover" 
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <div className="h-full w-full bg-indigo-700 text-white flex items-center justify-center font-bold text-2xl">
+                  {user.displayName?.charAt(0).toUpperCase() || 'U'}
+                </div>
+              )}
+            </div>
+
+            {/* User Name below avatar */}
+            <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white tracking-wide uppercase leading-tight truncate max-w-[320px]">
+              {user.displayName || 'Chronicle Reader'}
+            </h2>
+
+            {/* Email with verified badge */}
+            <div className="flex items-center justify-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 font-mono mt-1.5 max-w-[320px]">
+              <span className="truncate">{user.email}</span>
+              <CheckCircle2 className="h-3.5 w-3.5 text-sky-500 fill-sky-500 text-white shrink-0" />
+            </div>
+
+            {/* Grey / liquid glass horizontal line below email */}
+            <div className="w-full border-t border-slate-200/90 dark:border-slate-800/90 mt-5 mb-5" />
+
+            {/* Action Buttons */}
+            <div className="w-full space-y-2.5">
+              {/* Liked Button */}
+              <Link
+                to="/liked"
+                className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                id="profile-liked-dispatches-button"
+              >
+                <ThumbsUp className="h-4 w-4 text-rose-550 shrink-0" />
+                <span>Liked</span>
+              </Link>
+
+              {isAdmin && (
+                <Link
+                  to="/admin"
+                  className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                  id="profile-admin-dashboard-button"
+                >
+                  <Shield className="h-4 w-4 text-indigo-500 shrink-0" />
+                  <span>Admin</span>
+                </Link>
+              )}
+
+              {/* Setting Button */}
+              <Link
+                to="/settings"
+                className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                id="profile-settings-button"
+              >
+                <SettingsIcon className="h-4 w-4 text-purple-500 shrink-0" />
+                <span>Setting</span>
+              </Link>
+
+              {/* Privacy Policy Button */}
+              <Link
+                to="/privacy"
+                className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                id="profile-privacy-policy-button"
+              >
+                <ShieldCheck className="h-4 w-4 text-emerald-500 shrink-0" />
+                <span>Privacy Policy</span>
+              </Link>
+
+              {/* Terms of Service Button */}
+              <Link
+                to="/terms"
+                className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                id="profile-terms-button"
+              >
+                <FileText className="h-4 w-4 text-blue-500 shrink-0" />
+                <span>Terms of Service</span>
+              </Link>
+
+              {/* Account Delete Button */}
+              <Link
+                to="/delete-account"
+                className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-rose-600 bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                id="profile-account-delete-button"
+              >
+                <Trash2 className="h-4 w-4 text-rose-500 shrink-0" />
+                <span>Account Delete</span>
+              </Link>
+
+              {/* Sign Out Button in last */}
+              <div className="w-full border-t border-slate-100 dark:border-slate-800 pt-4 mt-4">
+                <button 
+                  type="button"
+                  onClick={handleLogout}
+                  className="w-full flex items-center justify-center space-x-2 py-3 px-4 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white text-xs font-bold rounded-full cursor-pointer transition-all shadow-xs hover:shadow-md border border-red-700"
+                  id="profile-signout-button"
+                >
+                  <LogOut className="h-3.5 w-3.5 text-white" />
+                  <span>Sign Out</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* Guest View */
+          <div className="w-full flex flex-col items-center text-center">
+            <div className="h-20 w-20 rounded-full border-2 border-amber-400 bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0 shadow-md mb-3.5">
+              <User className="h-8 w-8 text-slate-600 dark:text-slate-300" />
+            </div>
+            <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white uppercase tracking-wide">
+              Chronicle Portal
+            </h2>
+            <span className="text-xs text-slate-500 dark:text-slate-400 font-mono mt-1 mb-4">
+              Guest Reader
+            </span>
+
+            <p className="text-xs text-slate-600 dark:text-slate-400 mb-5 leading-relaxed max-w-xs">
+              Log in with your authorized editor account to compose, edit, or publish live dispatches.
+            </p>
+
+            <button 
+              type="button"
+              onClick={handleLogin}
+              className="w-full flex items-center justify-center space-x-2 py-3 px-4 bg-slate-950 text-white hover:bg-slate-800 text-xs font-semibold rounded-full cursor-pointer transition-colors shadow-xs mb-5"
+              id="profile-signin-button"
+            >
+              <LogIn className="h-3.5 w-3.5" />
+              <span>Sign In with Google</span>
+            </button>
+
+            {/* Grey / liquid glass horizontal line */}
+            <div className="w-full border-t border-slate-200/90 dark:border-slate-800/90 mb-5" />
+
+            <div className="w-full space-y-2.5">
+              <Link
+                to="/liked"
+                className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+              >
+                <ThumbsUp className="h-4 w-4 text-rose-550 shrink-0" />
+                <span>Liked</span>
+              </Link>
+
+              <Link
+                to="/settings"
+                className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+              >
+                <SettingsIcon className="h-4 w-4 text-purple-500 shrink-0" />
+                <span>Setting</span>
+              </Link>
+
+              <Link
+                to="/privacy"
+                className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+              >
+                <ShieldCheck className="h-4 w-4 text-emerald-500 shrink-0" />
+                <span>Privacy Policy</span>
+              </Link>
+
+              <Link
+                to="/terms"
+                className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+              >
+                <FileText className="h-4 w-4 text-blue-500 shrink-0" />
+                <span>Terms of Service</span>
+              </Link>
+
+              <Link
+                to="/delete-account"
+                className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-rose-600 bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+              >
+                <Trash2 className="h-4 w-4 text-rose-500 shrink-0" />
+                <span>Account Delete</span>
+              </Link>
+            </div>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}

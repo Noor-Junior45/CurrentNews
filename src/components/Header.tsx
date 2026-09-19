@@ -457,9 +457,9 @@ export default function Header() {
             {loading ? (
               <div className="h-10 w-10 rounded-full bg-slate-100 animate-pulse border border-slate-200" />
             ) : (
-              /* The trigger circle button - always a round thumbnail like Gmail without outer ring */
+              /* The trigger circle button - navigates directly to dedicated Profile page */
               <button 
-                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                onClick={() => navigate('/profile')}
                 className="h-10 w-10 rounded-full bg-slate-100 hover:bg-slate-200 border-2 border-slate-200 hover:border-indigo-500 overflow-hidden text-slate-600 hover:text-slate-900 shadow-xs transition-all duration-200 flex items-center justify-center cursor-pointer relative z-50 focus:outline-hidden"
                 id="header-profile-trigger"
                 title={user ? `Account: ${user.displayName || user.email}` : "Editorial Portal Access"}
@@ -572,16 +572,7 @@ export default function Header() {
                     <div className="w-full max-w-sm mx-auto flex flex-col">
                       {/* Navigation Actions List */}
                       <div className="w-full space-y-2 align-left text-left">
-                        <button
-                          onClick={() => { setIsDropdownOpen(false); navigate('/'); }}
-                          className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/80 hover:bg-slate-150/80 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
-                          id="public-news-feed-button"
-                        >
-                          <Newspaper className="h-4 w-4 text-slate-400 shrink-0" />
-                          <span>Public News Feed</span>
-                        </button>
-
-                        {/* Liked Button (placed between News Feed and Setting) */}
+                        {/* Liked Button */}
                         <Link
                           to="/liked"
                           onClick={() => setIsDropdownOpen(false)}
@@ -593,39 +584,14 @@ export default function Header() {
                         </Link>
 
                         {isAdmin && (
-                          <>
-                            <button
-                              onClick={() => { setIsDropdownOpen(false); navigate('/admin?focus=dashboard'); }}
-                              className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/80 hover:bg-slate-150/80 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
-                            >
-                              <Shield className="h-4 w-4 text-indigo-500 shrink-0" />
-                              <span>Admin Dashboard</span>
-                            </button>
-
-                            <button
-                              onClick={() => { setIsDropdownOpen(false); navigate('/admin?focus=draft'); }}
-                              className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/80 hover:bg-slate-150/80 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
-                            >
-                              <PlusCircle className="h-4 w-4 text-emerald-500 shrink-0" />
-                              <span>Draft New Publication</span>
-                            </button>
-
-                            <button
-                              onClick={() => { setIsDropdownOpen(false); navigate('/admin?focus=publications'); }}
-                              className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/80 hover:bg-slate-150/80 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
-                            >
-                              <Newspaper className="h-4 w-4 text-blue-500 shrink-0" />
-                              <span>Current Publications</span>
-                            </button>
-
-                            <button
-                              onClick={() => { setIsDropdownOpen(false); navigate('/admin?focus=audience'); }}
-                              className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/80 hover:bg-slate-150/80 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
-                            >
-                              <Users className="h-4 w-4 text-purple-500 shrink-0" />
-                              <span>Audience Registry</span>
-                            </button>
-                          </>
+                          <button
+                            onClick={() => { setIsDropdownOpen(false); navigate('/admin'); }}
+                            className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/80 hover:bg-slate-150/80 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                            id="admin-dashboard-button"
+                          >
+                            <Shield className="h-4 w-4 text-indigo-500 shrink-0" />
+                            <span>Admin</span>
+                          </button>
                         )}
 
                         {/* Setting Button */}
@@ -633,7 +599,7 @@ export default function Header() {
                           type="button"
                           onClick={() => {
                             setIsDropdownOpen(false);
-                            setIsSettingsOpen(true);
+                            navigate('/settings');
                           }}
                           className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/80 hover:bg-slate-150/80 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer text-left"
                           id="settings-trigger-button"
@@ -728,7 +694,7 @@ export default function Header() {
                           type="button"
                           onClick={() => {
                             setIsDropdownOpen(false);
-                            setIsSettingsOpen(true);
+                            navigate('/settings');
                           }}
                           className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/80 hover:bg-slate-150/80 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer text-left"
                           id="guest-settings-trigger-button"

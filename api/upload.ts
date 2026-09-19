@@ -69,9 +69,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Configure Cloudflare R2 S3 client
-    const accountId = process.env.R2_ACCOUNT_ID || 'd3dfb94681e636f340d88b37fd135cee';
-    const accessKeyId = process.env.R2_ACCESS_KEY_ID || '83ca15d6a4a26f6e1175f3b0852f59bc';
-    const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY || '93df40e3213b4d93ce923f4189e8d24a6202795eca8d7e292b44c3e682ed6d69';
+    const accountId = process.env.R2_ACCOUNT_ID;
+    const accessKeyId = process.env.R2_ACCESS_KEY_ID;
+    const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
+
+    if (!accountId || !accessKeyId || !secretAccessKey) {
+      throw new Error('R2 credentials not configured');
+    }
+
     const endpoint = process.env.R2_ENDPOINT || `https://${accountId}.r2.cloudflarestorage.com`;
     const bucketName = process.env.R2_BUCKET_NAME || 'currentnews-media';
 
@@ -107,8 +112,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     await s3Client.send(command);
 
-    const customDomain = process.env.R2_PUBLIC_DOMAIN || 'media.currentnews.blog';
-    const r2DevDomain = process.env.R2_DEV_DOMAIN || 'pub-03dd1274c4824531a1478f20e0485d75.r2.dev';
+    // Helper to sanitize domain strings against accidental protocol or path prefixes
+    const sanitizeDomain = (val: string | undefined, fallback: string): string => {
+      if (!val) return fallback;
+      let d = val.trim().replace(/^(?:https?[:/]*)+/i, '');
+      d = d.split('/')[0];
+      d = d.replace(/\/+$/, '').trim();
+      return d || fallback;
+    };
+
+    const customDomain = sanitizeDomain(process.env.R2_PUBLIC_DOMAIN, 'media.currentnews.blog');
+    const r2DevDomain = sanitizeDomain(process.env.R2_DEV_DOMAIN, 'pub-03dd1274c4824531a1478f20e0485d75.r2.dev');
 
     return res.status(200).json({
       success: true,

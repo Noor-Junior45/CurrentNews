@@ -1,10 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { collection, query, where, documentId, getDocs } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { Post, slugify } from '../types';
+import { cleanImageUrl, getFallbackImageUrl, sanitizePostImages } from '../utils/imageUrl';
 import { Link } from 'react-router-dom';
-import { ThumbsUp, ArrowLeft, BookOpen, Clock, Tag } from 'lucide-react';
+import { BookOpen, Clock, Tag } from 'lucide-react';
+import ProfilePageNavbar from '../components/ProfilePageNavbar';
 
 export default function LikedView() {
   const [likedPosts, setLikedPosts] = useState<Post[]>([]);
@@ -69,7 +71,7 @@ export default function LikedView() {
         const snapshot = await getDocs(q);
         const list: Post[] = [];
         snapshot.forEach(docSnap => {
-          list.push({ id: docSnap.id, ...docSnap.data() } as Post);
+          list.push(sanitizePostImages({ id: docSnap.id, ...docSnap.data() } as Post));
         });
 
         setLikedPosts(list);
@@ -85,33 +87,12 @@ export default function LikedView() {
   }, []);
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-10" id="liked-articles-view">
-      
-      {/* Editorial Header Navigation */}
-      <div className="mb-8" id="liked-nav-container">
-        <Link 
-          to="/" 
-          className="inline-flex items-center gap-2 text-xs font-mono font-medium text-slate-500 hover:text-indigo-600 transition-colors"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" />
-          <span>Back to Ledger Feed</span>
-        </Link>
-      </div>
+    <div className="min-h-screen bg-white dark:bg-slate-950" id="liked-articles-view">
+      {/* Top Header with liquid glass Back button and short heading */}
+      <ProfilePageNavbar title="Liked" />
 
-      <div className="border-b-4 border-double border-slate-900 dark:border-slate-800 pb-5 mb-8" id="liked-title-header">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 rounded-xl border border-rose-100 dark:border-rose-900/60 animate-pulse">
-            <ThumbsUp className="h-6 w-6 fill-current" />
-          </div>
-          <div>
-            <h1 className="font-display font-bold text-3xl sm:text-4xl text-slate-950 dark:text-slate-50 tracking-tight">
-              Liked ({likedPosts.length})
-            </h1>
-          </div>
-        </div>
-      </div>
-
-      {loading ? (
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
+        {loading ? (
         <div className="flex flex-col items-center justify-center py-20 space-y-4" id="liked-loading">
           <div className="h-10 w-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
           <p className="text-xs font-mono tracking-wide text-slate-400 animate-pulse">
@@ -149,19 +130,35 @@ export default function LikedView() {
             const rawText = tempDiv.textContent || tempDiv.innerText || '';
             const preview = rawText.substring(0, 180).trim() + (rawText.length > 180 ? '...' : '');
 
+            const thumbUrl = cleanImageUrl(post.imageUrl);
+
             return (
               <div 
                 key={post.id}
                 className="group p-5 bg-white dark:bg-slate-905 border border-slate-200/90 dark:border-slate-800/80 rounded-2xl shadow-3xs hover:shadow-xs hover:border-slate-300 dark:hover:border-slate-705 transition-all duration-200 flex flex-col sm:flex-row gap-5"
                 id={`liked-card-${post.id}`}
               >
-                {post.imageUrl && (
-                  <div className="w-full sm:w-40 h-28 sm:h-auto rounded-xl overflow-hidden shrink-0 border border-slate-100 dark:border-slate-800">
+                {thumbUrl && (
+                  <div className="w-full sm:w-40 h-28 sm:h-auto rounded-xl overflow-hidden shrink-0 border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900">
                     <img 
-                      src={post.imageUrl} 
+                      src={thumbUrl} 
                       alt={post.title} 
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-350"
                       referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        const target = e.currentTarget;
+                        const fb = getFallbackImageUrl(post.imageUrl, post.imageUrlFallback);
+                        if (fb && target.src !== fb) {
+                          target.src = fb;
+                        } else {
+                          const defaultEmblem = 'https://i.imgur.com/gFgShoZ.jpeg';
+                          if (target.src !== defaultEmblem) {
+                            target.src = defaultEmblem;
+                          } else {
+                            target.style.display = 'none';
+                          }
+                        }
+                      }}
                     />
                   </div>
                 )}
@@ -214,6 +211,7 @@ export default function LikedView() {
         </div>
       )}
 
+      </div>
     </div>
   );
 }

@@ -13,8 +13,28 @@ import LikedView from './views/LikedView';
 import PrivacyView from './views/PrivacyView';
 import TermsView from './views/TermsView';
 import DeleteAccountView from './views/DeleteAccountView';
+import SettingsView from './views/SettingsView';
+import ProfileView from './views/ProfileView';
 
 import { useLocation } from 'react-router-dom';
+
+function ConditionalHeader() {
+  const location = useLocation();
+  const isProfilePage = [
+    '/profile',
+    '/liked',
+    '/admin',
+    '/settings',
+    '/privacy',
+    '/terms',
+    '/delete-account'
+  ].some(path => location.pathname === path || location.pathname.startsWith(path + '/'));
+
+  if (isProfilePage) {
+    return null;
+  }
+  return <Header />;
+}
 
 function ConditionalFooter() {
   const location = useLocation();
@@ -48,8 +68,8 @@ export default function App() {
     <BrowserRouter>
       <div className="flex flex-col min-h-screen bg-white text-slate-900 overflow-x-hidden" id="app-root-container">
         
-        {/* Persistent Premium Responsive Header */}
-        <Header />
+        {/* Dynamic Responsive Header (hidden on profile button pages) */}
+        <ConditionalHeader />
 
         {/* Dynamic Route View Stage */}
         <main className="flex-grow">
@@ -64,10 +84,16 @@ export default function App() {
             {/* 3. Secure Admin Panel */}
             <Route path="/admin" element={<AdminView />} />
 
-            {/* 4. Liked Dispatches Page */}
+            {/* 4. Profile Hub Page */}
+            <Route path="/profile" element={<ProfileView />} />
+
+            {/* 5. Liked Dispatches Page */}
             <Route path="/liked" element={<LikedView />} />
 
-            {/* 5. Legal & Policies Pages */}
+            {/* 6. Settings Page */}
+            <Route path="/settings" element={<SettingsView />} />
+
+            {/* 7. Legal & Policies Pages */}
             <Route path="/privacy" element={<PrivacyView />} />
             <Route path="/terms" element={<TermsView />} />
             <Route path="/delete-account" element={<DeleteAccountView />} />

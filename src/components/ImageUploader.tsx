@@ -9,9 +9,10 @@ import {
   ExternalLink,
   Copy
 } from 'lucide-react';
+import { cleanImageUrl, getFallbackImageUrl } from '../utils/imageUrl';
 
 interface ImageUploaderProps {
-  onImageUploaded: (url: string) => void;
+  onImageUploaded: (url: string, fallbackUrl?: string) => void;
   label?: string;
   helperText?: string;
   className?: string;
@@ -27,6 +28,7 @@ export default function ImageUploader({
   const [progressText, setProgressText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [lastUploadedUrl, setLastUploadedUrl] = useState<string | null>(null);
+  const [lastUploadedFallbackUrl, setLastUploadedFallbackUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -65,9 +67,11 @@ export default function ImageUploader({
         throw new Error(data.error || 'Server returned an upload error.');
       }
 
-      const publicUrl = data.url;
+      const publicUrl = cleanImageUrl(data.url);
+      const fallbackUrl = getFallbackImageUrl(publicUrl, data.fallbackUrl);
       setLastUploadedUrl(publicUrl);
-      onImageUploaded(publicUrl);
+      setLastUploadedFallbackUrl(fallbackUrl || null);
+      onImageUploaded(publicUrl, fallbackUrl);
       setIsUploading(false);
       setProgressText('');
     } catch (err: any) {
@@ -194,6 +198,14 @@ export default function ImageUploader({
                 alt="Uploaded thumbnail" 
                 className="w-full h-full object-cover" 
                 referrerPolicy="no-referrer"
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  if (lastUploadedFallbackUrl && target.src !== lastUploadedFallbackUrl) {
+                    target.src = lastUploadedFallbackUrl;
+                  } else {
+                    target.style.display = 'none';
+                  }
+                }}
               />
             </div>
             <div className="min-w-0">

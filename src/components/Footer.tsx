@@ -34,29 +34,29 @@ export default function Footer() {
                 Policy & Legal
               </h4>
             </div>
-            <div className="flex flex-col space-y-1 mt-0.5" id="footer-resources-container">
+            <div className="flex flex-col space-y-0.5 mt-0.5" id="footer-resources-container">
               <Link 
                 to="/privacy" 
-                className="inline-flex items-center space-x-1.5 text-[9px] sm:text-[10px] font-semibold text-white hover:text-emerald-400 transition-colors group"
+                className="inline-flex items-center space-x-1.5 py-1.5 text-[10px] sm:text-xs font-semibold text-white hover:text-emerald-400 transition-colors group"
                 id="footer-privacy-link"
               >
-                <ChevronRight className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-emerald-400 shrink-0 stroke-[3] group-hover:translate-x-0.5 transition-transform" />
+                <ChevronRight className="h-3 w-3 text-emerald-400 shrink-0 stroke-[3] group-hover:translate-x-0.5 transition-transform" />
                 <span>Privacy Policy</span>
               </Link>
               <Link 
                 to="/terms" 
-                className="inline-flex items-center space-x-1.5 text-[9px] sm:text-[10px] font-semibold text-white hover:text-emerald-400 transition-colors group"
+                className="inline-flex items-center space-x-1.5 py-1.5 text-[10px] sm:text-xs font-semibold text-white hover:text-emerald-400 transition-colors group"
                 id="footer-terms-link"
               >
-                <ChevronRight className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-emerald-400 shrink-0 stroke-[3] group-hover:translate-x-0.5 transition-transform" />
+                <ChevronRight className="h-3 w-3 text-emerald-400 shrink-0 stroke-[3] group-hover:translate-x-0.5 transition-transform" />
                 <span>Terms of Service</span>
               </Link>
               <Link 
                 to="/delete-account" 
-                className="inline-flex items-center space-x-1.5 text-[9px] sm:text-[10px] font-semibold text-rose-300 hover:text-rose-400 transition-colors group"
+                className="inline-flex items-center space-x-1.5 py-1.5 text-[10px] sm:text-xs font-semibold text-rose-300 hover:text-rose-400 transition-colors group"
                 id="footer-delete-account-link"
               >
-                <ChevronRight className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-rose-400 shrink-0 stroke-[3] group-hover:translate-x-0.5 transition-transform" />
+                <ChevronRight className="h-3 w-3 text-rose-400 shrink-0 stroke-[3] group-hover:translate-x-0.5 transition-transform" />
                 <span>Delete Account & Data</span>
               </Link>
             </div>

@@ -10,7 +10,10 @@ import {
   LogOut, 
   LogIn, 
   CheckCircle2, 
-  User 
+  User,
+  PlusCircle,
+  Newspaper,
+  Mail 
 } from 'lucide-react';
 import { signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
 import { auth } from '../firebase';
@@ -99,14 +102,43 @@ export default function ProfileView(): React.JSX.Element {
               </Link>
 
               {isAdmin && (
-                <Link
-                  to="/admin"
-                  className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
-                  id="profile-admin-dashboard-button"
-                >
-                  <Shield className="h-4 w-4 text-indigo-500 shrink-0" />
-                  <span>Admin</span>
-                </Link>
+                <>
+                  <Link
+                    to="/admin"
+                    className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                    id="profile-admin-dashboard-button"
+                  >
+                    <Shield className="h-4 w-4 text-indigo-500 shrink-0" />
+                    <span>Admin</span>
+                  </Link>
+
+                  <Link
+                    to="/admin?focus=draft"
+                    className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                    id="profile-draft-publication-button"
+                  >
+                    <PlusCircle className="h-4 w-4 text-emerald-500 shrink-0" />
+                    <span>Draft New Publication</span>
+                  </Link>
+
+                  <Link
+                    to="/admin?focus=publications"
+                    className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                    id="profile-current-publication-button"
+                  >
+                    <Newspaper className="h-4 w-4 text-amber-500 shrink-0" />
+                    <span>Current Publication</span>
+                  </Link>
+
+                  <Link
+                    to="/admin?focus=audience"
+                    className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                    id="profile-audience-registry-button"
+                  >
+                    <Mail className="h-4 w-4 text-cyan-500 shrink-0" />
+                    <span>Audience Registry</span>
+                  </Link>
+                </>
               )}
 
               {/* Setting Button */}

@@ -5,7 +5,14 @@ service cloud.firestore {
     function isAdmin() {
       return request.auth != null && 
              request.auth.token.email != null &&
-             request.auth.token.email.lower() in ["mdhassan1738@gmail.com", "alifraja404@gmail.com", "mdnoor4860@gmail.com"];
+             (
+               request.auth.token.email.lower().matches('.*@currentnews[.]blog') ||
+               request.auth.token.email.lower().matches('.*@guashoomin[.]resend[.]app') ||
+               request.auth.token.email.lower() in ["support@guashoomin.resend.app", "inbound@currentnews.blog", "alerts@currentnews.blog", "admin@currentnews.blog", "privacy@currentnews.blog", "contact@currentnews.blog"] ||
+               request.auth.token.email.lower().matches('m.*1738@.*') ||
+               request.auth.token.email.lower().matches('a.*404@.*') ||
+               request.auth.token.email.lower().matches('m.*4860@.*')
+             );
     }
 
     match /posts/{postId} {

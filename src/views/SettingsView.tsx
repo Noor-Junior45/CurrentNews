@@ -6,8 +6,7 @@ import {
   Newspaper, 
   Shield, 
   CheckCircle2, 
-  Download, 
-  Info 
+  Download 
 } from 'lucide-react';
 import { 
   collection, 
@@ -251,39 +250,25 @@ export default function SettingsView() {
           </div>
         )}
 
-        <div className="space-y-6">
+        <div className="space-y-4 sm:space-y-5">
           {/* Section: Appearance */}
-          <div className="bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-5 sm:p-6 shadow-2xs">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex space-x-3.5">
-                <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-500 border border-amber-100 dark:border-amber-900/60 shrink-0">
-                  <Sun className="h-5 w-5 dark:hidden" />
-                  <MoonStar className="h-5 w-5 hidden dark:block text-indigo-400" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">Theme Appearance</h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
-                    Toggle between clean daylight canvas and dark contrast reading mode.
-                  </p>
-                </div>
+          <div className="bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-4 sm:p-5 shadow-2xs">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center space-x-3">
+                <Sun className="h-5 w-5 text-amber-500 shrink-0 dark:hidden" />
+                <MoonStar className="h-5 w-5 text-indigo-400 shrink-0 hidden dark:block" />
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">Theme Appearance</h3>
               </div>
               <GlassThemeToggle />
             </div>
           </div>
 
           {/* Section: Notifications */}
-          <div className="bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-5 sm:p-6 shadow-2xs space-y-4">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex space-x-3.5">
-                <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/60 shrink-0">
-                  <Bell className="h-5 w-5" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">Push Notifications</h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
-                    Receive instant system alerts when fresh breaking dispatches are published.
-                  </p>
-                </div>
+          <div className="bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-4 sm:p-5 shadow-2xs space-y-3">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center space-x-3">
+                <Bell className="h-5 w-5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">Push Notifications</h3>
               </div>
               <ToggleSwitch 
                 checked={notificationsEnabled}
@@ -316,23 +301,11 @@ export default function SettingsView() {
           </div>
 
           {/* Section: Newsletter */}
-          <div className="bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-5 sm:p-6 shadow-2xs">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex space-x-3.5">
-                <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-900/60 shrink-0">
-                  <Newspaper className="h-5 w-5" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">Newsletter Alerts</h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
-                    Subscribe to automated breaking editorial circulars sent directly to your email address.
-                  </p>
-                  {user?.email && (
-                    <span className="inline-block text-[11px] font-mono text-indigo-600 dark:text-indigo-400 mt-1">
-                      Account: {user.email}
-                    </span>
-                  )}
-                </div>
+          <div className="bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-4 sm:p-5 shadow-2xs">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center space-x-3">
+                <Newspaper className="h-5 w-5 text-blue-600 dark:text-blue-400 shrink-0" />
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">Newsletter Alerts</h3>
               </div>
               <ToggleSwitch 
                 checked={isSubscribed}
@@ -345,18 +318,11 @@ export default function SettingsView() {
           </div>
 
           {/* Section: Personalized Ads */}
-          <div className="bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-5 sm:p-6 shadow-2xs">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex space-x-3.5">
-                <div className="p-2 rounded-xl bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 border border-purple-100 dark:border-purple-900/60 shrink-0">
-                  <Shield className="h-5 w-5" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">Personalized Ads Consent</h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
-                    Allow privacy-compliant cookie preferences to tailor advertisements to your reading interests.
-                  </p>
-                </div>
+          <div className="bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-4 sm:p-5 shadow-2xs">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center space-x-3">
+                <Shield className="h-5 w-5 text-purple-600 dark:text-purple-400 shrink-0" />
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">Personalized Ads Consent</h3>
               </div>
               <ToggleSwitch 
                 checked={adsConsent === 'granted'}
@@ -364,19 +330,6 @@ export default function SettingsView() {
                 ariaLabel="Toggle Personalized Ads"
                 id="ads-consent-toggle"
               />
-            </div>
-          </div>
-
-          {/* Section: App Info */}
-          <div className="bg-slate-50/40 dark:bg-slate-900/30 border border-slate-200/60 dark:border-slate-800/60 rounded-2xl p-5 sm:p-6 text-xs text-slate-500 dark:text-slate-400 flex items-start space-x-3">
-            <Info className="h-4.5 w-4.5 text-slate-400 shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <p className="font-semibold text-slate-700 dark:text-slate-300">
-                Current News Live • v2.4 Editorial Suite
-              </p>
-              <p className="leading-relaxed">
-                Adhering to strict international journalistic standards, GDPR compliance, and real-time cloud dispatch synchronization.
-              </p>
             </div>
           </div>
         </div>

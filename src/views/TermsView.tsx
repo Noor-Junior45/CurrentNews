@@ -9,8 +9,8 @@ export default function TermsView() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-slate-950" id="terms-of-service-view">
-      {/* Top Header with liquid glass Back button and short heading */}
-      <ProfilePageNavbar title="Terms" />
+      {/* Top Header with liquid glass Back button and full heading */}
+      <ProfilePageNavbar title="Terms of Service" />
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
         <p className="text-xs sm:text-sm text-slate-500 mb-8 font-sans leading-relaxed">
@@ -122,7 +122,7 @@ export default function TermsView() {
           </p>
           <div className="bg-slate-100 dark:bg-slate-950 p-4 rounded-xl border border-slate-200/60 dark:border-slate-800/60 font-mono text-[11px] sm:text-xs text-slate-600 dark:text-slate-400 space-y-1">
             <p className="font-sans font-bold text-slate-800 dark:text-slate-250">Current News Legal Desk</p>
-            <p>Email Inquiry: <a href="mailto:mdhassan1738@gmail.com" className="text-indigo-600 hover:underline">mdhassan1738@gmail.com</a></p>
+            <p>Email Inquiry: <a href="mailto:support@guashoomin.resend.app" className="text-indigo-600 hover:underline">support@guashoomin.resend.app</a></p>
             <p>Platform Provider: Independent Progressive Web Stack</p>
           </div>
         </section>

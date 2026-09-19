@@ -41,7 +41,6 @@ import {
   Share2,
   Mail,
   Rss,
-  LayoutDashboard,
   Image as ImageIcon
 } from 'lucide-react';
 
@@ -176,12 +175,10 @@ export default function AdminView() {
         if (p.authorEmail) {
           return p.authorEmail.toLowerCase() === user?.email?.toLowerCase();
         }
-        // Fallback for legacy posts (no authorEmail): show only to primary admin mdhassan1738@gmail.com
+        // Fallback for legacy posts (no authorEmail): show to authorized admins
         // or if the authorName matches their current active pen name
-        const primaryAdmin = 'mdhassan1738@gmail.com';
-        const isPrimaryAdmin = user?.email?.toLowerCase() === primaryAdmin;
         const matchesPenName = activePenName && p.authorName === activePenName;
-        return isPrimaryAdmin || matchesPenName;
+        return isAdmin || matchesPenName;
       });
 
       setPosts(ownPosts);
@@ -235,7 +232,7 @@ export default function AdminView() {
         postsSnap.forEach((postDoc) => {
           const data = postDoc.data();
           const isOwnPost = (data.authorEmail && data.authorEmail.toLowerCase() === user?.email?.toLowerCase()) ||
-                            (!data.authorEmail && globalPenName && data.authorName === globalPenName && user?.email?.toLowerCase() === 'mdhassan1738@gmail.com');
+                            (!data.authorEmail && globalPenName && data.authorName === globalPenName && isAdmin);
           
           if (isOwnPost && data.authorName !== tempPenName.trim()) {
             const postRef = doc(db, 'posts', postDoc.id);
@@ -626,60 +623,21 @@ export default function AdminView() {
   const params = new URLSearchParams(location.search);
   const currentSegment = params.get('focus') || 'dashboard';
 
-  const segments = [
-    { id: 'dashboard', label: 'Admin Dashboard', shortLabel: 'Dashboard', icon: LayoutDashboard, count: null },
-    { id: 'draft', label: isEditing ? 'Edit Story' : 'Draft New Publication', shortLabel: isEditing ? 'Edit' : 'Draft', icon: PlusCircle, count: null },
-    { id: 'publications', label: 'Current Publications', shortLabel: 'Stories', icon: Newspaper, count: posts.length },
-    { id: 'audience', label: 'Audience Registry', shortLabel: 'Audience', icon: Mail, count: subscribers.length }
-  ];
+  const segmentTitles: Record<string, string> = {
+    dashboard: 'Admin Dashboard',
+    draft: isEditing ? 'Edit Story' : 'Draft New Publication',
+    publications: 'Current Publications',
+    audience: 'Audience Registry',
+  };
 
   return (
     <div className="min-h-screen bg-white dark:bg-slate-950" id="admin-board-view">
       {/* Top Header with liquid glass Back button and short heading */}
       <ProfilePageNavbar 
-        title="Admin" 
-        rightAction={
-          <div className="flex items-center gap-2 px-2.5 py-1 bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-900 text-green-800 dark:text-green-300 text-[11px] font-semibold rounded-full font-mono">
-            <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-            <span className="hidden sm:inline">Firestore Authorized</span>
-          </div>
-        }
+        title={segmentTitles[currentSegment] || 'Admin'} 
       />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* 🧭 Segment Switcher Navigation Deck */}
-      <div className="mb-10 bg-white/45 dark:bg-slate-900/40 backdrop-blur-md p-1.5 border border-white/60 dark:border-white/10 rounded-2xl md:rounded-full flex flex-col md:flex-row gap-2 shadow-lg shadow-slate-150/40 dark:shadow-none md:items-center w-full" id="segment-deck">
-        {segments.map((seg) => {
-          const isActive = currentSegment === seg.id;
-          const Icon = seg.icon;
-          return (
-            <button
-              key={seg.id}
-              onClick={() => {
-                setErrorMsg(null);
-                setSuccessMsg(null);
-                navigate(`/admin?focus=${seg.id}`);
-              }}
-              className={`w-full md:flex-1 px-4 py-3 md:px-6 md:py-3.5 rounded-xl md:rounded-full text-xs font-extrabold uppercase tracking-wider transition-all duration-300 cursor-pointer flex items-center justify-between md:justify-center gap-2 ${
-                isActive
-                  ? 'bg-slate-950 dark:bg-white text-white dark:text-slate-950 shadow-md scale-[1.01]'
-                  : 'text-slate-600 dark:text-slate-300 hover:bg-white/50 dark:hover:bg-slate-800/40 hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <Icon className="h-4 w-4 shrink-0" />
-                <span>{seg.label}</span>
-              </div>
-              {seg.count !== null && (
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-black shrink-0 ${isActive ? 'bg-slate-800 dark:bg-slate-100 text-slate-200 dark:text-slate-800' : 'bg-slate-200 dark:bg-slate-800 text-slate-500'}`}>
-                  {seg.count}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-
       {/* Line message overlays */}
       {successMsg && (
         <div className="mb-6 p-4 bg-green-50 border-l-4 border-green-500 text-green-800 rounded-lg flex items-center justify-between shadow-xs">
@@ -883,17 +841,13 @@ export default function AdminView() {
       {currentSegment === 'draft' && (
         <div className="max-w-4xl mx-auto" id="story-form-section">
           <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 shadow-sm">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-6">
-              <h2 className="font-display font-extrabold text-xl text-slate-900 flex items-center space-x-2">
-                <PlusCircle className="h-5 w-5 text-indigo-600 animate-pulse" />
-                <span>{isEditing ? 'Modify Story Publication' : 'Draft New Publication'}</span>
-              </h2>
-              {isEditing && (
+            {isEditing && (
+              <div className="flex justify-end border-b border-slate-100 pb-4 mb-6">
                 <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-1 rounded">
                   Editing Mode
                 </span>
-              )}
-            </div>
+              </div>
+            )}
 
             <form onSubmit={handleFormSubmit} className="space-y-6">
               {/* Title input */}
@@ -1260,37 +1214,30 @@ export default function AdminView() {
 
       {/* SEGMENT 3: CURRENT PUBLICATIONS */}
       {currentSegment === 'publications' && (
-        <div className="max-w-4xl mx-auto" id="current-publications-list">
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 shadow-sm">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-150 pb-5 mb-6">
-              <div>
-                <h2 className="font-display font-extrabold text-xl text-slate-900 flex items-center space-x-2">
-                  <Newspaper className="h-5 w-5 text-indigo-600" />
-                  <span>Current Publications ({posts.length})</span>
-                </h2>
-                <p className="text-xs text-slate-400 mt-1">Manage, edit or delete your posted articles and draft manuscripts.</p>
-              </div>
+        <div className="max-w-4xl mx-auto space-y-6" id="current-publications-list">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-150 dark:border-slate-800 pb-5">
+            <p className="text-xs text-slate-400">Manage, edit or delete your posted articles and draft manuscripts ({posts.length} total).</p>
 
-              {/* Status filter switcher buttons */}
-              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl self-start md:self-auto shrink-0">
-                {(['all', 'published', 'drafts'] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    onClick={() => setPubListFilter(mode)}
-                    className={`px-3 py-1.5 rounded-lg text-[10px] uppercase font-bold tracking-wider transition-all cursor-pointer ${
-                      pubListFilter === mode
-                        ? 'bg-slate-950 text-white shadow-xs'
-                        : 'text-slate-550 hover:text-slate-900'
-                    }`}
-                  >
-                    {mode === 'all' && 'All'}
-                    {mode === 'published' && 'Published'}
-                    {mode === 'drafts' && 'Drafts'}
-                  </button>
-                ))}
-              </div>
+            {/* Status filter switcher buttons */}
+            <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl self-start md:self-auto shrink-0">
+              {(['all', 'published', 'drafts'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setPubListFilter(mode)}
+                  className={`px-3 py-1.5 rounded-lg text-[10px] uppercase font-bold tracking-wider transition-all cursor-pointer ${
+                    pubListFilter === mode
+                      ? 'bg-slate-950 text-white shadow-xs'
+                      : 'text-slate-550 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  {mode === 'all' && 'All'}
+                  {mode === 'published' && 'Published'}
+                  {mode === 'drafts' && 'Drafts'}
+                </button>
+              ))}
             </div>
+          </div>
 
             {feedLoading ? (
               <div className="flex flex-col items-center justify-center py-16">
@@ -1400,24 +1347,17 @@ export default function AdminView() {
                   })}
               </div>
             )}
-          </div>
         </div>
       )}
 
       {/* SEGMENT 4: AUDIENCE REGISTRY */}
       {currentSegment === 'audience' && (
-        <div className="max-w-4xl mx-auto" id="audience-subscribers-list">
-          {/* Subscriber Registry audience list */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 shadow-sm font-sans mx-auto">
-            <div className="border-b border-slate-100 pb-5 mb-6">
-              <h2 className="font-display font-extrabold text-xl text-slate-900 flex items-center space-x-2">
-                <Mail className="h-5 w-5 text-indigo-600" />
-                <span>Audience Registry ({subscribers.length})</span>
-              </h2>
-              <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                Real-time directory of citizens registered via the footer's news subscription form. Use this audience list to gauge active subscriber engagement.
-              </p>
-            </div>
+        <div className="max-w-4xl mx-auto space-y-6 font-sans" id="audience-subscribers-list">
+          <div className="border-b border-slate-150 dark:border-slate-800 pb-5">
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Real-time directory of citizens registered via the footer's news subscription form ({subscribers.length} subscribers). Use this audience list to gauge active subscriber engagement.
+            </p>
+          </div>
 
             {/* Resend API Test Section */}
             <div className="mb-8 p-5 bg-indigo-50/50 border border-indigo-100 rounded-xl">
@@ -1528,7 +1468,6 @@ export default function AdminView() {
                 })}
               </div>
             )}
-          </div>
         </div>
       )}
 

@@ -4,11 +4,12 @@ import { db, auth } from '../firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { Post, slugify } from '../types';
 import { cleanImageUrl, getFallbackImageUrl, sanitizePostImages } from '../utils/imageUrl';
-import { Link } from 'react-router-dom';
-import { BookOpen, Clock, Tag } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { BookOpen, Clock } from 'lucide-react';
 import ProfilePageNavbar from '../components/ProfilePageNavbar';
 
 export default function LikedView() {
+  const navigate = useNavigate();
   const [likedPosts, setLikedPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -61,18 +62,25 @@ export default function LikedView() {
           return;
         }
 
-        // Limit to 30 for safety/firestore limitations on 'in' operators
-        const subsetIds = likedIds.slice(0, 30);
-        const q = query(
-          collection(db, 'posts'),
-          where(documentId(), 'in', subsetIds)
-        );
-        
-        const snapshot = await getDocs(q);
+        // Firestore 'in' operator max is 30 IDs per query. Chunk IDs into groups of 30 to fetch all liked articles for long scrolling
+        const chunkSize = 30;
+        const chunks: string[][] = [];
+        for (let i = 0; i < likedIds.length; i += chunkSize) {
+          chunks.push(likedIds.slice(i, i + chunkSize));
+        }
+
         const list: Post[] = [];
-        snapshot.forEach(docSnap => {
-          list.push(sanitizePostImages({ id: docSnap.id, ...docSnap.data() } as Post));
-        });
+        for (const chunk of chunks) {
+          if (chunk.length === 0) continue;
+          const q = query(
+            collection(db, 'posts'),
+            where(documentId(), 'in', chunk)
+          );
+          const snapshot = await getDocs(q);
+          snapshot.forEach(docSnap => {
+            list.push(sanitizePostImages({ id: docSnap.id, ...docSnap.data() } as Post));
+          });
+        }
 
         setLikedPosts(list);
       } catch (err) {
@@ -122,28 +130,34 @@ export default function LikedView() {
           </div>
         </div>
       ) : (
-        <div className="grid gap-4 sm:gap-6" id="liked-posts-grid">
+        <div className="divide-y divide-slate-200 dark:divide-slate-800" id="liked-posts-list">
           {likedPosts.map((post) => {
             // Get raw text preview
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = post.content || '';
             const rawText = tempDiv.textContent || tempDiv.innerText || '';
-            const preview = rawText.substring(0, 180).trim() + (rawText.length > 180 ? '...' : '');
+            const preview = rawText.substring(0, 140).trim() + (rawText.length > 140 ? '...' : '');
 
             const thumbUrl = cleanImageUrl(post.imageUrl);
 
             return (
-              <div 
+              <article 
                 key={post.id}
-                className="group p-5 bg-white dark:bg-slate-905 border border-slate-200/90 dark:border-slate-800/80 rounded-2xl shadow-3xs hover:shadow-xs hover:border-slate-300 dark:hover:border-slate-705 transition-all duration-200 flex flex-col sm:flex-row gap-5"
-                id={`liked-card-${post.id}`}
+                onClick={() => navigate(`/post/${post.id}/${slugify(post.title)}`)}
+                tabIndex={0}
+                role="link"
+                className="group py-4 sm:py-5 flex items-start gap-4 sm:gap-6 transition-colors cursor-pointer hover:bg-slate-50/50 dark:hover:bg-slate-900/30 rounded-lg px-2 -mx-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                id={`liked-item-${post.id}`}
               >
+                {/* Compact Thumbnail Image */}
                 {thumbUrl && (
-                  <div className="w-full sm:w-40 h-28 sm:h-auto rounded-xl overflow-hidden shrink-0 border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900">
+                  <div
+                    className="w-24 sm:w-32 h-20 sm:h-24 rounded-lg overflow-hidden shrink-0 border border-slate-200/80 dark:border-slate-800 bg-slate-100 dark:bg-slate-900 block relative"
+                  >
                     <img 
                       src={thumbUrl} 
                       alt={post.title} 
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-350"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                       referrerPolicy="no-referrer"
                       onError={(e) => {
                         const target = e.currentTarget;
@@ -163,49 +177,47 @@ export default function LikedView() {
                   </div>
                 )}
                 
-                <div className="flex-1 flex flex-col justify-between">
+                {/* Article Info in compact stack */}
+                <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
                   <div>
-                    <div className="flex flex-wrap items-center gap-2 mb-2">
-                      <span className="inline-flex items-center gap-1 text-[9px] sm:text-[10px] font-mono font-medium capitalize bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-100/40 dark:border-indigo-900/40 px-2 py-0.5 rounded">
-                        <Tag className="h-2 w-2" />
-                        <span>{post.category || 'General'}</span>
+                    <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                      <span className="text-[10px] sm:text-[11px] font-mono font-semibold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+                        {post.category || 'General'}
                       </span>
                       {post.readTime && (
-                        <span className="text-[9px] font-mono text-slate-400 flex items-center gap-1">
-                          <Clock className="h-2.5 w-2.5" />
-                          <span>{post.readTime} min read</span>
-                        </span>
+                        <>
+                          <span className="text-slate-300 dark:text-slate-700 text-xs">•</span>
+                          <span className="text-[10px] sm:text-[11px] font-mono text-slate-400 dark:text-slate-500 flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            <span>{post.readTime} min read</span>
+                          </span>
+                        </>
                       )}
                     </div>
 
-                    <Link 
-                      to={`/post/${post.id}/${slugify(post.title)}`}
-                      className="block hover:text-indigo-600 transition-colors"
-                    >
-                      <h3 className="font-display font-bold text-lg sm:text-xl text-slate-900 dark:text-slate-100 tracking-tight leading-tight group-hover:text-indigo-600">
-                        {post.title}
-                      </h3>
-                    </Link>
+                    <h3 className="font-sans font-bold text-sm sm:text-base text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors tracking-tight leading-snug line-clamp-2">
+                      {post.title}
+                    </h3>
 
-                    <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-sans mt-2 line-clamp-2">
-                      {preview}
-                    </p>
+                    {preview && (
+                      <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-sans mt-1 line-clamp-2 hidden sm:block">
+                        {preview}
+                      </p>
+                    )}
                   </div>
 
-                  <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800/80 pt-3 mt-4 text-[11px] font-mono font-medium text-slate-400">
+                  <div className="flex items-center justify-between gap-2 mt-2 text-[11px] font-mono text-slate-400 dark:text-slate-500">
                     <span>
-                      Published: {post.createdAt ? (typeof post.createdAt.toDate === 'function' ? post.createdAt.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : new Date(post.createdAt).toLocaleDateString()) : 'N/A'}
+                      {post.createdAt ? (typeof post.createdAt.toDate === 'function' ? post.createdAt.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : new Date(post.createdAt).toLocaleDateString()) : ''}
                     </span>
-                    <Link 
-                      to={`/post/${post.id}/${slugify(post.title)}`}
-                      className="text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-0.5"
+                    <span 
+                      className="text-indigo-600 dark:text-indigo-400 group-hover:underline text-xs font-semibold shrink-0 py-1"
                     >
-                      <span>Read Dispatch</span>
-                      <span>→</span>
-                    </Link>
+                      Read Article →
+                    </span>
                   </div>
                 </div>
-              </div>
+              </article>
             );
           })}
         </div>

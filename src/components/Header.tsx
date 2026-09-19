@@ -438,11 +438,11 @@ export default function Header() {
           {/* Elegant Magnifying Glass Button triggers overlay like YouTube */}
           <button
             onClick={() => setIsSearchOpen(true)}
-            className="p-2 sm:p-2.5 rounded-full text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors cursor-pointer"
+            className="h-11 w-11 rounded-full text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors cursor-pointer flex items-center justify-center"
             id="header-search-trigger"
             title="Open dispatch search panel"
           >
-            <Search className="h-[18px] w-[18px] sm:h-5 sm:w-5" />
+            <Search className="h-5 w-5" />
           </button>
           
           <div className="relative" id="header-profile-dropdown-container">
@@ -455,12 +455,12 @@ export default function Header() {
             )}
 
             {loading ? (
-              <div className="h-10 w-10 rounded-full bg-slate-100 animate-pulse border border-slate-200" />
+              <div className="h-11 w-11 rounded-full bg-slate-100 animate-pulse border border-slate-200" />
             ) : (
               /* The trigger circle button - navigates directly to dedicated Profile page */
               <button 
                 onClick={() => navigate('/profile')}
-                className="h-10 w-10 rounded-full bg-slate-100 hover:bg-slate-200 border-2 border-slate-200 hover:border-indigo-500 overflow-hidden text-slate-600 hover:text-slate-900 shadow-xs transition-all duration-200 flex items-center justify-center cursor-pointer relative z-50 focus:outline-hidden"
+                className="h-11 w-11 rounded-full bg-slate-100 hover:bg-slate-200 border-2 border-slate-200 hover:border-indigo-500 overflow-hidden text-slate-600 hover:text-slate-900 shadow-xs transition-all duration-200 flex items-center justify-center cursor-pointer relative z-50 focus:outline-hidden"
                 id="header-profile-trigger"
                 title={user ? `Account: ${user.displayName || user.email}` : "Editorial Portal Access"}
               >
@@ -497,11 +497,11 @@ export default function Header() {
                     <button
                       type="button"
                       onClick={() => setIsDropdownOpen(false)}
-                      className="sm:hidden inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 backdrop-blur-md border border-slate-200/80 dark:border-slate-700/80 text-slate-700 dark:text-slate-200 text-xs font-semibold shadow-2xs transition-all cursor-pointer z-10"
+                      className="sm:hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 backdrop-blur-md border border-slate-200/80 dark:border-slate-700/80 text-slate-700 dark:text-slate-200 text-xs font-semibold shadow-2xs transition-all cursor-pointer z-10 whitespace-nowrap shrink-0 select-none"
                       id="profile-back-button"
                     >
-                      <ArrowLeft className="h-3.5 w-3.5 text-slate-700 dark:text-slate-200" />
-                      <span>Back</span>
+                      <ArrowLeft className="h-3.5 w-3.5 text-slate-700 dark:text-slate-200 shrink-0" />
+                      <span className="whitespace-nowrap">Back</span>
                     </button>
 
                     {/* Desktop Close Button (Only on larger screens, hidden on phone screens) */}
@@ -784,31 +784,21 @@ export default function Header() {
             <div className="space-y-6 text-left">
 
               {/* Theme Mode (Light / Dark) with custom glassmorphism toggle */}
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex space-x-3">
-                  <Sun className="h-4.5 w-4.5 text-amber-500 mt-0.5 shrink-0 dark:hidden" />
-                  <MoonStar className="h-4.5 w-4.5 text-indigo-400 mt-0.5 shrink-0 hidden dark:block" />
-                  <div>
-                    <h4 className="text-xs font-semibold text-slate-800 dark:text-slate-200">Theme Appearance</h4>
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-normal mt-0.5">
-                      Toggle between daylight brightness and night mode.
-                    </p>
-                  </div>
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center space-x-3">
+                  <Sun className="h-4.5 w-4.5 text-amber-500 shrink-0 dark:hidden" />
+                  <MoonStar className="h-4.5 w-4.5 text-indigo-400 shrink-0 hidden dark:block" />
+                  <h4 className="text-xs font-semibold text-slate-800 dark:text-slate-200">Theme Appearance</h4>
                 </div>
                 <GlassThemeToggle />
               </div>
               
               {/* 1. Browser Notifications & App Alerts */}
               <div className="flex flex-col space-y-2">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex space-x-3">
-                    <Bell className="h-4.5 w-4.5 text-indigo-500 mt-0.5 shrink-0" />
-                    <div>
-                      <h4 className="text-xs font-semibold text-slate-800 dark:text-slate-200">Notifications</h4>
-                      <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-normal mt-0.5">
-                        Receive instant push updates when fresh world dispatches are published.
-                      </p>
-                    </div>
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center space-x-3">
+                    <Bell className="h-4.5 w-4.5 text-indigo-500 shrink-0" />
+                    <h4 className="text-xs font-semibold text-slate-800 dark:text-slate-200">Notifications</h4>
                   </div>
                   <ToggleSwitch 
                     checked={notificationsEnabled}
@@ -838,15 +828,10 @@ export default function Header() {
               </div>
 
               {/* 2. Newsletter Alerts */}
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex space-x-3">
-                  <Newspaper className="h-4.5 w-4.5 text-indigo-500 mt-0.5 shrink-0" />
-                  <div>
-                    <h4 className="text-xs font-semibold text-slate-800 dark:text-slate-200">Newsletter Alerts</h4>
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-normal mt-0.5">
-                      Subscribe to automated breaking news alerts on your registered Google email.
-                    </p>
-                  </div>
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center space-x-3">
+                  <Newspaper className="h-4.5 w-4.5 text-indigo-500 shrink-0" />
+                  <h4 className="text-xs font-semibold text-slate-800 dark:text-slate-200">Newsletter Alerts</h4>
                 </div>
                 <ToggleSwitch 
                   checked={isSubscribed}
@@ -858,15 +843,10 @@ export default function Header() {
               </div>
 
               {/* 3. Personalized Ads Consent */}
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex space-x-3">
-                  <Shield className="h-4.5 w-4.5 text-indigo-500 mt-0.5 shrink-0" />
-                  <div>
-                    <h4 className="text-xs font-semibold text-slate-800 dark:text-slate-200">Personalized Ads</h4>
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-normal mt-0.5">
-                      Allow cookie tracking to tailor personalized advertisements.
-                    </p>
-                  </div>
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center space-x-3">
+                  <Shield className="h-4.5 w-4.5 text-indigo-500 shrink-0" />
+                  <h4 className="text-xs font-semibold text-slate-800 dark:text-slate-200">Personalized Ads</h4>
                 </div>
                 <ToggleSwitch 
                   checked={adsConsent === 'granted'}

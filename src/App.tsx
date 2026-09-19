@@ -38,7 +38,8 @@ function ConditionalHeader() {
 
 function ConditionalFooter() {
   const location = useLocation();
-  if (location.pathname !== '/' && location.pathname !== '/privacy' && location.pathname !== '/terms' && location.pathname !== '/delete-account') {
+  // Hide footer on /privacy, /terms, /delete-account and profile/admin pages
+  if (location.pathname !== '/') {
     return null;
   }
   return <Footer />;

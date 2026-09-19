@@ -10,8 +10,8 @@ export default function PrivacyView() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-slate-950" id="privacy-policy-view">
-      {/* Top Header with liquid glass Back button and short heading */}
-      <ProfilePageNavbar title="Privacy" />
+      {/* Top Header with liquid glass Back button and full heading */}
+      <ProfilePageNavbar title="Privacy Policy" />
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
         <p className="text-xs sm:text-sm text-slate-500 mb-8 font-sans leading-relaxed">
@@ -165,7 +165,7 @@ export default function PrivacyView() {
           </p>
           <div className="bg-slate-100 dark:bg-slate-950 p-4 rounded-xl border border-slate-200/60 dark:border-slate-800/60 font-mono text-[11px] sm:text-xs text-slate-600 dark:text-slate-400 space-y-1">
             <p className="font-sans font-bold text-slate-800 dark:text-slate-250">Current News Editorial Desk</p>
-            <p>Email Inquiry: <a href="mailto:mdhassan1738@gmail.com" className="text-indigo-600 hover:underline">mdhassan1738@gmail.com</a></p>
+            <p>Email Inquiry: <a href="mailto:support@guashoomin.resend.app" className="text-indigo-600 hover:underline">support@guashoomin.resend.app</a></p>
             <p>Database Authority: Google Firebase Firestore</p>
             <p>Jurisdiction: Standard Federal Privacy Frameworks</p>
           </div>

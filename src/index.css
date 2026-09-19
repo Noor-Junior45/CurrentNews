@@ -16,6 +16,26 @@ body {
   color: #0f172a;
 }
 
+/* Hide side and horizontal scrollbars globally across all browsers, while keeping full scrolling functionality */
+html,
+body,
+#root,
+#app-root-container {
+  -ms-overflow-style: none !important; /* IE and Edge */
+  scrollbar-width: none !important; /* Firefox */
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+#root::-webkit-scrollbar,
+#app-root-container::-webkit-scrollbar,
+*::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
+}
+
 /* Hide horizontal scroll indicators, scroll bars, and scroll buttons across all devices & browsers */
 .no-scrollbar::-webkit-scrollbar,
 #category-filter-header ::-webkit-scrollbar,

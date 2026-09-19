@@ -250,7 +250,7 @@ export default function HomeView() {
               <button
                 key={cat}
                 onClick={() => setSelectedCategory(cat)}
-                className={`py-1.5 px-2.5 sm:px-3.5 text-xs font-semibold tracking-wider uppercase transition-all duration-200 cursor-pointer whitespace-nowrap flex items-center gap-1 border-b-2 -mb-px hover:text-slate-900 dark:hover:text-slate-100 ${
+                className={`min-h-[44px] py-2.5 px-3 sm:px-4 text-xs font-semibold tracking-wider uppercase transition-all duration-200 cursor-pointer whitespace-nowrap flex items-center gap-1.5 border-b-2 -mb-px hover:text-slate-900 dark:hover:text-slate-100 ${
                   isSelected 
                     ? 'bg-amber-100/60 text-amber-950 border-amber-600/80 dark:bg-amber-950/40 dark:text-amber-200 dark:border-amber-500 rounded-t-lg' 
                     : 'bg-transparent border-transparent text-slate-400 dark:text-slate-500 hover:border-slate-350'
@@ -389,17 +389,17 @@ export default function HomeView() {
               <button
                 disabled={currentPage <= 1}
                 onClick={() => handlePageChange(currentPage - 1)}
-                className="px-3 py-1.5 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-semibold text-xs transition-colors cursor-pointer flex items-center gap-1"
+                className="min-h-[44px] px-3.5 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-semibold text-xs transition-colors cursor-pointer flex items-center gap-1.5"
                 id="pagination-prev-btn"
               >
-                <ChevronLeft className="h-3.5 w-3.5" />
+                <ChevronLeft className="h-4 w-4" />
                 <span>Prev</span>
               </button>
 
               {getPaginationRange(currentPage, totalPages).map((item, idx) => {
                 if (item === '...') {
                   return (
-                    <span key={`dots-${idx}`} className="px-1.5 py-1 text-slate-400 font-mono text-xs select-none">
+                    <span key={`dots-${idx}`} className="min-h-[44px] px-2 flex items-center justify-center text-slate-400 font-mono text-xs select-none">
                       ...
                     </span>
                   );
@@ -410,7 +410,7 @@ export default function HomeView() {
                   <button
                     key={pageNum}
                     onClick={() => handlePageChange(pageNum)}
-                    className={`h-8 min-w-[32px] px-2 rounded-md font-bold text-xs transition-all flex items-center justify-center cursor-pointer ${
+                    className={`min-h-[44px] min-w-[44px] px-2.5 rounded-lg font-bold text-xs transition-all flex items-center justify-center cursor-pointer ${
                       isActive
                         ? 'bg-slate-900 text-white border border-slate-900 dark:bg-white dark:text-slate-950 dark:border-white shadow-xs'
                         : 'bg-white text-slate-700 border border-slate-300 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-300 hover:bg-slate-50'
@@ -425,11 +425,11 @@ export default function HomeView() {
               <button
                 disabled={currentPage >= totalPages}
                 onClick={() => handlePageChange(currentPage + 1)}
-                className="px-3 py-1.5 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-semibold text-xs transition-colors cursor-pointer flex items-center gap-1"
+                className="min-h-[44px] px-3.5 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-semibold text-xs transition-colors cursor-pointer flex items-center gap-1.5"
                 id="pagination-next-btn"
               >
                 <span>Next</span>
-                <ChevronRight className="h-3.5 w-3.5" />
+                <ChevronRight className="h-4 w-4" />
               </button>
             </div>
           </div>
@@ -447,7 +447,7 @@ export default function HomeView() {
                 </h3>
               </div>
 
-              <div className="flex flex-col items-start space-y-2.5 pl-1.5 sm:pl-3" id="stacked-tag-filter-buttons">
+              <div className="flex flex-col items-start space-y-1 pl-1.5 sm:pl-3" id="stacked-tag-filter-buttons">
                 {['All', 'General', 'Politics', 'Tech', 'Sports', 'Opinion', 'Business', 'Health', 'World'].map((cat) => {
                   const isSelected = selectedCategory.toLowerCase() === cat.toLowerCase();
                   return (
@@ -458,7 +458,7 @@ export default function HomeView() {
                         setCurrentPage(1);
                         document.getElementById('posts-grid')?.scrollIntoView({ behavior: 'smooth' });
                       }}
-                      className={`text-left bg-transparent border-0 p-0 text-xs sm:text-sm transition-colors cursor-pointer inline-flex items-center ${
+                      className={`min-h-[44px] w-full text-left bg-transparent border-0 py-2.5 text-xs sm:text-sm transition-colors cursor-pointer inline-flex items-center ${
                         isSelected
                           ? 'text-emerald-600 dark:text-emerald-400 font-bold'
                           : 'text-slate-700 hover:text-emerald-600 dark:text-slate-300 dark:hover:text-emerald-400 font-medium'

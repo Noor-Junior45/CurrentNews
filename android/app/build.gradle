@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace 'live.currentnews.app'
+    namespace 'blog.currentnews.app'
     compileSdk 34
 
     defaultConfig {
-        applicationId "live.currentnews.app"
+        applicationId "blog.currentnews.app"
         minSdk 24
         targetSdk 34
         versionCode 1
@@ -65,9 +65,10 @@ dependencies {
     // Firebase Platform (BoM - Bill of Materials manages versions)
     implementation platform('com.google.firebase:firebase-bom:32.8.0')
 
-    // Firebase Crashlytics & Analytics
+    // Firebase Crashlytics & Analytics & Cloud Messaging (Push Notifications)
     implementation 'com.google.firebase:firebase-crashlytics-ktx'
     implementation 'com.google.firebase:firebase-analytics-ktx'
+    implementation 'com.google.firebase:firebase-messaging-ktx'
 
     // Coroutines for async operations
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'

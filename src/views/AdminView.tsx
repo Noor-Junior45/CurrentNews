@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuthState } from '../hooks/useAuthState';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
 import { Post, slugify } from '../types';
 import { cleanImageUrl, getFallbackImageUrl, sanitizePostImages } from '../utils/imageUrl';
-import RichTextEditor from '../components/RichTextEditor';
+import RichTextEditor, { RichTextEditorHandle } from '../components/RichTextEditor';
 import PhotoAttachmentSection from '../components/PhotoAttachmentSection';
 import ProfilePageNavbar from '../components/ProfilePageNavbar';
 import { 
@@ -86,6 +86,8 @@ export default function AdminView() {
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [imageUrlsFallback, setImageUrlsFallback] = useState<string[]>([]);
   const [imagePosition, setImagePosition] = useState<'top' | 'middle' | 'bottom'>('top');
+  const [galleryPositions, setGalleryPositions] = useState<('gallery' | 'top' | 'middle' | 'bottom' | 'inline')[]>([]);
+  const editorRef = useRef<RichTextEditorHandle>(null);
   const [pubListFilter, setPubListFilter] = useState<'all' | 'published' | 'drafts'>('all');
 
   // Global Pen Name dynamic profile fields
@@ -369,6 +371,7 @@ export default function AdminView() {
     setImageUrls([]);
     setImageUrlsFallback([]);
     setImagePosition('top');
+    setGalleryPositions([]);
     setEditingPostId(null);
     setIsEditing(false);
     setSendEmailAlert(true);
@@ -422,6 +425,7 @@ export default function AdminView() {
       imageUrls: filteredImageUrls,
       imageUrlsFallback: filteredImageUrlsFallback,
       imagePosition: imagePosition,
+      galleryPositions: galleryPositions,
     };
 
     const path = 'posts';
@@ -517,6 +521,48 @@ export default function AdminView() {
             console.warn('Failed to dispatch alerts to subscribers:', emailErr);
           }
         }
+
+        // Dispatch notification so new articles show as notifications on phone & devices
+        if (targetStatus === 'published') {
+          try {
+            const publishedPostId = isEditing && editingPostId ? editingPostId : (newDocRef?.id || '');
+            const postLink = `${window.location.origin}/post/${publishedPostId}/${slugify(title.trim())}`;
+            const notifTitle = `Breaking News: ${title.trim()}`;
+            const cleanSnippet = content.replace(/<[^>]*>/g, ' ').replace(/\[fig\.\s*\d+\]/gi, ' ').replace(/\s+/g, ' ').trim();
+            const notifBody = cleanSnippet.length > 120 ? cleanSnippet.substring(0, 117) + '...' : (cleanSnippet || 'A new article has just been published on Current News. Tap to read.');
+
+            // 1. Persist notification dispatch to Firestore for mobile listeners and app sync
+            await addDoc(collection(db, 'notifications'), {
+              title: notifTitle,
+              body: notifBody,
+              url: postLink,
+              postId: publishedPostId,
+              imageUrl: imageUrl || '',
+              createdAt: serverTimestamp()
+            });
+
+            // 2. Trigger native device/browser notification on phone if permission is granted
+            if ('Notification' in window && Notification.permission === 'granted') {
+              if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                navigator.serviceWorker.ready.then((reg) => {
+                  reg.showNotification(notifTitle, {
+                    body: notifBody,
+                    icon: imageUrl || '/public/icon.png',
+                    badge: '/public/icon.png',
+                    data: { url: postLink }
+                  });
+                }).catch(() => {});
+              } else {
+                new Notification(notifTitle, {
+                  body: notifBody,
+                  icon: imageUrl || '/public/icon.png'
+                });
+              }
+            }
+          } catch (notifErr) {
+            console.warn('Notification broadcast note:', notifErr);
+          }
+        }
       }
 
       handleResetForm();
@@ -551,6 +597,7 @@ export default function AdminView() {
     setImageUrls(sanitizedPost.imageUrls || []);
     setImageUrlsFallback(sanitizedPost.imageUrlsFallback || []);
     setImagePosition(post.imagePosition || 'top');
+    setGalleryPositions(post.galleryPositions || []);
     setEditingPostId(post.id);
     setIsEditing(true);
     setErrorMsg(null);
@@ -840,10 +887,10 @@ export default function AdminView() {
       {/* SEGMENT 2: DRAFT NEW PUBLICATION */}
       {currentSegment === 'draft' && (
         <div className="max-w-4xl mx-auto" id="story-form-section">
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 shadow-sm">
+          <div className="py-2" id="story-form-inner-container">
             {isEditing && (
-              <div className="flex justify-end border-b border-slate-100 pb-4 mb-6">
-                <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-1 rounded">
+              <div className="flex justify-end border-b border-slate-200 dark:border-slate-800 pb-4 mb-6">
+                <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2.5 py-1 rounded-full">
                   Editing Mode
                 </span>
               </div>
@@ -906,9 +953,16 @@ export default function AdminView() {
                 onGalleryUrlsFallbackChange={setImageUrlsFallback}
                 imagePosition={imagePosition}
                 onImagePositionChange={(pos) => setImagePosition(pos)}
-                onInsertFigureIntoContent={(figTag) => {
-                  setContent(prev => (prev || '') + `<p>${figTag}</p><p><br></p>`);
-                  setSuccessMsg(`Inserted ${figTag} into article content`);
+                galleryPositions={galleryPositions}
+                onGalleryPositionsChange={setGalleryPositions}
+                onInsertFigureIntoContent={(figTag, figNum) => {
+                  const targetNum = figNum || (figTag.match(/\d+/) ? parseInt(figTag.match(/\d+/)![0], 10) : 1);
+                  if (editorRef.current) {
+                    editorRef.current.insertFigure(targetNum);
+                  } else {
+                    setContent(prev => (prev || '') + `<p>${figTag}</p><p><br></p>`);
+                  }
+                  setSuccessMsg(`Inserted ${figTag} into article body with cursor positioned below`);
                 }}
               />
 
@@ -919,6 +973,7 @@ export default function AdminView() {
                 </label>
                 <div className="border border-slate-300 rounded-lg overflow-hidden bg-white">
                   <RichTextEditor 
+                    ref={editorRef}
                     value={content} 
                     onChange={setContent} 
                     availablePhotoCount={(imageUrl ? 1 : 0) + imageUrls.length}

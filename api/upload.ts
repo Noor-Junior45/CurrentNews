@@ -94,19 +94,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     else if (mimeType === 'image/webp') ext = 'webp';
     else if (mimeType === 'image/gif') ext = 'gif';
     else if (mimeType === 'image/svg+xml') ext = 'svg';
+    else if (mimeType === 'image/avif') ext = 'avif';
+    else {
+      const extMatch = originalName.match(/\.([a-zA-Z0-9]+)$/);
+      if (extMatch) {
+        const foundExt = extMatch[1].toLowerCase();
+        if (['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg', 'heic', 'heif', 'avif'].includes(foundExt)) {
+          ext = foundExt === 'jpeg' ? 'jpg' : foundExt;
+        }
+      }
+    }
+
+    let uploadContentType = mimeType;
+    if (!uploadContentType || uploadContentType === 'application/octet-stream' || !uploadContentType.startsWith('image/')) {
+      const mimeMap: Record<string, string> = {
+        jpg: 'image/jpeg',
+        jpeg: 'image/jpeg',
+        png: 'image/png',
+        webp: 'image/webp',
+        gif: 'image/gif',
+        svg: 'image/svg+xml',
+        avif: 'image/avif',
+      };
+      uploadContentType = mimeMap[ext] || 'image/jpeg';
+    }
 
     const now = new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const randomHex = crypto.randomBytes(8).toString('hex');
-    const sanitizedName = originalName.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 30);
+    const sanitizedName = originalName.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 30) || 'photo';
     const key = `uploads/${year}/${month}/${Date.now()}_${randomHex}_${sanitizedName}.${ext}`;
 
     const command = new PutObjectCommand({
       Bucket: bucketName,
       Key: key,
       Body: fileBuffer,
-      ContentType: mimeType,
+      ContentType: uploadContentType,
       CacheControl: 'public, max-age=31536000, immutable',
     });
 

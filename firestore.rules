@@ -65,5 +65,12 @@ service cloud.firestore {
       // Allow startup health connection check
       allow read: if true;
     }
+
+    match /notifications/{notificationId} {
+      // Anyone can read breaking news push notifications
+      allow read: if true;
+      // Only administrators can dispatch news push notifications
+      allow create, delete: if isAdmin();
+    }
   }
 }

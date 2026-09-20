@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, forwardRef, useImperativeHandle } from 'react';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 import { 
@@ -11,15 +11,27 @@ import {
   Image as ImageIcon
 } from 'lucide-react';
 
-interface RichTextEditorProps {
+export interface RichTextEditorHandle {
+  insertFigure: (figNum: number) => void;
+  insertHtmlAtCursor: (html: string) => void;
+  focus: () => void;
+}
+
+export interface RichTextEditorProps {
   value: string;
   onChange: (content: string) => void;
   placeholder?: string;
   availablePhotoCount?: number;
 }
 
-export default function RichTextEditor({ value, onChange, placeholder, availablePhotoCount = 0 }: RichTextEditorProps) {
-  
+const QuillComponent = ReactQuill as any;
+
+const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(function RichTextEditor(
+  { value, onChange, placeholder, availablePhotoCount = 0 },
+  ref
+) {
+  const quillRef = useRef<any>(null);
+
   // Enriched format capabilities for beautiful styling choices (colors, highlights, alignments, links, blockquotes, code blocks)
   const formats = [
     'header',
@@ -87,10 +99,60 @@ export default function RichTextEditor({ value, onChange, placeholder, available
     }
   ];
 
-  const injectTemplate = (html: string) => {
-    const currentVal = value || '';
-    onChange(currentVal + html);
+  const insertFigureAtCursor = (figNum: number) => {
+    const editor = quillRef.current?.getEditor();
+    if (editor) {
+      editor.focus();
+      const selection = editor.getSelection();
+      const index = selection ? selection.index : editor.getLength();
+
+      const figureTag = `[fig. ${figNum}]`;
+      const htmlBlock = `<p>${figureTag}</p><p><br></p>`;
+
+      // Paste figure marker block at current cursor position
+      editor.clipboard.dangerouslyPasteHTML(index, htmlBlock, 'user');
+
+      // Place typing cursor directly below the image on the fresh new line
+      setTimeout(() => {
+        editor.focus();
+        const tagLength = figureTag.length + 2;
+        const nextIndex = Math.min(index + tagLength, editor.getLength() - 1);
+        editor.setSelection(Math.max(0, nextIndex), 0, 'user');
+      }, 50);
+    } else {
+      const currentVal = value || '';
+      onChange(currentVal + `<p>[fig. ${figNum}]</p><p><br></p>`);
+    }
   };
+
+  const insertHtmlAtCursor = (html: string) => {
+    const editor = quillRef.current?.getEditor();
+    if (editor) {
+      editor.focus();
+      const selection = editor.getSelection();
+      const index = selection ? selection.index : editor.getLength();
+      editor.clipboard.dangerouslyPasteHTML(index, html, 'user');
+      setTimeout(() => {
+        editor.focus();
+        editor.setSelection(editor.getLength() - 1, 0, 'user');
+      }, 50);
+    } else {
+      const currentVal = value || '';
+      onChange(currentVal + html);
+    }
+  };
+
+  useImperativeHandle(ref, () => ({
+    insertFigure: (figNum: number) => {
+      insertFigureAtCursor(figNum);
+    },
+    insertHtmlAtCursor: (html: string) => {
+      insertHtmlAtCursor(html);
+    },
+    focus: () => {
+      quillRef.current?.getEditor()?.focus();
+    }
+  }));
 
   return (
     <div className="w-full flex flex-col" id="quill-editor-wrapper">
@@ -110,9 +172,9 @@ export default function RichTextEditor({ value, onChange, placeholder, available
               <button
                 key={`insert-fig-${figNum}`}
                 type="button"
-                onClick={() => injectTemplate(`<p>[fig. ${figNum}]</p><p><br></p>`)}
+                onClick={() => insertFigureAtCursor(figNum)}
                 className="inline-flex items-center gap-1 text-[10px] font-mono font-bold px-2.5 py-1.5 border rounded-full transition-all duration-200 hover:scale-[1.02] cursor-pointer shadow-2xs shrink-0 text-indigo-700 border-indigo-200 bg-indigo-50/80 hover:bg-indigo-100"
-                title={`Insert Photo Figure ${figNum} at cursor`}
+                title={`Insert Photo Figure ${figNum} at cursor with typing line below`}
               >
                 <ImageIcon className="h-3 w-3 text-indigo-600 shrink-0" />
                 <span>Insert [fig. {figNum}]</span>
@@ -126,7 +188,7 @@ export default function RichTextEditor({ value, onChange, placeholder, available
               <button
                 key={tpl.name}
                 type="button"
-                onClick={() => injectTemplate(tpl.html)}
+                onClick={() => insertHtmlAtCursor(tpl.html)}
                 className={`inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-1.5 border rounded-full transition-all duration-200 hover:scale-[1.02] cursor-pointer shadow-2xs shrink-0 ${tpl.color}`}
               >
                 <IconComponent className="h-3 w-3 shrink-0" />
@@ -139,7 +201,8 @@ export default function RichTextEditor({ value, onChange, placeholder, available
 
       {/* Main Editor Component */}
       <div className="bg-white dark:bg-slate-950">
-        <ReactQuill
+        <QuillComponent
+          ref={quillRef}
           theme="snow"
           value={value}
           onChange={onChange}
@@ -156,4 +219,7 @@ export default function RichTextEditor({ value, onChange, placeholder, available
       </div>
     </div>
   );
-}
+});
+
+export default RichTextEditor;
+

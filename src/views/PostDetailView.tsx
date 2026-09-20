@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { doc, getDoc, setDoc, deleteDoc, updateDoc, increment, collection, query, where, limit, getDocs } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
@@ -11,8 +11,10 @@ import { Calendar, ChevronLeft, Award, Clock, Send, Copy, Check, Share2, ThumbsU
 
 function getHtmlTextPreview(htmlString: string, maxLength: number = 160): string {
   if (!htmlString) return '';
+  // Strip [fig. N] or [figure N] markers before previewing
+  const cleaned = htmlString.replace(/\[fig(?:ure)?(?:\.|\s+)?\s*\d+[^\]]*\]/gi, '');
   const tempDiv = document.createElement('div');
-  tempDiv.innerHTML = htmlString;
+  tempDiv.innerHTML = cleaned;
   const excerpt = tempDiv.textContent || tempDiv.innerText || '';
   const clean = excerpt.replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
   if (clean.length <= maxLength) return clean;
@@ -657,7 +659,8 @@ export default function PostDetailView() {
       });
 
       // Handle inline [fig. N] or [fig N] markers in prose
-      const figPattern = /\[fig(?:\.|\s+)?\s*(\d+)\]/gi;
+      // Completely remove the code word and render only the photo cleanly
+      const figPattern = /(?:<p(?:\s+[^>]*)?>\s*(?:<(?:strong|em|code|span)(?:\s+[^>]*)?>\s*)?)?\[fig(?:ure)?(?:\.|\s+)?\s*(\d+)\](?:\s*<\/(?:strong|em|code|span)>)?(?:\s*<\/p>)?/gi;
       text = text.replace(figPattern, (match, numStr) => {
         const figNum = parseInt(numStr, 10);
         const photoIdx = figNum - 1;
@@ -669,44 +672,43 @@ export default function PostDetailView() {
             ? `if (this.dataset.fallback && this.src !== this.dataset.fallback) { this.src = this.dataset.fallback; } else { this.style.display = 'none'; }`
             : `this.style.display = 'none';`;
           return `
-            <figure class="my-8 block text-center not-prose" id="article-figure-${figNum}">
-              <div class="flex justify-center">
-                <img src="${pUrl}" data-fallback="${fbUrl || ''}" alt="Figure ${figNum}" class="rounded-2xl max-w-full h-auto border border-slate-250 shadow-md hover:shadow-lg transition-all duration-300 md:max-h-[520px] cursor-pointer" referrerPolicy="no-referrer" onerror="${errorScript}" />
-              </div>
-              <figcaption class="mt-2 text-center text-xs font-mono text-slate-500 italic">
-                Fig. ${figNum}
-              </figcaption>
-            </figure>
+            <div class="my-8 flex justify-center not-prose" id="article-figure-${figNum}">
+              <img src="${pUrl}" data-fallback="${fbUrl || ''}" alt="Article Photo" class="rounded-2xl max-w-full h-auto border border-slate-200 shadow-md hover:shadow-lg transition-all duration-300 md:max-h-[520px] object-cover" referrerPolicy="no-referrer" onerror="${errorScript}" />
+            </div>
           `;
         }
-        return match;
+        // Remove unassociated code words completely so readers never see [fig. N]
+        return '';
       });
+
+      // Cleanup any remaining [fig. N] or [figure N] tags anywhere in the prose
+      text = text.replace(/\[fig(?:ure)?(?:\.|\s+)?\s*\d+[^\]]*\]/gi, '');
 
       return text;
     };
 
     contentHtml = replaceBareUrls(contentHtml);
 
-    // If primary photo was already placed inline via [fig. 1], we don't need to inject it again at top/middle/bottom
+    // Primary photo placement check
     const isPrimaryRenderedInline = inlineFiguresRendered.has(0);
 
-    // Render based on imageUrl and imagePosition configuration
-    if (!isPrimaryRenderedInline && post.imageUrl && post.imageUrl.trim().length > 0) {
-      const resolvedSrc = cleanImageUrl(post.imageUrl);
-      const resolvedFallback = getFallbackImageUrl(post.imageUrl, post.imageUrlFallback);
+    // Reusable photo block generator
+    const renderPhotoBlock = (url: string, fallback?: string, key?: string | number) => {
+      const resolvedSrc = cleanImageUrl(url);
+      const resolvedFallback = getFallbackImageUrl(url, fallback);
 
-      const featureImageElement = (
-        <div className="my-8 flex justify-center" id="featured-article-photo-container">
+      return (
+        <div key={key} className="my-8 flex justify-center" id="featured-article-photo-container">
           <img
             src={resolvedSrc}
             alt="Dispatch Feature Photo"
-            className="rounded-2xl max-w-full h-auto border border-slate-250 shadow-md hover:shadow-lg transition-all duration-350 md:max-h-[550px]"
+            className="rounded-2xl max-w-full h-auto border border-slate-200 shadow-md hover:shadow-lg transition-all duration-350 md:max-h-[550px] object-cover"
             referrerPolicy="no-referrer"
             onError={(e) => {
               const target = e.currentTarget;
-              const fallback = resolvedFallback;
-              if (fallback && target.src !== fallback) {
-                target.src = fallback;
+              const fb = resolvedFallback;
+              if (fb && target.src !== fb) {
+                target.src = fb;
               } else {
                 const defaultEmblem = 'https://i.imgur.com/gFgShoZ.jpeg';
                 if (target.src !== defaultEmblem) {
@@ -719,51 +721,76 @@ export default function PostDetailView() {
           />
         </div>
       );
+    };
 
-      if (post.imagePosition === 'top') {
-        return (
-          <div>
-            {featureImageElement}
-            <div dangerouslySetInnerHTML={{ __html: contentHtml }} className="article-rich-text prose max-w-none break-word break-words" id="article-content" />
-          </div>
-        );
-      } else if (post.imagePosition === 'bottom') {
-        return (
-          <div>
-            <div dangerouslySetInnerHTML={{ __html: contentHtml }} className="article-rich-text prose max-w-none break-word break-words" id="article-content" />
-            {featureImageElement}
-          </div>
-        );
-      } else { // 'middle' position split
-        const paragraphs = contentHtml.split('</p>');
-        if (paragraphs.length > 2) {
-          const middleIndex = Math.floor(paragraphs.length / 2);
-          const firstHalf = paragraphs.slice(0, middleIndex).join('</p>') + '</p>';
-          const secondHalf = paragraphs.slice(middleIndex).join('</p>');
-          return (
-            <div>
-              <div dangerouslySetInnerHTML={{ __html: firstHalf }} className="article-rich-text prose max-w-none break-word break-words mb-4" />
-              {featureImageElement}
-              <div dangerouslySetInnerHTML={{ __html: secondHalf }} className="article-rich-text prose max-w-none break-word break-words mt-4" id="article-content" />
-            </div>
-          );
-        } else {
-          return (
-            <div>
-              {featureImageElement}
-              <div dangerouslySetInnerHTML={{ __html: contentHtml }} className="article-rich-text prose max-w-none break-word break-words" id="article-content" />
-            </div>
-          );
+    // Flow items: Top photos
+    const topPhotos: React.ReactNode[] = [];
+    if (!isPrimaryRenderedInline && post.imageUrl && (post.imagePosition === 'top' || !post.imagePosition)) {
+      topPhotos.push(renderPhotoBlock(post.imageUrl, post.imageUrlFallback, 'primary-top'));
+    }
+    if (post.imageUrls && Array.isArray(post.imageUrls)) {
+      post.imageUrls.forEach((u, i) => {
+        if (!inlineFiguresRendered.has(i + 1) && post.galleryPositions?.[i] === 'top') {
+          topPhotos.push(renderPhotoBlock(u, post.imageUrlsFallback?.[i], `gallery-top-${i}`));
         }
+      });
+    }
+
+    // Flow items: Middle photos
+    const middlePhotos: React.ReactNode[] = [];
+    if (!isPrimaryRenderedInline && post.imageUrl && post.imagePosition === 'middle') {
+      middlePhotos.push(renderPhotoBlock(post.imageUrl, post.imageUrlFallback, 'primary-middle'));
+    }
+    if (post.imageUrls && Array.isArray(post.imageUrls)) {
+      post.imageUrls.forEach((u, i) => {
+        if (!inlineFiguresRendered.has(i + 1) && post.galleryPositions?.[i] === 'middle') {
+          middlePhotos.push(renderPhotoBlock(u, post.imageUrlsFallback?.[i], `gallery-middle-${i}`));
+        }
+      });
+    }
+
+    // Flow items: Bottom photos
+    const bottomPhotos: React.ReactNode[] = [];
+    if (!isPrimaryRenderedInline && post.imageUrl && post.imagePosition === 'bottom') {
+      bottomPhotos.push(renderPhotoBlock(post.imageUrl, post.imageUrlFallback, 'primary-bottom'));
+    }
+    if (post.imageUrls && Array.isArray(post.imageUrls)) {
+      post.imageUrls.forEach((u, i) => {
+        if (!inlineFiguresRendered.has(i + 1) && post.galleryPositions?.[i] === 'bottom') {
+          bottomPhotos.push(renderPhotoBlock(u, post.imageUrlsFallback?.[i], `gallery-bottom-${i}`));
+        }
+      });
+    }
+
+    if (middlePhotos.length > 0) {
+      const paragraphs = contentHtml.split('</p>');
+      if (paragraphs.length > 2) {
+        const middleIndex = Math.floor(paragraphs.length / 2);
+        const firstHalf = paragraphs.slice(0, middleIndex).join('</p>') + '</p>';
+        const secondHalf = paragraphs.slice(middleIndex).join('</p>');
+        return (
+          <div>
+            {topPhotos}
+            <div dangerouslySetInnerHTML={{ __html: firstHalf }} className="article-rich-text prose max-w-none break-word break-words mb-4" />
+            {middlePhotos}
+            <div dangerouslySetInnerHTML={{ __html: secondHalf }} className="article-rich-text prose max-w-none break-word break-words mt-4" id="article-content" />
+            {bottomPhotos}
+          </div>
+        );
       }
     }
 
     return (
-      <div 
-        className="article-rich-text prose max-w-none break-word break-words"
-        dangerouslySetInnerHTML={{ __html: contentHtml }}
-        id="article-content"
-      />
+      <div>
+        {topPhotos}
+        <div 
+          className="article-rich-text prose max-w-none break-word break-words"
+          dangerouslySetInnerHTML={{ __html: contentHtml }}
+          id="article-content"
+        />
+        {middlePhotos}
+        {bottomPhotos}
+      </div>
     );
   };
 
@@ -947,41 +974,57 @@ export default function PostDetailView() {
         </div>
 
         {/* Additional Gallery if present */}
-        {post.imageUrls && post.imageUrls.length > 0 && (
-          <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-800" id="article-gallery-container">
-            <h4 className="text-xs font-mono font-bold text-slate-500 uppercase tracking-widest mb-4">
-              Photo Evidence & Gallery ({post.imageUrls.length})
-            </h4>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {post.imageUrls.map((extraUrl, idx) => {
-                const rSrc = cleanImageUrl(extraUrl);
-                const rFallback = getFallbackImageUrl(extraUrl, post.imageUrlsFallback?.[idx]);
-                return (
-                  <div 
-                    key={idx} 
-                    className="group overflow-hidden rounded-xl bg-slate-100 dark:bg-slate-900 cursor-pointer"
-                    onClick={() => setLightboxImage(rSrc)}
-                  >
-                    <img 
-                      src={rSrc} 
-                      alt={`Evidence Image #${idx + 1}`} 
-                      className="w-full h-44 sm:h-52 object-cover transition-transform duration-300 hover:scale-105 pointer-events-none" 
-                      referrerPolicy="no-referrer"
-                      onError={(e) => {
-                        const target = e.currentTarget;
-                        if (rFallback && target.src !== rFallback) {
-                          target.src = rFallback;
-                        } else {
-                          target.style.display = 'none';
-                        }
-                      }}
-                    />
-                  </div>
-                );
-              })}
+        {(() => {
+          const galleryGridPhotos = (post.imageUrls || []).map((extraUrl, idx) => {
+            const flow = post.galleryPositions?.[idx] || 'gallery';
+            const isInline = post.content?.match(new RegExp(`\\[fig(?:ure)?(?:\\.|\\s+)?\\s*${idx + 2}\\]`, 'i'));
+            return {
+              url: extraUrl,
+              fallback: post.imageUrlsFallback?.[idx],
+              idx,
+              flow,
+              isInline: Boolean(isInline)
+            };
+          }).filter(item => !item.isInline && item.flow === 'gallery');
+
+          if (galleryGridPhotos.length === 0) return null;
+
+          return (
+            <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-800" id="article-gallery-container">
+              <h4 className="text-xs font-mono font-bold text-slate-500 uppercase tracking-widest mb-4">
+                Photo Evidence & Gallery ({galleryGridPhotos.length})
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {galleryGridPhotos.map(({ url: extraUrl, fallback, idx }) => {
+                  const rSrc = cleanImageUrl(extraUrl);
+                  const rFallback = getFallbackImageUrl(extraUrl, fallback);
+                  return (
+                    <div 
+                      key={idx} 
+                      className="group overflow-hidden rounded-xl bg-slate-100 dark:bg-slate-900 cursor-pointer"
+                      onClick={() => setLightboxImage(rSrc)}
+                    >
+                      <img 
+                        src={rSrc} 
+                        alt={`Evidence Image #${idx + 1}`} 
+                        className="w-full h-44 sm:h-52 object-cover transition-transform duration-300 hover:scale-105 pointer-events-none" 
+                        referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          const target = e.currentTarget;
+                          if (rFallback && target.src !== rFallback) {
+                            target.src = rFallback;
+                          } else {
+                            target.style.display = 'none';
+                          }
+                        }}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Tags Section without pill shapes, with comma between tags */}
         {post.hashtags && post.hashtags.length > 0 && (
@@ -1006,14 +1049,14 @@ export default function PostDetailView() {
         )}
 
         {/* Bottom Reactions Section with message */}
-        <div className="mt-10 py-4 flex flex-col items-center justify-center text-center space-y-3.5 w-full mx-auto" id="article-bottom-reactions">
+        <div className="mt-12 sm:mt-16 pt-6 pb-4 flex flex-col items-center justify-center text-center space-y-3.5 w-full mx-auto" id="article-bottom-reactions">
           <p className="text-sm sm:text-base font-bold text-slate-900 dark:text-white text-center">
-            Enjoyed this articles? give a reaction below.
+            Enjoyed this article? Give a reaction below.
           </p>
           <div className="flex items-center justify-center gap-3.5">
             <button
               onClick={() => handleReaction('liked')}
-              className={`inline-flex items-center gap-2 px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer border-0 shadow-none ${
+              className={`min-h-[44px] inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer border-0 shadow-none ${
                 myReaction === 'liked'
                   ? 'bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300'
                   : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700'
@@ -1027,7 +1070,7 @@ export default function PostDetailView() {
 
             <button
               onClick={() => handleReaction('disliked')}
-              className={`inline-flex items-center gap-2 px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer border-0 shadow-none ${
+              className={`min-h-[44px] inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer border-0 shadow-none ${
                 myReaction === 'disliked'
                   ? 'bg-rose-100 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300'
                   : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700'
@@ -1041,11 +1084,17 @@ export default function PostDetailView() {
           </div>
         </div>
 
-        {/* Horizontal Grey Colour Line */}
-        <hr className="my-8 border-0 h-px bg-slate-200 dark:bg-slate-800" />
+        {/* Distinct Space Gap & End-of-Article Boundary */}
+        <div className="my-16 sm:my-24 flex items-center justify-center gap-4 select-none" aria-hidden="true" id="article-end-boundary">
+          <div className="h-px bg-slate-200 dark:bg-slate-800 grow" />
+          <span className="text-slate-400 dark:text-slate-500 text-[11px] sm:text-xs tracking-widest font-mono uppercase px-2">
+            End of Article
+          </span>
+          <div className="h-px bg-slate-200 dark:bg-slate-800 grow" />
+        </div>
 
         {/* Editorial Disclaimer and Description (No box design) */}
-        <div className="my-2" id="editorial-disclaimer-section">
+        <div className="py-2" id="editorial-disclaimer-section">
           <h4 className="font-display font-bold text-sm text-slate-900 dark:text-white uppercase tracking-wider mb-2">
             Editorial Disclaimer
           </h4>

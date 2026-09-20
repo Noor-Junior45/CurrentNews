@@ -17,8 +17,10 @@ interface BlogPostCardProps {
  */
 function getHtmlTextPreview(htmlString: string, maxLength: number = 160): string {
   if (!htmlString) return '';
+  // Strip [fig. N] or [figure N] markers before previewing
+  const cleaned = htmlString.replace(/\[fig(?:ure)?(?:\.|\s+)?\s*\d+[^\]]*\]/gi, '');
   const tempDiv = document.createElement('div');
-  tempDiv.innerHTML = htmlString;
+  tempDiv.innerHTML = cleaned;
   const excerpt = tempDiv.textContent || tempDiv.innerText || '';
   if (excerpt.length <= maxLength) return excerpt;
   return excerpt.substring(0, maxLength).trim() + '...';

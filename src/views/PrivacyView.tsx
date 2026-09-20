@@ -165,7 +165,7 @@ export default function PrivacyView() {
           </p>
           <div className="bg-slate-100 dark:bg-slate-950 p-4 rounded-xl border border-slate-200/60 dark:border-slate-800/60 font-mono text-[11px] sm:text-xs text-slate-600 dark:text-slate-400 space-y-1">
             <p className="font-sans font-bold text-slate-800 dark:text-slate-250">Current News Editorial Desk</p>
-            <p>Email Inquiry: <a href="mailto:support@guashoomin.resend.app" className="text-indigo-600 hover:underline">support@guashoomin.resend.app</a></p>
+            <p>Email Inquiry: <a href="mailto:Current%20News%20%3Csupport%40guashoomin.resend.app%3E" className="text-indigo-600 hover:underline">Current News &lt;support@guashoomin.resend.app&gt;</a></p>
             <p>Database Authority: Google Firebase Firestore</p>
             <p>Jurisdiction: Standard Federal Privacy Frameworks</p>
           </div>

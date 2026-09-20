@@ -1,4 +1,4 @@
-package live.currentnews.app
+package blog.currentnews.app
 
 import android.Manifest
 import android.annotation.SuppressLint
@@ -18,7 +18,7 @@ import com.google.firebase.analytics.FirebaseAnalytics
 import com.google.firebase.analytics.ktx.analytics
 import com.google.firebase.crashlytics.FirebaseCrashlytics
 import com.google.firebase.ktx.Firebase
-import live.currentnews.app.databinding.ActivityMainBinding
+import blog.currentnews.app.databinding.ActivityMainBinding
 
 class MainActivity : AppCompatActivity() {
 
@@ -69,15 +69,19 @@ class MainActivity : AppCompatActivity() {
         setupRetryButton()
         requestNotificationPermission()
 
-        // Handle deep-link or load standard base URL
-        val targetUrl = intent?.data?.toString() ?: getString(R.string.web_url)
+        // Handle deep-link or load standard base URL or notification target
+        val targetUrl = intent?.getStringExtra("target_url")
+            ?: intent?.data?.toString()
+            ?: getString(R.string.web_url)
         loadUrl(targetUrl)
     }
 
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
         setIntent(intent)
-        intent?.data?.toString()?.let { url ->
+        val targetUrl = intent?.getStringExtra("target_url")
+            ?: intent?.data?.toString()
+        targetUrl?.let { url ->
             loadUrl(url)
         }
     }

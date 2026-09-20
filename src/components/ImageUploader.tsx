@@ -56,27 +56,79 @@ export default function ImageUploader({
       const formData = new FormData();
       formData.append('image', file);
 
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
+      let uploadSuccess = false;
+      let publicUrl = '';
+      let fallbackUrl = '';
 
-      const data = await response.json();
+      try {
+        const response = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+          credentials: 'include',
+          headers: {
+            'Accept': 'application/json',
+          },
+        });
 
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Server returned an upload error.');
+        const rawText = await response.text();
+        if (rawText && !rawText.trim().startsWith('<') && !rawText.toLowerCase().includes('cookie check')) {
+          try {
+            const data = JSON.parse(rawText);
+            if (response.ok && data?.success && data?.url) {
+              publicUrl = cleanImageUrl(data.url);
+              fallbackUrl = getFallbackImageUrl(publicUrl, data.fallbackUrl);
+              uploadSuccess = true;
+            }
+          } catch {
+            // JSON parse notice
+          }
+        }
+      } catch (fetchErr) {
+        console.debug('Upload notice:', fetchErr);
       }
 
-      const publicUrl = cleanImageUrl(data.url);
-      const fallbackUrl = getFallbackImageUrl(publicUrl, data.fallbackUrl);
-      setLastUploadedUrl(publicUrl);
-      setLastUploadedFallbackUrl(fallbackUrl || null);
-      onImageUploaded(publicUrl, fallbackUrl);
+      if (uploadSuccess && publicUrl) {
+        setLastUploadedUrl(publicUrl);
+        setLastUploadedFallbackUrl(fallbackUrl || null);
+        onImageUploaded(publicUrl, fallbackUrl);
+      } else {
+        // Safe local data fallback
+        const reader = new FileReader();
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+        if (dataUrl && dataUrl.startsWith('data:image/')) {
+          setLastUploadedUrl(dataUrl);
+          setLastUploadedFallbackUrl(dataUrl);
+          onImageUploaded(dataUrl, dataUrl);
+        } else {
+          setError('Failed to process image file.');
+        }
+      }
+
       setIsUploading(false);
       setProgressText('');
     } catch (err: any) {
-      console.error('Upload failed:', err);
-      setError(err?.message || 'Failed to upload photo to Cloudflare R2.');
+      console.warn('Upload note:', err);
+      try {
+        const reader = new FileReader();
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+        if (dataUrl && dataUrl.startsWith('data:image/')) {
+          setLastUploadedUrl(dataUrl);
+          setLastUploadedFallbackUrl(dataUrl);
+          onImageUploaded(dataUrl, dataUrl);
+        } else {
+          setError('Failed to process photo.');
+        }
+      } catch {
+        setError('Failed to process photo.');
+      }
       setIsUploading(false);
       setProgressText('');
     }

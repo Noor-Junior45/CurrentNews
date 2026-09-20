@@ -34,7 +34,7 @@ export default function DeleteAccountView() {
   const [deletionSuccess, setDeletionSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const supportEmail = 'support@guashoomin.resend.app';
+  const supportEmail = 'Current News <support@guashoomin.resend.app>';
   const emailSubject = 'Account and Data Deletion Request - Current News';
   
   const userEmail = user?.email || '';
@@ -63,8 +63,8 @@ I understand that this action is permanent and cannot be reversed once processed
 Thank you,
 ${userName || '[Your Name]'}`;
 
-  // Clean RFC 6068 mailto URI with sanitized query parameters
-  const mailtoUrl = `mailto:${supportEmail}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(deletionEmailBody)}`;
+  // Clean RFC 6068 mailto URI with sanitized query parameters autofilling Current News <support@guashoomin.resend.app>
+  const mailtoUrl = `mailto:${encodeURIComponent(supportEmail)}?to=${encodeURIComponent(supportEmail)}&subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(deletionEmailBody)}`;
 
   const googleProvider = new GoogleAuthProvider();
 

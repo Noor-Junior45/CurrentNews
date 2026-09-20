@@ -19,6 +19,7 @@ export interface Post {
   imageUrls?: string[]; // Multiple extra image links
   imageUrlsFallback?: string[]; // Secondary self-healing fallback URLs for gallery
   imagePosition?: 'top' | 'middle' | 'bottom'; // Position mapping: top, middle, bottom
+  galleryPositions?: ('gallery' | 'top' | 'middle' | 'bottom' | 'inline')[]; // Flow placement for all photos
   views?: number; // Total article views
   hashtags?: string[]; // Custom social/instagram hashtags
 }

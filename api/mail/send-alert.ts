@@ -20,7 +20,8 @@ async function sendResendEmail(toEmail: string, subject: string, htmlContent: st
       to: [toEmail],
       subject: subject,
       html: htmlContent,
-      text: textContent
+      text: textContent,
+      reply_to: 'Current News <support@guashoomin.resend.app>'
     })
   });
 

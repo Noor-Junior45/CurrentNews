@@ -63,6 +63,13 @@ export default function App() {
       }
     }
     testConnection();
+
+    // Register PWA service worker for notifications and offline support
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch((err) => {
+        console.debug('Service Worker registration skipped:', err);
+      });
+    }
   }, []);
 
   return (

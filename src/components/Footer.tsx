@@ -6,9 +6,9 @@ export default function Footer() {
   const currentYear = new Date().getFullYear();
 
   return (
-    <footer className="bg-slate-900 text-slate-200 border-t border-slate-800 text-[10px] sm:text-xs" id="main-footer">
+    <footer className="bg-slate-900 text-slate-200 border-t border-slate-700 text-[10px] sm:text-xs" id="main-footer">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 sm:py-4">
-        <div className="grid grid-cols-2 gap-3 sm:gap-6 divide-x divide-slate-800/80 items-center">
+        <div className="grid grid-cols-2 gap-3 sm:gap-6 divide-x divide-slate-700 items-center">
           
           {/* Brand & Mission Column */}
           <div className="flex flex-col justify-center space-y-1 pr-3 sm:pr-6">
@@ -16,7 +16,7 @@ export default function Footer() {
               <img 
                 src="https://i.imgur.com/gq2X5nE.jpeg" 
                 alt="Current News Logo" 
-                className="h-4 w-4 sm:h-5 sm:w-5 rounded object-cover border border-slate-700 shrink-0"
+                className="h-4 w-4 sm:h-5 sm:w-5 rounded object-cover border border-slate-600 shrink-0"
                 referrerPolicy="no-referrer"
               />
               <span className="font-display font-bold text-[10px] sm:text-xs tracking-tight uppercase truncate">Current News</span>
@@ -64,7 +64,7 @@ export default function Footer() {
 
         </div>
 
-        <div className="mt-3 pt-2.5 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between text-[8px] sm:text-[9px] text-slate-400">
+        <div className="mt-3 pt-2.5 border-t border-slate-700 flex flex-col sm:flex-row items-center justify-between text-[8px] sm:text-[9px] text-slate-400">
           <p>© {currentYear} Current News.</p>
           <span className="mt-0.5 sm:mt-0 font-mono text-[7px] sm:text-[8px] text-slate-400">Autonomous Press Alliance</span>
         </div>

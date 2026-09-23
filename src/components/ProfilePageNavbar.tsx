@@ -50,12 +50,12 @@ export default function ProfilePageNavbar({
           <button
             type="button"
             onClick={handleBack}
-            className="min-h-[44px] inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-slate-100/90 hover:bg-slate-200/90 dark:bg-slate-850/80 dark:hover:bg-slate-800/90 backdrop-blur-md border border-slate-200/90 dark:border-slate-700/80 text-slate-700 dark:text-slate-200 text-xs font-semibold shadow-2xs hover:shadow-xs transition-all cursor-pointer active:scale-95 whitespace-nowrap shrink-0 select-none"
+            className="min-h-[44px] inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-slate-100/90 hover:bg-slate-200/90 dark:bg-slate-900/80 dark:hover:bg-transparent backdrop-blur-md border border-slate-200/90 dark:border-slate-700/80 dark:hover:border-indigo-500/60 text-slate-700 dark:text-slate-100 dark:hover:text-white text-xs font-semibold shadow-2xs hover:shadow-xs transition-all cursor-pointer active:scale-95 whitespace-nowrap shrink-0 select-none group"
             id="page-liquid-glass-back-btn"
             title="Go back"
           >
-            <ArrowLeft className="h-4 w-4 text-slate-600 dark:text-slate-300 shrink-0" />
-            <span className="whitespace-nowrap">Back</span>
+            <ArrowLeft className="h-4 w-4 text-slate-600 dark:text-slate-200 group-hover:text-slate-900 dark:group-hover:text-white shrink-0 transition-colors" />
+            <span className="whitespace-nowrap font-bold text-slate-800 dark:text-slate-100 dark:group-hover:text-white transition-colors">Back</span>
           </button>
         </div>
 

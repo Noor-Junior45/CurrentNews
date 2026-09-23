@@ -579,8 +579,8 @@ export default function PostDetailView() {
   if (loading) {
     return (
       <div className="max-w-3xl mx-auto px-4 py-20 text-center" id="post-detail-loading">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900 mx-auto mb-4" />
-        <p className="text-slate-500 text-sm font-mono font-medium">Downloading full publication content...</p>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900 dark:border-white mx-auto mb-4" />
+        <p className="text-slate-500 dark:text-slate-400 text-sm font-mono font-medium">Downloading full publication content...</p>
       </div>
     );
   }
@@ -588,12 +588,12 @@ export default function PostDetailView() {
   if (error || !post) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-16 text-center" id="post-detail-error">
-        <div className="bg-red-50 border border-red-200 rounded-xl p-8" id="error-box">
-          <h3 className="font-display font-bold text-lg text-slate-900 mb-2">Failed to Load Article</h3>
-          <p className="text-sm text-slate-600 mb-6">{error || 'Unknown error occurred.'}</p>
+        <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/40 rounded-xl p-8" id="error-box">
+          <h3 className="font-display font-bold text-lg text-slate-900 dark:text-white mb-2">Failed to Load Article</h3>
+          <p className="text-sm text-slate-600 dark:text-slate-300 mb-6">{error || 'Unknown error occurred.'}</p>
           <Link 
             to="/" 
-            className="inline-flex items-center space-x-1 bg-slate-900 text-white hover:bg-slate-800 px-5 py-2.5 rounded-lg text-sm font-medium transition-colors"
+            className="inline-flex items-center space-x-1 bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-white text-white dark:text-slate-900 px-5 py-2.5 rounded-lg text-sm font-medium transition-colors"
           >
             <ChevronLeft className="h-4 w-4" />
             <span>Back to Public Feed</span>
@@ -689,8 +689,23 @@ export default function PostDetailView() {
 
     contentHtml = replaceBareUrls(contentHtml);
 
-    // Primary photo placement check
-    const isPrimaryRenderedInline = inlineFiguresRendered.has(0);
+    // Sanitize any hardcoded inline dark colors (e.g. black text from Quill or pasted content)
+    // and inline white background colors so the article is guaranteed visible in dark mode
+    contentHtml = contentHtml
+      .replace(/color\s*:\s*(?:rgb\(\s*(?:[0-9]|[1-4][0-9]|5[0-9])\s*,\s*(?:[0-9]|[1-4][0-9]|5[0-9])\s*,\s*(?:[0-9]|[1-4][0-9]|5[0-9])\s*\)|#000000|#000|#111111|#111|#222222|#222|#333333|#333|#444444|#444|black|#1c1917|#0f172a)\s*;?/gi, '')
+      .replace(/background(?:-color)?\s*:\s*(?:rgb\(\s*(?:24[0-9]|25[0-5])\s*,\s*(?:24[0-9]|25[0-5])\s*,\s*(?:24[0-9]|25[0-5])\s*\)|#ffffff|#fff|#fafafa|#f8f9fa|white)\s*;?/gi, '');
+
+    // Primary photo placement check: rendered inline if explicit fig tag, imagePosition is 'inline', or already embedded in content
+    const isPrimaryRenderedInline = inlineFiguresRendered.has(0) || 
+      post.imagePosition === 'inline' || 
+      Boolean(post.imageUrl && post.content && (post.content.includes(post.imageUrl) || post.content.includes(cleanImageUrl(post.imageUrl))));
+
+    const isGalleryItemInline = (u: string, i: number) => {
+      if (inlineFiguresRendered.has(i + 1)) return true;
+      if (post.galleryPositions?.[i] === 'inline') return true;
+      if (u && post.content && (post.content.includes(u) || post.content.includes(cleanImageUrl(u)))) return true;
+      return false;
+    };
 
     // Reusable photo block generator
     const renderPhotoBlock = (url: string, fallback?: string, key?: string | number) => {
@@ -730,7 +745,7 @@ export default function PostDetailView() {
     }
     if (post.imageUrls && Array.isArray(post.imageUrls)) {
       post.imageUrls.forEach((u, i) => {
-        if (!inlineFiguresRendered.has(i + 1) && post.galleryPositions?.[i] === 'top') {
+        if (!isGalleryItemInline(u, i) && post.galleryPositions?.[i] === 'top') {
           topPhotos.push(renderPhotoBlock(u, post.imageUrlsFallback?.[i], `gallery-top-${i}`));
         }
       });
@@ -743,7 +758,7 @@ export default function PostDetailView() {
     }
     if (post.imageUrls && Array.isArray(post.imageUrls)) {
       post.imageUrls.forEach((u, i) => {
-        if (!inlineFiguresRendered.has(i + 1) && post.galleryPositions?.[i] === 'middle') {
+        if (!isGalleryItemInline(u, i) && post.galleryPositions?.[i] === 'middle') {
           middlePhotos.push(renderPhotoBlock(u, post.imageUrlsFallback?.[i], `gallery-middle-${i}`));
         }
       });
@@ -756,7 +771,7 @@ export default function PostDetailView() {
     }
     if (post.imageUrls && Array.isArray(post.imageUrls)) {
       post.imageUrls.forEach((u, i) => {
-        if (!inlineFiguresRendered.has(i + 1) && post.galleryPositions?.[i] === 'bottom') {
+        if (!isGalleryItemInline(u, i) && post.galleryPositions?.[i] === 'bottom') {
           bottomPhotos.push(renderPhotoBlock(u, post.imageUrlsFallback?.[i], `gallery-bottom-${i}`));
         }
       });
@@ -946,7 +961,7 @@ export default function PostDetailView() {
         </div>
 
         {/* Horizontal Line Dividing Heading and Description */}
-        <hr className="my-6 border-0 h-px bg-slate-200 dark:bg-slate-800" />
+        <hr className="my-6 border-0 h-px bg-slate-200 dark:bg-slate-700" />
 
         {/* YouTube and Facebook Embeds: stacked on phone, side-by-side on large screen */}
         <EmbedHandler youtubeUrl={post.youtubeUrl} facebookUrl={post.facebookUrl} isHeader={true} />
@@ -977,7 +992,9 @@ export default function PostDetailView() {
         {(() => {
           const galleryGridPhotos = (post.imageUrls || []).map((extraUrl, idx) => {
             const flow = post.galleryPositions?.[idx] || 'gallery';
-            const isInline = post.content?.match(new RegExp(`\\[fig(?:ure)?(?:\\.|\\s+)?\\s*${idx + 2}\\]`, 'i'));
+            const isInline = flow === 'inline' ||
+              Boolean(post.content?.match(new RegExp(`\\[fig(?:ure)?(?:\\.|\\s+)?\\s*${idx + 2}\\]`, 'i'))) ||
+              Boolean(extraUrl && post.content && (post.content.includes(extraUrl) || post.content.includes(cleanImageUrl(extraUrl))));
             return {
               url: extraUrl,
               fallback: post.imageUrlsFallback?.[idx],
@@ -1056,29 +1073,29 @@ export default function PostDetailView() {
           <div className="flex items-center justify-center gap-3.5">
             <button
               onClick={() => handleReaction('liked')}
-              className={`min-h-[44px] inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer border-0 shadow-none ${
+              className={`min-h-[44px] inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer border shadow-xs ${
                 myReaction === 'liked'
-                  ? 'bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  ? 'bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-700 border-slate-200 dark:border-slate-700'
               }`}
               title="Like this dispatch"
               id="bottom-like-btn"
             >
-              <ThumbsUp className={`h-4 w-4 ${myReaction === 'liked' ? 'fill-emerald-600 text-emerald-600 dark:fill-emerald-400 dark:text-emerald-400' : 'text-slate-500'}`} />
+              <ThumbsUp className={`h-4 w-4 ${myReaction === 'liked' ? 'fill-emerald-600 text-emerald-600 dark:fill-emerald-400 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-300'}`} />
               <span className="font-sans">{likes} Likes</span>
             </button>
 
             <button
               onClick={() => handleReaction('disliked')}
-              className={`min-h-[44px] inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer border-0 shadow-none ${
+              className={`min-h-[44px] inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer border shadow-xs ${
                 myReaction === 'disliked'
-                  ? 'bg-rose-100 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  ? 'bg-rose-100 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-700'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-700 border-slate-200 dark:border-slate-700'
               }`}
               title="Dislike this dispatch"
               id="bottom-dislike-btn"
             >
-              <ThumbsDown className={`h-4 w-4 ${myReaction === 'disliked' ? 'fill-rose-600 text-rose-600 dark:fill-rose-400 dark:text-rose-400' : 'text-slate-500'}`} />
+              <ThumbsDown className={`h-4 w-4 ${myReaction === 'disliked' ? 'fill-rose-600 text-rose-600 dark:fill-rose-400 dark:text-rose-400' : 'text-slate-500 dark:text-slate-300'}`} />
               <span className="font-sans">{dislikes} Dislikes</span>
             </button>
           </div>
@@ -1086,11 +1103,11 @@ export default function PostDetailView() {
 
         {/* Distinct Space Gap & End-of-Article Boundary */}
         <div className="my-16 sm:my-24 flex items-center justify-center gap-4 select-none" aria-hidden="true" id="article-end-boundary">
-          <div className="h-px bg-slate-200 dark:bg-slate-800 grow" />
-          <span className="text-slate-400 dark:text-slate-500 text-[11px] sm:text-xs tracking-widest font-mono uppercase px-2">
+          <div className="h-px bg-slate-200 dark:bg-slate-700 grow" />
+          <span className="text-slate-400 dark:text-slate-400 text-[11px] sm:text-xs tracking-widest font-mono uppercase px-2 font-semibold">
             End of Article
           </span>
-          <div className="h-px bg-slate-200 dark:bg-slate-800 grow" />
+          <div className="h-px bg-slate-200 dark:bg-slate-700 grow" />
         </div>
 
         {/* Editorial Disclaimer and Description (No box design) */}
@@ -1104,7 +1121,7 @@ export default function PostDetailView() {
         </div>
 
         {/* Again Horizontal Grey Colour Line */}
-        <hr className="my-8 border-0 h-px bg-slate-200 dark:bg-slate-800" />
+        <hr className="my-8 border-0 h-px bg-slate-200 dark:bg-slate-700" />
 
         {/* Related Coverage Section (No box design, articles divided by horizontal grey lines) */}
         {relatedPosts.length > 0 && (
@@ -1140,7 +1157,7 @@ export default function PostDetailView() {
                     </div>
                   </Link>
                   {idx < relatedPosts.length - 1 && (
-                    <hr className="my-6 border-0 h-px bg-slate-200 dark:bg-slate-800" />
+                    <hr className="my-6 border-0 h-px bg-slate-200 dark:bg-slate-700" />
                   )}
                 </div>
               ))}
@@ -1182,7 +1199,7 @@ export default function PostDetailView() {
               />
               
               <div className="mt-4 flex justify-center text-xs font-mono">
-                <span className="bg-white text-slate-900 font-semibold px-4 py-1.5 rounded-full border border-slate-200 shadow-md text-xs tracking-wide">
+                <span className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-semibold px-4 py-1.5 rounded-full border border-slate-200 dark:border-slate-800 shadow-md text-xs tracking-wide">
                   Ground Report Image
                 </span>
               </div>

@@ -6,7 +6,8 @@ import {
   Trash2, 
   Plus, 
   Check, 
-  AlertCircle 
+  AlertCircle,
+  CornerDownRight
 } from 'lucide-react';
 import { compressImage } from '../utils/imageCompressor';
 import { cleanImageUrl, getFallbackImageUrl } from '../utils/imageUrl';
@@ -16,8 +17,9 @@ interface PhotoAttachmentSectionProps {
   onPrimaryImageUrlChange: (url: string) => void;
   galleryUrls: string[];
   onGalleryUrlsChange: (urls: string[]) => void;
-  imagePosition: 'top' | 'middle' | 'bottom';
-  onImagePositionChange: (pos: 'top' | 'middle' | 'bottom') => void;
+  imagePosition: 'top' | 'middle' | 'bottom' | 'inline';
+  onImagePositionChange: (pos: 'top' | 'middle' | 'bottom' | 'inline') => void;
+  onInsertPhotoIntoContent?: (url: string) => void;
   onInsertFigureIntoContent?: (figureTag: string, figNum?: number, url?: string) => void;
   primaryImageUrlFallback?: string;
   onPrimaryImageUrlFallbackChange?: (url: string) => void;
@@ -34,6 +36,7 @@ export default function PhotoAttachmentSection({
   onGalleryUrlsChange,
   imagePosition,
   onImagePositionChange,
+  onInsertPhotoIntoContent,
   onInsertFigureIntoContent,
   primaryImageUrlFallback,
   onPrimaryImageUrlFallbackChange,
@@ -220,7 +223,11 @@ export default function PhotoAttachmentSection({
     }
 
     if (newFlow === 'inline') {
-      onInsertFigureIntoContent?.(`[fig. ${figNum}]`, figNum, targetUrl);
+      if (onInsertPhotoIntoContent) {
+        onInsertPhotoIntoContent(targetUrl);
+      } else {
+        onInsertFigureIntoContent?.('', figNum, targetUrl);
+      }
     }
 
     if (onGalleryPositionsChange) {
@@ -236,11 +243,11 @@ export default function PhotoAttachmentSection({
   const hasPhotos = Boolean(primaryImageUrl) || galleryUrls.length > 0;
 
   return (
-    <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-4" id="image-attachment-group">
+    <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-4" id="image-attachment-group">
       {/* 1. Header with logo and nothing else */}
       <div className="flex items-center space-x-2">
-        <ImageIcon className="h-4 w-4 text-indigo-600" />
-        <h3 className="text-xs font-semibold text-slate-800 uppercase tracking-wider font-mono">
+        <ImageIcon className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+        <h3 className="text-xs font-semibold text-slate-800 dark:text-slate-200 uppercase tracking-wider font-mono">
           Upload Photo
         </h3>
       </div>
@@ -254,8 +261,8 @@ export default function PhotoAttachmentSection({
           onClick={() => !isUploading && fileInputRef.current?.click()}
           className={`relative border-2 border-dashed rounded-xl p-6 text-center transition-all cursor-pointer ${
             isDragging
-              ? 'border-indigo-500 bg-indigo-50/50'
-              : 'border-slate-300 bg-white hover:bg-slate-50'
+              ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/20'
+              : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900/60 hover:bg-slate-50 dark:hover:bg-slate-800/50'
           } ${isUploading ? 'opacity-75 cursor-not-allowed' : ''}`}
         >
           <input
@@ -270,17 +277,17 @@ export default function PhotoAttachmentSection({
 
           {isUploading ? (
             <div className="py-2 flex flex-col items-center justify-center space-y-2">
-              <Loader2 className="h-6 w-6 text-indigo-600 animate-spin" />
-              <span className="text-xs font-semibold text-slate-700 font-mono">
+              <Loader2 className="h-6 w-6 text-indigo-600 dark:text-indigo-400 animate-spin" />
+              <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 font-mono">
                 {statusText || 'Uploading to Cloudflare R2...'}
               </span>
             </div>
           ) : (
             <div className="py-2 flex flex-col items-center justify-center space-y-2">
-              <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-full border border-indigo-100">
+              <div className="p-2.5 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-full border border-indigo-100 dark:border-indigo-900/50">
                 <UploadCloud className="h-5 w-5" />
               </div>
-              <p className="text-xs font-bold text-slate-700">
+              <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
                 Click to browse or drop an image file here
               </p>
             </div>
@@ -290,8 +297,8 @@ export default function PhotoAttachmentSection({
 
       {/* Error notification if any */}
       {error && (
-        <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-rose-700 text-xs flex items-center gap-2">
-          <AlertCircle className="h-4 w-4 shrink-0 text-rose-600" />
+        <div className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 rounded-lg text-rose-700 dark:text-rose-300 text-xs flex items-center gap-2">
+          <AlertCircle className="h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400" />
           <span>{error}</span>
         </div>
       )}
@@ -301,10 +308,10 @@ export default function PhotoAttachmentSection({
         <div className="space-y-3 pt-1">
           {/* Primary Photo Row */}
           {primaryImageUrl && (
-            <div className="p-3 bg-white border border-slate-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               {/* Left Side: Thumbnail Preview */}
               <div className="flex items-center gap-3 min-w-0">
-                <div className="w-16 h-14 rounded-lg bg-slate-100 border border-slate-200 overflow-hidden shrink-0">
+                <div className="w-16 h-14 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 overflow-hidden shrink-0">
                   <img
                     src={cleanImageUrl(primaryImageUrl)}
                     alt="Preview"
@@ -322,21 +329,28 @@ export default function PhotoAttachmentSection({
                   />
                 </div>
                 <div className="min-w-0">
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold uppercase text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold uppercase text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 px-2 py-0.5 rounded border border-indigo-100 dark:border-indigo-900/60">
                       <Check className="h-3 w-3" />
                       <span>Primary Photo</span>
                     </span>
                     <button
                       type="button"
-                      onClick={() => onInsertFigureIntoContent && onInsertFigureIntoContent('[fig. 1]')}
-                      className="text-[10px] font-mono font-bold text-slate-600 hover:text-indigo-600 bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded transition-colors"
-                      title="Click to insert [fig. 1] into article body"
+                      onClick={() => {
+                        if (onInsertPhotoIntoContent) {
+                          onInsertPhotoIntoContent(primaryImageUrl);
+                        } else {
+                          onInsertFigureIntoContent?.('', 1, primaryImageUrl);
+                        }
+                      }}
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800 px-2.5 py-0.5 rounded-md transition-all cursor-pointer shadow-2xs"
+                      title="Insert this photo directly into article at cursor position"
                     >
-                      [fig. 1]
+                      <CornerDownRight className="h-3 w-3 text-indigo-600 dark:text-indigo-400" />
+                      <span>Insert in Article</span>
                     </button>
                   </div>
-                  <span className="block text-[11px] font-mono text-slate-500 truncate max-w-[200px] sm:max-w-xs">
+                  <span className="block text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate max-w-[200px] sm:max-w-xs">
                     {primaryImageUrl}
                   </span>
                 </div>
@@ -344,26 +358,31 @@ export default function PhotoAttachmentSection({
 
               {/* Right Side in Same Line: Position selector & Delete */}
               <div className="flex items-center gap-2 shrink-0 self-start sm:self-center w-full sm:w-auto justify-between sm:justify-end">
-                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 shadow-2xs">
-                  <label className="text-[10px] font-mono font-bold uppercase text-slate-500 shrink-0">
+                <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 shadow-2xs">
+                  <label className="text-[10px] font-mono font-bold uppercase text-slate-500 dark:text-slate-400 shrink-0">
                     Position:
                   </label>
                   <select
                     value={imagePosition}
                     onChange={(e) => {
-                      const val = e.target.value;
+                      const val = e.target.value as any;
                       if (val === 'inline') {
-                        onInsertFigureIntoContent?.('[fig. 1]', 1, primaryImageUrl);
+                        if (onInsertPhotoIntoContent) {
+                          onInsertPhotoIntoContent(primaryImageUrl);
+                        } else {
+                          onInsertFigureIntoContent?.('', 1, primaryImageUrl);
+                        }
+                        onImagePositionChange('inline');
                       } else {
-                        onImagePositionChange(val as 'top' | 'middle' | 'bottom');
+                        onImagePositionChange(val);
                       }
                     }}
-                    className="text-xs font-semibold text-slate-800 bg-transparent focus:outline-hidden cursor-pointer"
+                    className="text-xs font-semibold text-slate-800 dark:text-slate-200 bg-transparent focus:outline-hidden cursor-pointer"
                   >
-                    <option value="top">top</option>
-                    <option value="middle">middle</option>
-                    <option value="bottom">bottom</option>
-                    <option value="inline">fig. 1</option>
+                    <option value="top" className="dark:bg-slate-900">Top of Story</option>
+                    <option value="middle" className="dark:bg-slate-900">Middle of Story</option>
+                    <option value="bottom" className="dark:bg-slate-900">End of Story</option>
+                    <option value="inline" className="dark:bg-slate-900">Inside Article Body</option>
                   </select>
                 </div>
 
@@ -387,7 +406,7 @@ export default function PhotoAttachmentSection({
                       }
                     }
                   }}
-                  className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                  className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
                   title="Remove photo"
                 >
                   <Trash2 className="h-4 w-4" />
@@ -401,12 +420,12 @@ export default function PhotoAttachmentSection({
             const figNum = idx + 2;
             const currentFlow = galleryPositions?.[idx] || 'gallery';
             return (
-              <div key={idx} className="p-3 bg-white border border-slate-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div key={idx} className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-16 h-14 rounded-lg bg-slate-100 border border-slate-200 overflow-hidden shrink-0">
+                  <div className="w-16 h-14 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 overflow-hidden shrink-0">
                     <img
                       src={cleanImageUrl(url)}
-                      alt={`Photo ${figNum}`}
+                      alt="Article Photo Attachment"
                       className="w-full h-full object-cover"
                       referrerPolicy="no-referrer"
                       onError={(e) => {
@@ -421,20 +440,27 @@ export default function PhotoAttachmentSection({
                     />
                   </div>
                   <div className="min-w-0">
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <span className="text-[10px] font-mono font-bold uppercase text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
-                        Photo #{figNum}
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <span className="text-[10px] font-mono font-bold uppercase text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">
+                        Additional Photo
                       </span>
                       <button
                         type="button"
-                        onClick={() => onInsertFigureIntoContent && onInsertFigureIntoContent(`[fig. ${figNum}]`, figNum, url)}
-                        className="text-[10px] font-mono font-bold text-slate-600 hover:text-indigo-600 bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded transition-colors"
-                        title={`Click to insert [fig. ${figNum}] into article body at cursor`}
+                        onClick={() => {
+                          if (onInsertPhotoIntoContent) {
+                            onInsertPhotoIntoContent(url);
+                          } else {
+                            onInsertFigureIntoContent?.('', figNum, url);
+                          }
+                        }}
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800 px-2.5 py-0.5 rounded-md transition-all cursor-pointer shadow-2xs"
+                        title="Insert this photo directly into article at cursor position"
                       >
-                        [fig. {figNum}]
+                        <CornerDownRight className="h-3 w-3 text-indigo-600 dark:text-indigo-400" />
+                        <span>Insert in Article</span>
                       </button>
                     </div>
-                    <span className="block text-[11px] font-mono text-slate-500 truncate max-w-[200px] sm:max-w-xs">
+                    <span className="block text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate max-w-[200px] sm:max-w-xs">
                       {url}
                     </span>
                   </div>
@@ -442,20 +468,20 @@ export default function PhotoAttachmentSection({
 
                 {/* Right Side in Same Line: Position selector for gallery photo & Swap/Delete */}
                 <div className="flex items-center gap-2 shrink-0 self-start sm:self-center w-full sm:w-auto justify-between sm:justify-end flex-wrap sm:flex-nowrap">
-                  <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 shadow-2xs">
-                    <label className="text-[10px] font-mono font-bold uppercase text-slate-500 shrink-0">
+                  <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 shadow-2xs">
+                    <label className="text-[10px] font-mono font-bold uppercase text-slate-500 dark:text-slate-400 shrink-0">
                       Position:
                     </label>
                     <select
                       value={currentFlow}
                       onChange={(e) => handleGalleryFlowChange(idx, e.target.value as any)}
-                      className="text-xs font-semibold text-slate-800 bg-transparent focus:outline-hidden cursor-pointer"
+                      className="text-xs font-semibold text-slate-800 dark:text-slate-200 bg-transparent focus:outline-hidden cursor-pointer"
                     >
-                      <option value="gallery">gallery</option>
-                      <option value="top">top</option>
-                      <option value="middle">middle</option>
-                      <option value="bottom">bottom</option>
-                      <option value="inline">fig. {figNum}</option>
+                      <option value="gallery" className="dark:bg-slate-900">Bottom Photo Gallery</option>
+                      <option value="inline" className="dark:bg-slate-900">Inside Article Body</option>
+                      <option value="top" className="dark:bg-slate-900">Top of Story</option>
+                      <option value="middle" className="dark:bg-slate-900">Middle of Story</option>
+                      <option value="bottom" className="dark:bg-slate-900">End of Story</option>
                     </select>
                   </div>
 
@@ -463,7 +489,7 @@ export default function PhotoAttachmentSection({
                     <button
                       type="button"
                       onClick={() => handleGalleryFlowChange(idx, 'top')}
-                      className="text-[10px] font-mono font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1.5 rounded-lg border border-indigo-200 transition-colors"
+                      className="text-[10px] font-mono font-bold text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 px-2.5 py-1.5 rounded-lg border border-indigo-200 dark:border-indigo-800 transition-colors"
                       title="Promote this photo to primary hero"
                     >
                       Make Primary
@@ -479,7 +505,7 @@ export default function PhotoAttachmentSection({
                           onGalleryPositionsChange(galleryPositions.filter((_, i) => i !== idx));
                         }
                       }}
-                      className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                      className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
                       title="Remove photo"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -505,9 +531,9 @@ export default function PhotoAttachmentSection({
               type="button"
               onClick={() => addMoreInputRef.current?.click()}
               disabled={isUploading}
-              className="w-full py-2.5 px-4 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg text-xs font-bold text-slate-700 flex items-center justify-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
+              className="w-full py-2.5 px-4 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center justify-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
             >
-              <Plus className="h-4 w-4 text-indigo-600" />
+              <Plus className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
               <span>Add Image</span>
             </button>
           </div>

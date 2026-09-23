@@ -417,16 +417,16 @@ export default function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-50 bg-white border-b border-slate-200 shadow-xs" id="main-header">
+    <header className="sticky top-0 z-50 bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-700 shadow-xs" id="main-header">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between">
         
         {/* Brand Name */}
-        <Link to="/" className="flex items-center text-slate-900 hover:opacity-90 transition-opacity min-w-0" id="header-brand-link">
+        <Link to="/" className="flex items-center text-slate-900 dark:text-white hover:opacity-90 transition-opacity min-w-0" id="header-brand-link">
           <div className="flex flex-col min-w-0">
-            <span className="font-display font-bold text-base sm:text-lg md:text-xl tracking-tight leading-none uppercase text-slate-950">
+            <span className="font-display font-bold text-base sm:text-lg md:text-xl tracking-tight leading-none uppercase text-slate-950 dark:text-white">
               Current News
             </span>
-            <span className="text-[9px] sm:text-[10px] text-slate-500 font-semibold font-mono uppercase tracking-wider truncate">
+            <span className="text-[9px] sm:text-[10px] text-slate-500 dark:text-slate-400 font-semibold font-mono uppercase tracking-wider truncate">
               Independent Ledger
             </span>
           </div>
@@ -455,12 +455,12 @@ export default function Header() {
             )}
 
             {loading ? (
-              <div className="h-11 w-11 rounded-full bg-slate-100 animate-pulse border border-slate-200" />
+              <div className="h-11 w-11 rounded-full bg-slate-100 dark:bg-slate-800 animate-pulse border border-slate-200 dark:border-slate-700" />
             ) : (
               /* The trigger circle button - navigates directly to dedicated Profile page */
               <button 
                 onClick={() => navigate('/profile')}
-                className="h-11 w-11 rounded-full bg-slate-100 hover:bg-slate-200 border-2 border-slate-200 hover:border-indigo-500 overflow-hidden text-slate-600 hover:text-slate-900 shadow-xs transition-all duration-200 flex items-center justify-center cursor-pointer relative z-50 focus:outline-hidden"
+                className="h-11 w-11 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border-2 border-slate-200 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-500 overflow-hidden text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white shadow-xs transition-all duration-200 flex items-center justify-center cursor-pointer relative z-50 focus:outline-hidden"
                 id="header-profile-trigger"
                 title={user ? `Account: ${user.displayName || user.email}` : "Editorial Portal Access"}
               >
@@ -478,7 +478,7 @@ export default function Header() {
                     </div>
                   )
                 ) : (
-                  <User className="h-5 w-5 text-slate-500" />
+                  <User className="h-5 w-5 text-slate-500 dark:text-slate-400" />
                 )}
               </button>
             )}
@@ -497,11 +497,11 @@ export default function Header() {
                     <button
                       type="button"
                       onClick={() => setIsDropdownOpen(false)}
-                      className="sm:hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 backdrop-blur-md border border-slate-200/80 dark:border-slate-700/80 text-slate-700 dark:text-slate-200 text-xs font-semibold shadow-2xs transition-all cursor-pointer z-10 whitespace-nowrap shrink-0 select-none"
+                      className="sm:hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-900/80 dark:hover:bg-transparent backdrop-blur-md border border-slate-200/80 dark:border-slate-700/80 dark:hover:border-indigo-500/60 text-slate-700 dark:text-slate-100 dark:hover:text-white text-xs font-semibold shadow-2xs transition-all cursor-pointer z-10 whitespace-nowrap shrink-0 select-none group"
                       id="profile-back-button"
                     >
-                      <ArrowLeft className="h-3.5 w-3.5 text-slate-700 dark:text-slate-200 shrink-0" />
-                      <span className="whitespace-nowrap">Back</span>
+                      <ArrowLeft className="h-3.5 w-3.5 text-slate-700 dark:text-slate-200 group-hover:text-slate-900 dark:group-hover:text-white shrink-0 transition-colors" />
+                      <span className="whitespace-nowrap font-bold text-slate-800 dark:text-slate-100 dark:group-hover:text-white transition-colors">Back</span>
                     </button>
 
                     {/* Desktop Close Button (Only on larger screens, hidden on phone screens) */}
@@ -576,21 +576,21 @@ export default function Header() {
                         <Link
                           to="/liked"
                           onClick={() => setIsDropdownOpen(false)}
-                          className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/80 hover:bg-slate-150/80 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                          className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 dark:text-slate-100 hover:text-indigo-600 dark:hover:text-white bg-slate-50/80 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-transparent backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 dark:hover:border-indigo-500/60 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
                           id="liked-dispatches-button"
                         >
                           <ThumbsUp className="h-4 w-4 text-rose-550 shrink-0" />
-                          <span>Liked</span>
+                          <span className="font-semibold text-slate-800 dark:text-slate-100 dark:hover:text-white">Liked</span>
                         </Link>
 
                         {isAdmin && (
                           <button
                             onClick={() => { setIsDropdownOpen(false); navigate('/admin'); }}
-                            className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/80 hover:bg-slate-150/80 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                            className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 dark:text-slate-100 hover:text-indigo-600 dark:hover:text-white bg-slate-50/80 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-transparent backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 dark:hover:border-indigo-500/60 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
                             id="admin-dashboard-button"
                           >
                             <Shield className="h-4 w-4 text-indigo-500 shrink-0" />
-                            <span>Admin</span>
+                            <span className="font-semibold text-slate-800 dark:text-slate-100 dark:hover:text-white">Admin</span>
                           </button>
                         )}
 
@@ -601,11 +601,11 @@ export default function Header() {
                             setIsDropdownOpen(false);
                             navigate('/settings');
                           }}
-                          className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/80 hover:bg-slate-150/80 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer text-left"
+                          className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 dark:text-slate-100 hover:text-indigo-600 dark:hover:text-white bg-slate-50/80 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-transparent backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 dark:hover:border-indigo-500/60 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer text-left"
                           id="settings-trigger-button"
                         >
                           <SettingsIcon className="h-4 w-4 text-purple-500 shrink-0" />
-                          <span>Setting</span>
+                          <span className="font-semibold text-slate-800 dark:text-slate-100 dark:hover:text-white">Setting</span>
                         </button>
 
                         {/* Privacy Policy Button */}
@@ -615,11 +615,11 @@ export default function Header() {
                             setIsDropdownOpen(false);
                             navigate('/privacy');
                           }}
-                          className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/80 hover:bg-slate-150/80 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer text-left"
+                          className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 dark:text-slate-100 hover:text-indigo-600 dark:hover:text-white bg-slate-50/80 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-transparent backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 dark:hover:border-indigo-500/60 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer text-left"
                           id="privacy-policy-button"
                         >
                           <ShieldCheck className="h-4 w-4 text-emerald-500 shrink-0" />
-                          <span>Privacy Policy</span>
+                          <span className="font-semibold text-slate-800 dark:text-slate-100 dark:hover:text-white">Privacy Policy</span>
                         </button>
 
                         {/* Terms of Service Button */}
@@ -629,11 +629,11 @@ export default function Header() {
                             setIsDropdownOpen(false);
                             navigate('/terms');
                           }}
-                          className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/80 hover:bg-slate-150/80 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer text-left"
+                          className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 dark:text-slate-100 hover:text-indigo-600 dark:hover:text-white bg-slate-50/80 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-transparent backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 dark:hover:border-indigo-500/60 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer text-left"
                           id="terms-of-service-button"
                         >
                           <FileText className="h-4 w-4 text-blue-500 shrink-0" />
-                          <span>Terms of Service</span>
+                          <span className="font-semibold text-slate-800 dark:text-slate-100 dark:hover:text-white">Terms of Service</span>
                         </button>
 
                         {/* Account Delete Button */}
@@ -643,11 +643,11 @@ export default function Header() {
                             setIsDropdownOpen(false);
                             navigate('/delete-account');
                           }}
-                          className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 hover:text-rose-600 bg-slate-50/80 hover:bg-slate-150/80 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer text-left"
+                          className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 dark:text-slate-100 hover:text-rose-600 dark:hover:text-rose-400 bg-slate-50/80 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-transparent backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 dark:hover:border-rose-500/60 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer text-left"
                           id="account-delete-button"
                         >
                           <Trash2 className="h-4 w-4 text-rose-500 shrink-0" />
-                          <span>Account Delete</span>
+                          <span className="font-semibold text-slate-800 dark:text-slate-100 dark:hover:text-rose-400">Account Delete</span>
                         </button>
                       </div>
 
@@ -655,11 +655,11 @@ export default function Header() {
                       <div className="w-full border-t border-slate-100 dark:border-slate-800 pt-3.5 mt-3">
                         <button 
                           onClick={handleLogout}
-                          className="w-full flex items-center justify-center space-x-2 py-2.5 px-4 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white text-xs font-bold rounded-full cursor-pointer transition-all shadow-xs hover:shadow-md border border-red-700"
+                          className="w-full flex items-center justify-center space-x-2 py-2.5 px-4 bg-red-600 hover:bg-red-700 active:bg-red-800 dark:hover:bg-transparent dark:hover:border-red-500 text-white dark:hover:text-red-400 text-xs font-bold rounded-full cursor-pointer transition-all shadow-xs hover:shadow-md border border-red-700"
                           id="signout-button"
                         >
-                          <LogOut className="h-3.5 w-3.5 text-white" />
-                          <span>Sign Out</span>
+                          <LogOut className="h-3.5 w-3.5" />
+                          <span className="font-bold">Sign Out</span>
                         </button>
                       </div>
 
@@ -672,21 +672,21 @@ export default function Header() {
 
                       <button 
                         onClick={handleLogin}
-                        className="w-full flex items-center justify-center space-x-2 py-2.5 px-4 bg-slate-950 text-white hover:bg-slate-800 text-xs font-semibold rounded-full cursor-pointer transition-colors shadow-xs mb-3"
+                        className="w-full flex items-center justify-center space-x-2 py-2.5 px-4 bg-slate-950 dark:bg-slate-900 text-white hover:bg-slate-800 dark:hover:bg-transparent dark:hover:border-indigo-500/60 dark:hover:text-white text-xs font-semibold rounded-full cursor-pointer transition-all border border-transparent dark:border-slate-700/80 shadow-xs mb-3"
                       >
-                        <LogIn className="h-3.5 w-3.5" />
-                        <span>Sign In</span>
+                        <LogIn className="h-3.5 w-3.5 text-white" />
+                        <span className="font-bold text-white">Sign In</span>
                       </button>
 
                       <div className="w-full border-t border-slate-100 dark:border-slate-800 pt-3 flex flex-col gap-2" id="guest-links-container">
                         <Link
                           to="/liked"
                           onClick={() => setIsDropdownOpen(false)}
-                          className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/80 hover:bg-slate-150/80 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                          className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 dark:text-slate-100 hover:text-indigo-600 dark:hover:text-white bg-slate-50/80 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-transparent backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 dark:hover:border-indigo-500/60 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
                           id="liked-dispatches-guest-button"
                         >
                           <ThumbsUp className="h-4 w-4 text-rose-550 shrink-0" />
-                          <span>Liked</span>
+                          <span className="font-semibold text-slate-800 dark:text-slate-100 dark:hover:text-white">Liked</span>
                         </Link>
 
                         {/* Setting Button */}
@@ -696,11 +696,11 @@ export default function Header() {
                             setIsDropdownOpen(false);
                             navigate('/settings');
                           }}
-                          className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/80 hover:bg-slate-150/80 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer text-left"
+                          className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 dark:text-slate-100 hover:text-indigo-600 dark:hover:text-white bg-slate-50/80 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-transparent backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 dark:hover:border-indigo-500/60 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer text-left"
                           id="guest-settings-trigger-button"
                         >
                           <SettingsIcon className="h-4 w-4 text-purple-500 shrink-0" />
-                          <span>Setting</span>
+                          <span className="font-semibold text-slate-800 dark:text-slate-100 dark:hover:text-white">Setting</span>
                         </button>
 
                         {/* Privacy Policy Button (appears for everyone) */}
@@ -710,11 +710,11 @@ export default function Header() {
                             setIsDropdownOpen(false);
                             navigate('/privacy');
                           }}
-                          className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/80 hover:bg-slate-150/80 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer text-left"
+                          className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 dark:text-slate-100 hover:text-indigo-600 dark:hover:text-white bg-slate-50/80 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-transparent backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 dark:hover:border-indigo-500/60 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer text-left"
                           id="guest-privacy-policy-button"
                         >
                           <ShieldCheck className="h-4 w-4 text-emerald-500 shrink-0" />
-                          <span>Privacy Policy</span>
+                          <span className="font-semibold text-slate-800 dark:text-slate-100 dark:hover:text-white">Privacy Policy</span>
                         </button>
 
                         {/* Terms of Service Button (appears for everyone) */}
@@ -724,11 +724,11 @@ export default function Header() {
                             setIsDropdownOpen(false);
                             navigate('/terms');
                           }}
-                          className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/80 hover:bg-slate-150/80 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer text-left"
+                          className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 dark:text-slate-100 hover:text-indigo-600 dark:hover:text-white bg-slate-50/80 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-transparent backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 dark:hover:border-indigo-500/60 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer text-left"
                           id="guest-terms-of-service-button"
                         >
                           <FileText className="h-4 w-4 text-blue-500 shrink-0" />
-                          <span>Terms of Service</span>
+                          <span className="font-semibold text-slate-800 dark:text-slate-100 dark:hover:text-white">Terms of Service</span>
                         </button>
 
                         {/* Account Delete Button (appears for everyone) */}
@@ -738,11 +738,11 @@ export default function Header() {
                             setIsDropdownOpen(false);
                             navigate('/delete-account');
                           }}
-                          className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 hover:text-rose-600 bg-slate-50/80 hover:bg-slate-150/80 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer text-left"
+                          className="w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-full text-slate-700 dark:text-slate-100 hover:text-rose-600 dark:hover:text-rose-400 bg-slate-50/80 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-transparent backdrop-blur-md border border-slate-200/60 dark:border-slate-800/80 dark:hover:border-rose-500/60 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer text-left"
                           id="guest-account-delete-button"
                         >
                           <Trash2 className="h-4 w-4 text-rose-500 shrink-0" />
-                          <span>Account Delete</span>
+                          <span className="font-semibold text-slate-800 dark:text-slate-100 dark:hover:text-rose-400">Account Delete</span>
                         </button>
                       </div>
                     </div>

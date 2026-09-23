@@ -199,15 +199,17 @@ export default function BlogPostCard({ post, globalPenName }: BlogPostCardProps)
       }}
       tabIndex={0}
       role="link"
-      className="group newspaper-paper border-0 border-b border-black dark:border-black sm:border sm:border-slate-200 sm:hover:border-slate-300 rounded-none sm:rounded-xl overflow-hidden shadow-none sm:shadow-xs sm:hover:shadow-md transition-all duration-300 flex flex-col justify-between cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+      className="group newspaper-paper border-0 border-b border-black dark:border-slate-700 sm:border sm:border-slate-200 dark:sm:border-slate-700 sm:hover:border-slate-300 dark:sm:hover:border-slate-600 rounded-none sm:rounded-xl overflow-hidden shadow-none sm:shadow-xs sm:hover:shadow-md transition-all duration-300 flex flex-col justify-between cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
       id={`post-card-${post.id}`}
     >
       <div className="p-4 sm:p-6 flex flex-col flex-1 justify-between select-text">
         
         <div>
           {/* Heading of article */}
-          <h3 className="font-display font-bold text-lg sm:text-xl text-slate-900 group-hover:text-indigo-600 tracking-tight leading-snug mb-2 transition-colors">
-            <Link to={`/post/${post.id}/${slugify(post.title)}`}>{post.title}</Link>
+          <h3 className="font-display font-bold text-lg sm:text-xl text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 tracking-tight leading-snug mb-2 transition-colors">
+            <Link to={`/post/${post.id}/${slugify(post.title)}`} className="text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+              {post.title}
+            </Link>
           </h3>
 
           {/* Writer name (no avatar), Date, Tag badge, YouTube & Facebook icons in the same line */}
@@ -247,25 +249,25 @@ export default function BlogPostCard({ post, globalPenName }: BlogPostCardProps)
           </div>
 
           {/* Excerpt / Summary Description */}
-          <p className="text-sm text-slate-500 dark:text-slate-400 line-clamp-3 leading-relaxed mb-4">
-            {previewText || <span className="italic text-slate-400">No text preview available.</span>}
+          <p className="text-sm text-slate-600 dark:text-slate-300 line-clamp-3 leading-relaxed mb-4">
+            {previewText || <span className="italic text-slate-400 dark:text-slate-500">No text preview available.</span>}
           </p>
         </div>
 
         {/* Bottom bar: Liked & Disliked buttons, Views, and Read full article */}
-        <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-800/80 mt-auto" id="card-reactions">
+        <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-700 mt-auto" id="card-reactions">
           <div className="flex items-center gap-2 sm:gap-4">
             <button
               onClick={(e) => handleReaction('liked', e)}
               className={`reaction-btn-clean min-h-[44px] min-w-[44px] -ml-2 sm:ml-0 inline-flex items-center justify-center gap-1.5 px-2 text-xs font-sans font-medium transition-colors cursor-pointer bg-transparent border-0 rounded-lg hover:bg-slate-100/70 dark:hover:bg-slate-800/60 ${
                 myReaction === 'liked'
                   ? 'text-emerald-600 dark:text-emerald-400 font-semibold'
-                  : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+                  : 'text-slate-500 hover:text-slate-800 dark:text-slate-300 dark:hover:text-white'
               }`}
               title="Like this dispatch"
               type="button"
             >
-              <ThumbsUp className={`h-4 w-4 ${myReaction === 'liked' ? 'fill-emerald-600 text-emerald-600' : ''}`} />
+              <ThumbsUp className={`h-4 w-4 ${myReaction === 'liked' ? 'fill-emerald-600 text-emerald-600 dark:fill-emerald-400 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-300'}`} />
               <span className="font-sans text-xs">{likes}</span>
             </button>
 
@@ -274,18 +276,18 @@ export default function BlogPostCard({ post, globalPenName }: BlogPostCardProps)
               className={`reaction-btn-clean min-h-[44px] min-w-[44px] inline-flex items-center justify-center gap-1.5 px-2 text-xs font-sans font-medium transition-colors cursor-pointer bg-transparent border-0 rounded-lg hover:bg-slate-100/70 dark:hover:bg-slate-800/60 ${
                 myReaction === 'disliked'
                   ? 'text-rose-600 dark:text-rose-400 font-semibold'
-                  : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+                  : 'text-slate-500 hover:text-slate-800 dark:text-slate-300 dark:hover:text-white'
               }`}
               title="Dislike this dispatch"
               type="button"
             >
-              <ThumbsDown className={`h-4 w-4 ${myReaction === 'disliked' ? 'fill-rose-600 text-rose-600' : ''}`} />
+              <ThumbsDown className={`h-4 w-4 ${myReaction === 'disliked' ? 'fill-rose-600 text-rose-600 dark:fill-rose-400 dark:text-rose-400' : 'text-slate-400 dark:text-slate-300'}`} />
               <span className="font-sans text-xs">{dislikes}</span>
             </button>
 
             {/* Views counter */}
-            <div className="flex items-center gap-1 text-xs text-slate-400 dark:text-slate-500 font-medium py-2 px-1" title="Total article views">
-              <Eye className="h-3.5 w-3.5 text-slate-400" />
+            <div className="flex items-center gap-1 text-xs text-slate-400 dark:text-slate-400 font-medium py-2 px-1" title="Total article views">
+              <Eye className="h-3.5 w-3.5 text-slate-400 dark:text-slate-400" />
               <span className="font-sans">{post.views || 0}</span>
             </div>
           </div>

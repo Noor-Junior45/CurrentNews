@@ -13,7 +13,7 @@ export default function TermsView() {
       <ProfilePageNavbar title="Terms of Service" />
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
-        <p className="text-xs sm:text-sm text-slate-500 mb-8 font-sans leading-relaxed">
+        <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mb-8 font-sans leading-relaxed">
           Last updated: June 24, 2026. By utilizing or installing the Current News Live progressive web application, you agree to be bound by the following comprehensive terms. Please review them carefully.
         </p>
 
@@ -22,21 +22,21 @@ export default function TermsView() {
         <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
           <Scale className="h-5 w-5 text-indigo-500 mb-2" />
           <h3 className="font-display font-bold text-xs uppercase tracking-wider text-slate-900 dark:text-slate-100">Fair Use & Syndication</h3>
-          <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
             Short snippets may be curated with proper journalistic attribution to Current News.
           </p>
         </div>
         <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
           <ShieldAlert className="h-5 w-5 text-rose-500 mb-2" />
           <h3 className="font-display font-bold text-xs uppercase tracking-wider text-slate-900 dark:text-slate-100">Editor Integrity</h3>
-          <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
             Administrative editorial keys must be guarded. Any breach of credentials results in instant revocation.
           </p>
         </div>
         <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
           <CheckCircle className="h-5 w-5 text-emerald-500 mb-2" />
           <h3 className="font-display font-bold text-xs uppercase tracking-wider text-slate-900 dark:text-slate-100">User Eligibility</h3>
-          <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
             You agree to interact with the ledger solely for general, lawful, and peaceful inquiry.
           </p>
         </div>

@@ -94,49 +94,49 @@ export default function ProfileView(): React.JSX.Element {
               {/* Liked Button */}
               <Link
                 to="/liked"
-                className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 dark:text-slate-100 dark:hover:text-white bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-transparent backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 dark:hover:border-indigo-500/60 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
                 id="profile-liked-dispatches-button"
               >
                 <ThumbsUp className="h-4 w-4 text-rose-550 shrink-0" />
-                <span>Liked</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-100 dark:hover:text-white">Liked</span>
               </Link>
 
               {isAdmin && (
                 <>
                   <Link
                     to="/admin"
-                    className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                    className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 dark:text-slate-100 dark:hover:text-white bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-transparent backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 dark:hover:border-indigo-500/60 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
                     id="profile-admin-dashboard-button"
                   >
                     <Shield className="h-4 w-4 text-indigo-500 shrink-0" />
-                    <span>Admin</span>
+                    <span className="font-semibold text-slate-800 dark:text-slate-100 dark:hover:text-white">Admin</span>
                   </Link>
 
                   <Link
                     to="/admin?focus=draft"
-                    className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                    className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 dark:text-slate-100 dark:hover:text-white bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-transparent backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 dark:hover:border-indigo-500/60 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
                     id="profile-draft-publication-button"
                   >
                     <PlusCircle className="h-4 w-4 text-emerald-500 shrink-0" />
-                    <span>Draft New Publication</span>
+                    <span className="font-semibold text-slate-800 dark:text-slate-100 dark:hover:text-white">Draft New Publication</span>
                   </Link>
 
                   <Link
                     to="/admin?focus=publications"
-                    className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                    className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 dark:text-slate-100 dark:hover:text-white bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-transparent backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 dark:hover:border-indigo-500/60 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
                     id="profile-current-publication-button"
                   >
                     <Newspaper className="h-4 w-4 text-amber-500 shrink-0" />
-                    <span>Current Publication</span>
+                    <span className="font-semibold text-slate-800 dark:text-slate-100 dark:hover:text-white">Current Publication</span>
                   </Link>
 
                   <Link
                     to="/admin?focus=audience"
-                    className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                    className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 dark:text-slate-100 dark:hover:text-white bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-transparent backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 dark:hover:border-indigo-500/60 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
                     id="profile-audience-registry-button"
                   >
                     <Mail className="h-4 w-4 text-cyan-500 shrink-0" />
-                    <span>Audience Registry</span>
+                    <span className="font-semibold text-slate-800 dark:text-slate-100 dark:hover:text-white">Audience Registry</span>
                   </Link>
                 </>
               )}
@@ -144,41 +144,41 @@ export default function ProfileView(): React.JSX.Element {
               {/* Setting Button */}
               <Link
                 to="/settings"
-                className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 dark:text-slate-100 dark:hover:text-white bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-transparent backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 dark:hover:border-indigo-500/60 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
                 id="profile-settings-button"
               >
                 <SettingsIcon className="h-4 w-4 text-purple-500 shrink-0" />
-                <span>Setting</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-100 dark:hover:text-white">Setting</span>
               </Link>
 
               {/* Privacy Policy Button */}
               <Link
                 to="/privacy"
-                className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 dark:text-slate-100 dark:hover:text-white bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-transparent backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 dark:hover:border-indigo-500/60 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
                 id="profile-privacy-policy-button"
               >
                 <ShieldCheck className="h-4 w-4 text-emerald-500 shrink-0" />
-                <span>Privacy Policy</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-100 dark:hover:text-white">Privacy Policy</span>
               </Link>
 
               {/* Terms of Service Button */}
               <Link
                 to="/terms"
-                className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 dark:text-slate-100 dark:hover:text-white bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-transparent backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 dark:hover:border-indigo-500/60 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
                 id="profile-terms-button"
               >
                 <FileText className="h-4 w-4 text-blue-500 shrink-0" />
-                <span>Terms of Service</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-100 dark:hover:text-white">Terms of Service</span>
               </Link>
 
               {/* Account Delete Button */}
               <Link
                 to="/delete-account"
-                className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-rose-600 bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-rose-600 dark:text-slate-100 dark:hover:text-rose-400 bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-transparent backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 dark:hover:border-rose-500/60 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
                 id="profile-account-delete-button"
               >
                 <Trash2 className="h-4 w-4 text-rose-500 shrink-0" />
-                <span>Account Delete</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-100 dark:hover:text-rose-400">Account Delete</span>
               </Link>
 
               {/* Sign Out Button in last */}
@@ -186,11 +186,11 @@ export default function ProfileView(): React.JSX.Element {
                 <button 
                   type="button"
                   onClick={handleLogout}
-                  className="w-full flex items-center justify-center space-x-2 py-3 px-4 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white text-xs font-bold rounded-full cursor-pointer transition-all shadow-xs hover:shadow-md border border-red-700"
+                  className="w-full flex items-center justify-center space-x-2 py-3 px-4 bg-red-600 hover:bg-red-700 active:bg-red-800 dark:hover:bg-transparent dark:hover:border-red-500 text-white dark:hover:text-red-400 text-xs font-bold rounded-full cursor-pointer transition-all shadow-xs hover:shadow-md border border-red-700"
                   id="profile-signout-button"
                 >
-                  <LogOut className="h-3.5 w-3.5 text-white" />
-                  <span>Sign Out</span>
+                  <LogOut className="h-3.5 w-3.5" />
+                  <span className="font-bold">Sign Out</span>
                 </button>
               </div>
             </div>
@@ -215,11 +215,11 @@ export default function ProfileView(): React.JSX.Element {
             <button 
               type="button"
               onClick={handleLogin}
-              className="w-full flex items-center justify-center space-x-2 py-3 px-4 bg-slate-950 text-white hover:bg-slate-800 text-xs font-semibold rounded-full cursor-pointer transition-colors shadow-xs mb-5"
+              className="w-full flex items-center justify-center space-x-2 py-3 px-4 bg-slate-950 dark:bg-slate-900 text-white hover:bg-slate-800 dark:hover:bg-transparent dark:hover:border-indigo-500/60 dark:hover:text-white text-xs font-semibold rounded-full cursor-pointer transition-all border border-transparent dark:border-slate-700/80 shadow-xs mb-5"
               id="profile-signin-button"
             >
-              <LogIn className="h-3.5 w-3.5" />
-              <span>Sign In with Google</span>
+              <LogIn className="h-3.5 w-3.5 text-white" />
+              <span className="font-bold text-white">Sign In with Google</span>
             </button>
 
             {/* Grey / liquid glass horizontal line */}
@@ -228,42 +228,47 @@ export default function ProfileView(): React.JSX.Element {
             <div className="w-full space-y-2.5">
               <Link
                 to="/liked"
-                className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 dark:text-slate-100 dark:hover:text-white bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-transparent backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 dark:hover:border-indigo-500/60 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                id="profile-guest-liked-button"
               >
                 <ThumbsUp className="h-4 w-4 text-rose-550 shrink-0" />
-                <span>Liked</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-100 dark:hover:text-white">Liked</span>
               </Link>
 
               <Link
                 to="/settings"
-                className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 dark:text-slate-100 dark:hover:text-white bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-transparent backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 dark:hover:border-indigo-500/60 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                id="profile-guest-settings-button"
               >
                 <SettingsIcon className="h-4 w-4 text-purple-500 shrink-0" />
-                <span>Setting</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-100 dark:hover:text-white">Setting</span>
               </Link>
 
               <Link
                 to="/privacy"
-                className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 dark:text-slate-100 dark:hover:text-white bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-transparent backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 dark:hover:border-indigo-500/60 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                id="profile-guest-privacy-button"
               >
                 <ShieldCheck className="h-4 w-4 text-emerald-500 shrink-0" />
-                <span>Privacy Policy</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-100 dark:hover:text-white">Privacy Policy</span>
               </Link>
 
               <Link
                 to="/terms"
-                className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 dark:text-slate-100 dark:hover:text-white bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-transparent backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 dark:hover:border-indigo-500/60 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                id="profile-guest-terms-button"
               >
                 <FileText className="h-4 w-4 text-blue-500 shrink-0" />
-                <span>Terms of Service</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-100 dark:hover:text-white">Terms of Service</span>
               </Link>
 
               <Link
                 to="/delete-account"
-                className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-rose-600 bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-slate-850/80 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-rose-600 dark:text-slate-100 dark:hover:text-rose-400 bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-transparent backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 dark:hover:border-rose-500/60 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
+                id="profile-guest-delete-button"
               >
                 <Trash2 className="h-4 w-4 text-rose-500 shrink-0" />
-                <span>Account Delete</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-100 dark:hover:text-rose-400">Account Delete</span>
               </Link>
             </div>
           </div>

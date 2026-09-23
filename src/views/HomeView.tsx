@@ -33,28 +33,28 @@ function getPaginationRange(current: number, total: number): (number | string)[]
 
 function BlogPostCardSkeleton() {
   return (
-    <div className="bg-white border-0 border-b border-black dark:border-black sm:border sm:border-slate-200/80 rounded-none sm:rounded-xl overflow-hidden shadow-none sm:shadow-3xs p-4 sm:p-6 flex flex-col justify-between h-[255px] animate-pulse">
+    <div className="bg-white dark:bg-slate-900 border-0 border-b border-black dark:border-black sm:border sm:border-slate-200/80 dark:sm:border-slate-800 rounded-none sm:rounded-xl overflow-hidden shadow-none sm:shadow-3xs p-4 sm:p-6 flex flex-col justify-between h-[255px] animate-pulse">
       <div>
         <div className="flex items-center justify-between mb-4">
-          <div className="h-4 bg-slate-100 rounded-md w-24"></div>
-          <div className="h-5 bg-slate-100/90 rounded-md w-16"></div>
+          <div className="h-4 bg-slate-100 dark:bg-slate-800 rounded-md w-24"></div>
+          <div className="h-5 bg-slate-100/90 dark:bg-slate-800/90 rounded-md w-16"></div>
         </div>
         
-        <div className="h-5.5 bg-slate-150 rounded-md w-11/12 mb-2.5"></div>
-        <div className="h-5.5 bg-slate-150 rounded-md w-8/12 mb-4"></div>
+        <div className="h-5.5 bg-slate-150 dark:bg-slate-700 rounded-md w-11/12 mb-2.5"></div>
+        <div className="h-5.5 bg-slate-150 dark:bg-slate-700 rounded-md w-8/12 mb-4"></div>
         
         <div className="space-y-2 mb-4">
-          <div className="h-3 bg-slate-100/80 rounded-md w-full"></div>
-          <div className="h-3 bg-slate-100/80 rounded-md w-11/12"></div>
+          <div className="h-3 bg-slate-100/80 dark:bg-slate-800/80 rounded-md w-full"></div>
+          <div className="h-3 bg-slate-100/80 dark:bg-slate-800/80 rounded-md w-11/12"></div>
         </div>
       </div>
       
-      <div className="pt-4 border-t border-slate-100 flex items-center justify-between mt-auto">
+      <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between mt-auto">
         <div className="flex items-center space-x-2">
-          <div className="h-6 w-6 rounded-full bg-slate-100"></div>
-          <div className="h-3.5 bg-slate-100 rounded-md w-16"></div>
+          <div className="h-6 w-6 rounded-full bg-slate-100 dark:bg-slate-800"></div>
+          <div className="h-3.5 bg-slate-100 dark:bg-slate-800 rounded-md w-16"></div>
         </div>
-        <div className="h-3.5 bg-slate-100 rounded-md w-24"></div>
+        <div className="h-3.5 bg-slate-100 dark:bg-slate-800 rounded-md w-24"></div>
       </div>
     </div>
   );
@@ -285,16 +285,16 @@ export default function HomeView() {
 
       {/* 🚀 Dynamic Trending Spotlight */}
       {trendingPosts.length > 0 && (
-         <div className="mb-10 p-6 bg-amber-50/40 border border-amber-200/50 rounded-2xl shadow-3xs" id="trending-spotlight-section">
+         <div className="mb-10 p-6 bg-amber-50/40 dark:bg-amber-950/20 border border-amber-200/50 dark:border-amber-900/30 rounded-2xl shadow-3xs" id="trending-spotlight-section">
            <div className="flex items-center space-x-2 mb-4">
              <span className="flex h-2.5 w-2.5 relative">
                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
              </span>
-             <h3 className="font-display font-extrabold text-sm text-slate-900 uppercase tracking-widest flex items-center gap-1.5">
+             <h3 className="font-display font-extrabold text-sm text-slate-900 dark:text-white uppercase tracking-widest flex items-center gap-1.5">
                <span>🔥 Trending Reader Favorites</span>
              </h3>
-             <span className="text-[10px] text-slate-400 font-mono font-bold">(Articles with over hundreds of upvotes that surpass all others)</span>
+             <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono font-bold">(Articles with over hundreds of upvotes that surpass all others)</span>
            </div>
 
            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
@@ -304,27 +304,27 @@ export default function HomeView() {
                  <Link
                    key={trendingPost.id}
                    to={`/post/${trendingPost.id}/${slugify(trendingPost.title)}`}
-                   className="group bg-white p-4 rounded-xl border border-amber-100 hover:border-amber-300 hover:shadow-sm transition-all duration-300 flex flex-col justify-between cursor-pointer"
+                   className="group bg-white dark:bg-slate-900 p-4 rounded-xl border border-amber-100 dark:border-amber-900/40 hover:border-amber-300 dark:hover:border-amber-700/60 hover:shadow-sm transition-all duration-300 flex flex-col justify-between cursor-pointer"
                  >
                    <div>
                      <div className="flex items-center justify-between gap-1.5 mb-2.5">
-                       <span className="text-[9px] font-mono bg-amber-100 text-amber-900 border border-amber-200/50 uppercase font-black px-1.5 py-0.5 rounded">
+                       <span className="text-[9px] font-mono bg-amber-100 text-amber-900 dark:bg-amber-900/60 dark:text-amber-200 border border-amber-200/50 dark:border-amber-800/50 uppercase font-black px-1.5 py-0.5 rounded">
                          #{idx + 1} HOT
                        </span>
-                       <span className="text-[10px] text-slate-500 font-bold font-mono flex items-center gap-1">
-                         <ThumbsUp className="h-3 w-3 text-emerald-500 fill-emerald-100" /> {trendingPost.likes || 0}
+                       <span className="text-[10px] text-slate-500 dark:text-slate-400 font-bold font-mono flex items-center gap-1">
+                         <ThumbsUp className="h-3 w-3 text-emerald-500 fill-emerald-100 dark:fill-emerald-950" /> {trendingPost.likes || 0}
                        </span>
                      </div>
-                     <h4 className="font-display font-bold text-xs sm:text-sm text-slate-900 group-hover:text-indigo-600 transition-colors line-clamp-2 leading-snug">
+                     <h4 className="font-display font-bold text-xs sm:text-sm text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors line-clamp-2 leading-snug">
                        {trendingPost.title}
                      </h4>
-                     <p className="text-[11px] text-slate-400 mt-1.5 line-clamp-2 leading-relaxed">
+                     <p className="text-[11px] text-slate-400 dark:text-slate-400 mt-1.5 line-clamp-2 leading-relaxed">
                        {preview}
                      </p>
                    </div>
-                   <div className="mt-3 pt-2.5 border-t border-slate-150 flex items-center justify-between text-[10px] text-slate-400 font-semibold font-mono">
-                     <span className="bg-slate-100 text-slate-600 text-[8px] font-bold uppercase tracking-wider px-1 px-1.5 rounded">{trendingPost.category || 'General'}</span>
-                     <span className="text-indigo-600 group-hover:underline flex items-center gap-0.5">Read article →</span>
+                   <div className="mt-3 pt-2.5 border-t border-slate-150 dark:border-slate-800 flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500 font-semibold font-mono">
+                     <span className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[8px] font-bold uppercase tracking-wider px-1 px-1.5 rounded">{trendingPost.category || 'General'}</span>
+                     <span className="text-indigo-600 dark:text-indigo-400 group-hover:underline flex items-center gap-0.5">Read article →</span>
                    </div>
                  </Link>
                );
@@ -336,7 +336,7 @@ export default function HomeView() {
       {/* Main Content Area */}
       {loading ? (
         <div id="loading-skeletons" className="space-y-6">
-          <p className="text-slate-400 text-xs font-mono font-bold uppercase tracking-widest text-center animate-pulse mb-6">
+          <p className="text-slate-400 dark:text-slate-500 text-xs font-mono font-bold uppercase tracking-widest text-center animate-pulse mb-6">
             Connecting to live independent dispatches...
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-0 sm:gap-8 -mx-4 sm:mx-0">
@@ -346,28 +346,28 @@ export default function HomeView() {
           </div>
         </div>
       ) : error ? (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-8 text-center max-w-2xl mx-auto" id="error-banner">
+        <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/50 rounded-xl p-8 text-center max-w-2xl mx-auto" id="error-banner">
           <AlertTriangle className="h-12 w-12 text-amber-500 mx-auto mb-4" />
-          <h3 className="font-display font-bold text-lg text-slate-900 mb-2">Feed Connection Error</h3>
-          <p className="text-sm text-slate-600 mb-6">{error}</p>
+          <h3 className="font-display font-bold text-lg text-slate-900 dark:text-white mb-2">Feed Connection Error</h3>
+          <p className="text-sm text-slate-600 dark:text-slate-300 mb-6">{error}</p>
           <button 
             onClick={fetchPosts}
-            className="bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+            className="bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-white text-white dark:text-slate-900 px-5 py-2.5 rounded-lg text-sm font-medium transition-colors cursor-pointer"
           >
             Retry Connection
           </button>
         </div>
       ) : filteredPosts.length === 0 ? (
-        <div className="text-center py-20 bg-white rounded-2xl border border-slate-200 shadow-2xs max-w-xl mx-auto my-6" id="empty-feed">
-          <Newspaper className="h-12 w-12 text-slate-300 mx-auto mb-4" />
-          <h3 className="font-display font-bold text-lg text-slate-900 mb-1">No Articles Published</h3>
-          <p className="text-sm text-slate-500 max-w-sm mx-auto">
+        <div className="text-center py-20 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs max-w-xl mx-auto my-6" id="empty-feed">
+          <Newspaper className="h-12 w-12 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
+          <h3 className="font-display font-bold text-lg text-slate-900 dark:text-white mb-1">No Articles Published</h3>
+          <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
             {searchTerm ? `No stories match current search query: "${searchTerm}"` : 'The independent ledger is clean. Check back soon for the latest stories.'}
           </p>
           {searchTerm && (
             <button 
               onClick={() => setSearchTerm('')}
-              className="mt-4 text-sm font-semibold text-indigo-600 hover:text-indigo-800 cursor-pointer"
+              className="mt-4 text-sm font-semibold text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 cursor-pointer"
             >
               Clear Search Guard
             </button>
@@ -382,16 +382,18 @@ export default function HomeView() {
           </div>
 
           {/* Page-by-Page Dispatch Navigator - Variable dynamic pagination */}
-          <div className="mt-10 pt-6 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 font-sans text-xs" id="feed-pagination">
-            <div className="text-slate-500 font-medium">
-              Showing <strong className="text-slate-900 dark:text-slate-100 font-semibold">{filteredPosts.length > 0 ? (currentPage - 1) * postsPerPage + 1 : 0}</strong>–<strong className="text-slate-900 dark:text-slate-100 font-semibold">{Math.min(currentPage * postsPerPage, filteredPosts.length)}</strong> of <strong className="text-slate-900 dark:text-slate-100 font-semibold">{filteredPosts.length}</strong> articles{totalPages > 1 ? ` (Page ${currentPage} of ${totalPages})` : ''}
+          <div className="mt-10 pt-6 border-t border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row items-center justify-between gap-4 font-sans text-xs" id="feed-pagination">
+            <div className="text-slate-600 dark:text-slate-300 font-medium pagination-summary">
+              Showing <strong className="text-slate-900 dark:text-white font-semibold">{filteredPosts.length > 0 ? (currentPage - 1) * postsPerPage + 1 : 0}</strong>–<strong className="text-slate-900 dark:text-white font-semibold">{Math.min(currentPage * postsPerPage, filteredPosts.length)}</strong> of <strong className="text-slate-900 dark:text-white font-semibold">{filteredPosts.length}</strong> articles{totalPages > 1 ? (
+                <> (Page <strong className="text-slate-900 dark:text-white font-semibold">{currentPage}</strong> of <strong className="text-slate-900 dark:text-white font-semibold">{totalPages}</strong>)</>
+              ) : ''}
             </div>
             
             <div className="flex items-center gap-1.5 flex-wrap justify-center" id="pagination-controls">
               <button
                 disabled={currentPage <= 1}
                 onClick={() => handlePageChange(currentPage - 1)}
-                className="min-h-[44px] px-3.5 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-semibold text-xs transition-colors cursor-pointer flex items-center gap-1.5"
+                className="min-h-[44px] px-3.5 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed font-semibold text-xs transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
                 id="pagination-prev-btn"
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -401,7 +403,7 @@ export default function HomeView() {
               {getPaginationRange(currentPage, totalPages).map((item, idx) => {
                 if (item === '...') {
                   return (
-                    <span key={`dots-${idx}`} className="min-h-[44px] px-2 flex items-center justify-center text-slate-400 font-mono text-xs select-none">
+                    <span key={`dots-${idx}`} className="pagination-dots min-h-[44px] px-2 flex items-center justify-center text-slate-400 dark:text-slate-400 font-mono text-xs select-none font-bold">
                       ...
                     </span>
                   );
@@ -412,14 +414,17 @@ export default function HomeView() {
                   <button
                     key={pageNum}
                     onClick={() => handlePageChange(pageNum)}
+                    data-active={isActive ? "true" : "false"}
+                    aria-label={`Page ${pageNum}`}
+                    aria-current={isActive ? "page" : undefined}
                     className={`min-h-[44px] min-w-[44px] px-2.5 rounded-lg font-bold text-xs transition-all flex items-center justify-center cursor-pointer ${
                       isActive
-                        ? 'bg-slate-900 text-white border border-slate-900 dark:bg-white dark:text-slate-950 dark:border-white shadow-xs'
-                        : 'bg-white text-slate-700 border border-slate-300 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-300 hover:bg-slate-50'
+                        ? 'pagination-page-active bg-indigo-600 text-white border border-indigo-600 dark:bg-indigo-600 dark:text-white dark:border-indigo-500 shadow-sm ring-2 ring-indigo-500/20'
+                        : 'pagination-page-inactive bg-white text-slate-700 border border-slate-300 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-700 dark:hover:text-white shadow-xs'
                     }`}
                     id={`pagination-page-${pageNum}`}
                   >
-                    {pageNum}
+                    <span className="font-bold text-xs pointer-events-none">{pageNum}</span>
                   </button>
                 );
               })}
@@ -427,7 +432,7 @@ export default function HomeView() {
               <button
                 disabled={currentPage >= totalPages}
                 onClick={() => handlePageChange(currentPage + 1)}
-                className="min-h-[44px] px-3.5 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-semibold text-xs transition-colors cursor-pointer flex items-center gap-1.5"
+                className="min-h-[44px] px-3.5 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed font-semibold text-xs transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
                 id="pagination-next-btn"
               >
                 <span>Next</span>

@@ -74,7 +74,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <div className="flex flex-col min-h-screen bg-white text-slate-900 overflow-x-hidden" id="app-root-container">
+      <div className="flex flex-col min-h-screen bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 overflow-x-hidden" id="app-root-container">
         
         {/* Dynamic Responsive Header (hidden on profile button pages) */}
         <ConditionalHeader />

@@ -108,8 +108,8 @@ export default function LikedView() {
           </p>
         </div>
       ) : error ? (
-        <div className="p-6 bg-red-50 border border-red-200 rounded-xl" id="liked-error">
-          <p className="text-sm font-sans font-medium text-red-700">{error}</p>
+        <div className="p-6 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 rounded-xl" id="liked-error">
+          <p className="text-sm font-sans font-medium text-red-700 dark:text-red-300">{error}</p>
         </div>
       ) : likedPosts.length === 0 ? (
         <div 

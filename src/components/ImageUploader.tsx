@@ -233,7 +233,7 @@ export default function ImageUploader({
           <button 
             type="button"
             onClick={() => setError(null)}
-            className="p-1 text-rose-500 hover:text-rose-800"
+            className="p-1 text-rose-500 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-200"
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -275,17 +275,17 @@ export default function ImageUploader({
             <button
               type="button"
               onClick={handleCopyUrl}
-              className="p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md text-slate-600 dark:text-slate-300 hover:text-indigo-600 text-[10px] font-bold flex items-center gap-1 transition-colors"
+              className="p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 text-[10px] font-bold flex items-center gap-1 transition-colors"
               title="Copy URL"
             >
-              {copied ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
+              {copied ? <Check className="h-3 w-3 text-emerald-600 dark:text-emerald-400" /> : <Copy className="h-3 w-3" />}
               <span>{copied ? 'Copied' : 'Copy'}</span>
             </button>
             <a
               href={lastUploadedUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md text-slate-600 dark:text-slate-300 hover:text-indigo-600 transition-colors"
+              className="p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
               title="Open full image in new tab"
             >
               <ExternalLink className="h-3 w-3" />

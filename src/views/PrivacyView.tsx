@@ -14,7 +14,7 @@ export default function PrivacyView() {
       <ProfilePageNavbar title="Privacy Policy" />
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
-        <p className="text-xs sm:text-sm text-slate-500 mb-8 font-sans leading-relaxed">
+        <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mb-8 font-sans leading-relaxed">
           Last updated: June 24, 2026. This Privacy Policy details our protocols surrounding the collection, use, and disclosure of reader data when visiting or installing the Current News Live application.
         </p>
 
@@ -23,21 +23,21 @@ export default function PrivacyView() {
         <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
           <Lock className="h-5 w-5 text-indigo-500 mb-2" />
           <h3 className="font-display font-bold text-xs uppercase tracking-wider text-slate-900 dark:text-slate-100">Zero Sell Policy</h3>
-          <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
             We never trade, rent, or sell your personal data or newsletter subscriptions to third-party brokers.
           </p>
         </div>
         <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
           <Eye className="h-5 w-5 text-teal-500 mb-2" />
           <h3 className="font-display font-bold text-xs uppercase tracking-wider text-slate-900 dark:text-slate-100">Transparent Consent</h3>
-          <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
             Manage your cookie preference and personalized advertising telemetry at any time via our footer consent center.
           </p>
         </div>
         <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
           <Mail className="h-5 w-5 text-amber-500 mb-2" />
           <h3 className="font-display font-bold text-xs uppercase tracking-wider text-slate-900 dark:text-slate-100">Secure Subscriptions</h3>
-          <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
             Your email is stored on encrypted Cloud Firestore servers solely to send breaking news dispatch circulars.
           </p>
         </div>

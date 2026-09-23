@@ -10,9 +10,11 @@ import {
   Sparkles,
   Image as ImageIcon
 } from 'lucide-react';
+import { cleanImageUrl } from '../utils/imageUrl';
 
 export interface RichTextEditorHandle {
-  insertFigure: (figNum: number) => void;
+  insertPhoto: (url: string) => void;
+  insertFigure: (figNumOrUrl: number | string) => void;
   insertHtmlAtCursor: (html: string) => void;
   focus: () => void;
 }
@@ -22,17 +24,18 @@ export interface RichTextEditorProps {
   onChange: (content: string) => void;
   placeholder?: string;
   availablePhotoCount?: number;
+  availablePhotos?: string[];
 }
 
 const QuillComponent = ReactQuill as any;
 
 const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(function RichTextEditor(
-  { value, onChange, placeholder, availablePhotoCount = 0 },
+  { value, onChange, placeholder, availablePhotoCount = 0, availablePhotos = [] },
   ref
 ) {
   const quillRef = useRef<any>(null);
 
-  // Enriched format capabilities for beautiful styling choices (colors, highlights, alignments, links, blockquotes, code blocks)
+  // Enriched format capabilities for beautiful styling choices (colors, highlights, alignments, links, blockquotes, code blocks, images)
   const formats = [
     'header',
     'size',
@@ -48,6 +51,7 @@ const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(fun
     'color',
     'background',
     'link',
+    'image',
   ];
 
   const modules = {
@@ -58,7 +62,7 @@ const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(fun
       [{ 'color': [] }, { 'background': [] }],          
       [{ 'align': [] }],
       [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-      ['blockquote', 'code-block', 'link'],
+      ['blockquote', 'code-block', 'link', 'image'],
       ['clean']
     ],
     clipboard: {
@@ -99,29 +103,32 @@ const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(fun
     }
   ];
 
-  const insertFigureAtCursor = (figNum: number) => {
+  const insertPhotoAtCursor = (rawUrl: string) => {
+    if (!rawUrl || !rawUrl.trim()) return;
+    const cleanUrl = cleanImageUrl(rawUrl.trim());
     const editor = quillRef.current?.getEditor();
+    
+    // Paste direct visual image block with responsive styling and immediate text line below
+    const htmlBlock = `<p><img src="${cleanUrl}" alt="Article Photo" class="article-body-photo" /></p><p><br></p>`;
+
     if (editor) {
       editor.focus();
       const selection = editor.getSelection();
       const index = selection ? selection.index : editor.getLength();
 
-      const figureTag = `[fig. ${figNum}]`;
-      const htmlBlock = `<p>${figureTag}</p><p><br></p>`;
-
-      // Paste figure marker block at current cursor position
       editor.clipboard.dangerouslyPasteHTML(index, htmlBlock, 'user');
 
       // Place typing cursor directly below the image on the fresh new line
       setTimeout(() => {
-        editor.focus();
-        const tagLength = figureTag.length + 2;
-        const nextIndex = Math.min(index + tagLength, editor.getLength() - 1);
-        editor.setSelection(Math.max(0, nextIndex), 0, 'user');
-      }, 50);
+        try {
+          editor.focus();
+          const nextIndex = Math.min(index + 2, editor.getLength());
+          editor.setSelection(nextIndex, 0, 'user');
+        } catch (e) {}
+      }, 60);
     } else {
       const currentVal = value || '';
-      onChange(currentVal + `<p>[fig. ${figNum}]</p><p><br></p>`);
+      onChange(currentVal + htmlBlock);
     }
   };
 
@@ -143,8 +150,19 @@ const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(fun
   };
 
   useImperativeHandle(ref, () => ({
-    insertFigure: (figNum: number) => {
-      insertFigureAtCursor(figNum);
+    insertPhoto: (url: string) => {
+      insertPhotoAtCursor(url);
+    },
+    insertFigure: (figNumOrUrl: number | string) => {
+      if (typeof figNumOrUrl === 'string' && (figNumOrUrl.startsWith('http') || figNumOrUrl.startsWith('data:') || figNumOrUrl.startsWith('blob:'))) {
+        insertPhotoAtCursor(figNumOrUrl);
+        return;
+      }
+      const num = typeof figNumOrUrl === 'number' ? figNumOrUrl : parseInt(String(figNumOrUrl).replace(/\D/g, ''), 10) || 1;
+      const targetPhoto = availablePhotos?.[num - 1];
+      if (targetPhoto) {
+        insertPhotoAtCursor(targetPhoto);
+      }
     },
     insertHtmlAtCursor: (html: string) => {
       insertHtmlAtCursor(html);
@@ -153,6 +171,11 @@ const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(fun
       quillRef.current?.getEditor()?.focus();
     }
   }));
+
+  // Resolve list of photos available to insert into prose
+  const photosToInsert = (availablePhotos && availablePhotos.length > 0)
+    ? availablePhotos.filter(u => !!u && u.trim().length > 0)
+    : [];
 
   return (
     <div className="w-full flex flex-col" id="quill-editor-wrapper">
@@ -165,19 +188,25 @@ const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(fun
           </span>
         </div>
         <div className="flex flex-wrap gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-          {/* Photo Figure insertion shortcuts if photos are uploaded */}
-          {availablePhotoCount > 0 && Array.from({ length: availablePhotoCount }).map((_, i) => {
-            const figNum = i + 1;
+          {/* Direct Photo insertion shortcuts: click to place image at cursor */}
+          {photosToInsert.map((photoUrl, i) => {
+            const cleanUrl = cleanImageUrl(photoUrl);
             return (
               <button
-                key={`insert-fig-${figNum}`}
+                key={`insert-photo-${i}`}
                 type="button"
-                onClick={() => insertFigureAtCursor(figNum)}
-                className="inline-flex items-center gap-1 text-[10px] font-mono font-bold px-2.5 py-1.5 border rounded-full transition-all duration-200 hover:scale-[1.02] cursor-pointer shadow-2xs shrink-0 text-indigo-700 border-indigo-200 bg-indigo-50/80 hover:bg-indigo-100"
-                title={`Insert Photo Figure ${figNum} at cursor with typing line below`}
+                onClick={() => insertPhotoAtCursor(photoUrl)}
+                className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1.5 border rounded-full transition-all duration-200 hover:scale-[1.02] cursor-pointer shadow-2xs shrink-0 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 bg-indigo-50/90 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/70"
+                title="Insert this photo directly into article at cursor position"
               >
-                <ImageIcon className="h-3 w-3 text-indigo-600 shrink-0" />
-                <span>Insert [fig. {figNum}]</span>
+                <img
+                  src={cleanUrl}
+                  alt="Thumbnail"
+                  className="w-4 h-4 rounded-sm object-cover border border-indigo-300 dark:border-indigo-700 shrink-0"
+                  onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                />
+                <ImageIcon className="h-3 w-3 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                <span>Insert Photo</span>
               </button>
             );
           })}

@@ -246,7 +246,7 @@ ${userName || '[Your Name]'}`;
                       type="checkbox"
                       checked={confirmed}
                       onChange={(e) => setConfirmed(e.target.checked)}
-                      className="mt-0.5 rounded border-slate-300 text-rose-600 focus:ring-rose-500"
+                      className="mt-0.5 rounded border-slate-300 dark:border-slate-700 text-rose-600 focus:ring-rose-500"
                     />
                     <span>I understand this action is irreversible and my personal data cannot be recovered.</span>
                   </label>

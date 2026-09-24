@@ -6,6 +6,8 @@ import Header from './components/Header';
 import Footer from './components/Footer';
 import NewsletterPopup from './components/NewsletterPopup';
 import ConsentBanner from './components/ConsentBanner';
+import NotificationBanner from './components/NotificationBanner';
+import { syncPushSubscriptionOnAppBoot } from './utils/pushManager';
 import HomeView from './views/HomeView';
 import PostDetailView from './views/PostDetailView';
 import AdminView from './views/AdminView';
@@ -66,7 +68,9 @@ export default function App() {
 
     // Register PWA service worker for notifications and offline support
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch((err) => {
+      navigator.serviceWorker.register('/sw.js').then(() => {
+        syncPushSubscriptionOnAppBoot();
+      }).catch((err) => {
         console.debug('Service Worker registration skipped:', err);
       });
     }
@@ -119,6 +123,9 @@ export default function App() {
 
         {/* Dynamic bottom GDPR/Google policy compliant consent banner */}
         <ConsentBanner />
+
+        {/* Automated Background Push Notification Subscription Prompt */}
+        <NotificationBanner />
 
       </div>
     </BrowserRouter>

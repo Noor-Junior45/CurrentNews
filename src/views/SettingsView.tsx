@@ -24,6 +24,7 @@ import { useAuthState } from '../hooks/useAuthState';
 import ProfilePageNavbar from '../components/ProfilePageNavbar';
 import GlassThemeToggle from '../components/ThemeToggle';
 import ToggleSwitch from '../components/ToggleSwitch';
+import { subscribeUserToPush, unsubscribeUserFromPush, isUserPushSubscribed } from '../utils/pushManager';
 
 export default function SettingsView() {
   const { user } = useAuthState();
@@ -55,10 +56,11 @@ export default function SettingsView() {
 
     // Sync notification and ads preferences
     const handleSync = async () => {
-      if ('Notification' in window) {
-        setNotificationsEnabled(Notification.permission === 'granted');
+      if ('Notification' in window && Notification.permission === 'granted') {
+        const isSubbed = await isUserPushSubscribed();
+        setNotificationsEnabled(isSubbed);
       } else {
-        setNotificationsEnabled(localStorage.getItem('browser_notifications_enabled') === 'true');
+        setNotificationsEnabled(false);
       }
 
       const savedAdsConsent = localStorage.getItem('google_ads_personalized_consent');
@@ -107,33 +109,25 @@ export default function SettingsView() {
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  // Toggle Browser notifications
+  // Toggle Browser & Android Push notifications
   const toggleNotifications = async () => {
     if (!('Notification' in window)) {
-      showToast("This browser does not support desktop notifications.");
+      showToast("This browser does not support push notifications.");
       return;
     }
 
     if (!notificationsEnabled) {
-      const permission = await Notification.requestPermission();
-      if (permission === 'granted') {
-        localStorage.setItem('browser_notifications_enabled', 'true');
+      const res = await subscribeUserToPush();
+      if (res.success) {
         setNotificationsEnabled(true);
-        window.dispatchEvent(new Event('settings-updated'));
-        
-        new Notification("Current News Alerts Enabled", {
-          body: "You will now receive breaking dispatches directly on this device.",
-          icon: "https://i.imgur.com/gq2X5nE.jpeg"
-        });
-        showToast("Notifications enabled successfully!");
+        showToast("Push notifications activated! You'll receive alerts even when the app is closed.");
       } else {
-        showToast("Notification permissions denied in browser settings.");
+        showToast(res.message || "Notification permissions denied in browser settings.");
       }
     } else {
-      localStorage.setItem('browser_notifications_enabled', 'false');
+      await unsubscribeUserFromPush();
       setNotificationsEnabled(false);
-      window.dispatchEvent(new Event('settings-updated'));
-      showToast("Notifications disabled.");
+      showToast("Push notifications disabled.");
     }
   };
 

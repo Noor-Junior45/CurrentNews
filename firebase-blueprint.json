@@ -88,6 +88,38 @@
         }
       },
       "required": ["userId", "postId", "type"]
+    },
+    "PushSubscription": {
+      "title": "PushSubscription",
+      "description": "Registered Web Push / FCM device subscription for background notifications",
+      "type": "object",
+      "properties": {
+        "endpoint": {
+          "type": "string",
+          "description": "Unique push service endpoint URL"
+        },
+        "keys": {
+          "type": "object",
+          "properties": {
+            "p256dh": { "type": "string" },
+            "auth": { "type": "string" }
+          },
+          "required": ["p256dh", "auth"]
+        },
+        "userAgent": {
+          "type": "string",
+          "description": "Device or browser user agent"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["endpoint", "keys"]
     }
   },
   "firestore": {
@@ -110,6 +142,10 @@
     "test/{testId}": {
       "schema": "Setting",
       "description": "Health check connection document"
+    },
+    "push_subscriptions/{subscriptionId}": {
+      "schema": "PushSubscription",
+      "description": "Audience devices registered to receive instant push alerts"
     }
   }
 }

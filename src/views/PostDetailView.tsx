@@ -649,13 +649,13 @@ export default function PostDetailView() {
         if (src.includes('imgur.com') && !/\.(png|jpg|jpeg|gif|webp)$/i.test(src)) {
           src = src.replace('imgur.com', 'i.imgur.com') + '.jpg';
         }
-        return `<div class="my-8 flex justify-center"><img src="${src}" alt="Attached Chronicle Image" class="rounded-2xl max-w-full h-auto border border-slate-200 shadow-md transform hover:scale-[1.01] transition-all duration-300 md:max-h-[500px]" referrerPolicy="no-referrer" onerror="this.style.display='none'" /></div>`;
+        return `<div class="my-6 flex justify-center w-full"><img src="${src}" alt="Attached Chronicle Image" class="rounded-xl max-w-full w-auto max-h-[360px] sm:max-h-[400px] h-auto object-contain border-0 shadow-sm transform hover:scale-[1.005] transition-all duration-300" referrerPolicy="no-referrer" onerror="this.style.display='none'" /></div>`;
       });
 
       // Handle raw non-imgur direct image links inside paragraphs
       const pDirectImgPattern = /<p>\s*(https?:\/\/[^\s<>'"]+\.(?:png|jpg|jpeg|gif|webp))\s*<\/p>/gi;
       text = text.replace(pDirectImgPattern, (match, url) => {
-        return `<div class="my-8 flex justify-center"><img src="${url}" alt="Attached Chronicle Image" class="rounded-2xl max-w-full h-auto border border-slate-200 shadow-md transform hover:scale-[1.01] transition-all duration-300 md:max-h-[500px]" referrerPolicy="no-referrer" onerror="this.style.display='none'" /></div>`;
+        return `<div class="my-6 flex justify-center w-full"><img src="${url}" alt="Attached Chronicle Image" class="rounded-xl max-w-full w-auto max-h-[360px] sm:max-h-[400px] h-auto object-contain border-0 shadow-sm transform hover:scale-[1.005] transition-all duration-300" referrerPolicy="no-referrer" onerror="this.style.display='none'" /></div>`;
       });
 
       // Handle inline [fig. N] or [fig N] markers in prose
@@ -672,8 +672,8 @@ export default function PostDetailView() {
             ? `if (this.dataset.fallback && this.src !== this.dataset.fallback) { this.src = this.dataset.fallback; } else { this.style.display = 'none'; }`
             : `this.style.display = 'none';`;
           return `
-            <div class="my-8 flex justify-center not-prose" id="article-figure-${figNum}">
-              <img src="${pUrl}" data-fallback="${fbUrl || ''}" alt="Article Photo" class="rounded-2xl max-w-full h-auto border border-slate-200 shadow-md hover:shadow-lg transition-all duration-300 md:max-h-[520px] object-cover" referrerPolicy="no-referrer" onerror="${errorScript}" />
+            <div class="my-6 flex justify-center w-full not-prose" id="article-figure-${figNum}">
+              <img src="${pUrl}" data-fallback="${fbUrl || ''}" alt="Article Photo" class="rounded-xl max-w-full w-auto max-h-[360px] sm:max-h-[400px] h-auto object-contain border-0 shadow-sm hover:shadow transition-all duration-300" referrerPolicy="no-referrer" onerror="${errorScript}" />
             </div>
           `;
         }
@@ -707,17 +707,17 @@ export default function PostDetailView() {
       return false;
     };
 
-    // Reusable photo block generator
+    // Reusable photo block generator - compact, borderless, full photo visible without cropping
     const renderPhotoBlock = (url: string, fallback?: string, key?: string | number) => {
       const resolvedSrc = cleanImageUrl(url);
       const resolvedFallback = getFallbackImageUrl(url, fallback);
 
       return (
-        <div key={key} className="my-8 flex justify-center" id="featured-article-photo-container">
+        <div key={key} className="my-6 flex justify-center w-full" id="featured-article-photo-container">
           <img
             src={resolvedSrc}
             alt="Dispatch Feature Photo"
-            className="rounded-2xl max-w-full h-auto border border-slate-200 shadow-md hover:shadow-lg transition-all duration-350 md:max-h-[550px] object-cover"
+            className="rounded-xl max-w-full w-auto max-h-[360px] sm:max-h-[400px] h-auto object-contain border-0 shadow-sm hover:shadow transition-all duration-300"
             referrerPolicy="no-referrer"
             onError={(e) => {
               const target = e.currentTarget;

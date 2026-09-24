@@ -6,8 +6,8 @@
     <title>Current News Live - Independent Ledger</title>
     
     <!-- Design Identity & Tab Icons -->
-    <link rel="icon" type="image/jpeg" href="https://i.imgur.com/gFgShoZ.jpeg" />
-    <link rel="apple-touch-icon" href="https://i.imgur.com/gFgShoZ.jpeg" />
+    <link rel="icon" type="image/png" href="/CurrentNews.png" />
+    <link rel="apple-touch-icon" href="/CurrentNews.png" />
 
     <!-- PWA Capabilities & Web Manifest -->
     <link rel="manifest" href="/manifest.json" />
@@ -25,12 +25,12 @@
     <!-- Canonical Tag (Standardized on live canonical domain) -->
     <link rel="canonical" href="https://www.currentnews.blog/" />
 
-    <!-- Theme Initialization to prevent flash of wrong theme -->
+    <!-- Theme Initialization: completely independent, never tracks user phone/device theme -->
     <script>
       (function() {
         try {
           const theme = localStorage.getItem('theme');
-          if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+          if (theme === 'dark') {
             document.documentElement.classList.add('dark');
           } else {
             document.documentElement.classList.remove('dark');

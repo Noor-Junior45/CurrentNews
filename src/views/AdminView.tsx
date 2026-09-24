@@ -42,7 +42,9 @@ import {
   Share2,
   Mail,
   Rss,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Bell,
+  BellRing
 } from 'lucide-react';
 
 export default function AdminView() {
@@ -114,6 +116,63 @@ export default function AdminView() {
   // Delete safety guard modal
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
+  // Push Notification broadcast state
+  const [pushDeviceCount, setPushDeviceCount] = useState<number | null>(null);
+  const [isSendingTestPush, setIsSendingTestPush] = useState(false);
+  const [testPushFeedback, setTestPushFeedback] = useState<{
+    status: 'idle' | 'success' | 'error';
+    message: string;
+  }>({ status: 'idle', message: '' });
+
+  const fetchPushSubscribersCount = async () => {
+    try {
+      const res = await fetch('/api/push/subscribers-count');
+      if (res.ok) {
+        const data = await res.json();
+        setPushDeviceCount(data.count ?? 0);
+      }
+    } catch (e) {
+      console.debug('Failed to fetch push count:', e);
+    }
+  };
+
+  const handleSendTestPush = async () => {
+    setIsSendingTestPush(true);
+    setTestPushFeedback({ status: 'idle', message: '' });
+    try {
+      const res = await fetch('/api/push/broadcast', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: 'Current News Live Test Alert',
+          body: 'Automated push dispatch verified! Subscribers receive this alert on Android and PC even with the app closed.',
+          url: '/',
+          icon: 'https://i.imgur.com/gFgShoZ.jpeg'
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setTestPushFeedback({
+          status: 'success',
+          message: `Push broadcast sent successfully! Delivered to ${data.sent} device(s) (${data.failed} unreachable, ${data.purged} purged).`
+        });
+        fetchPushSubscribersCount();
+      } else {
+        setTestPushFeedback({
+          status: 'error',
+          message: data.error || 'Failed to dispatch test push broadcast.'
+        });
+      }
+    } catch (e: any) {
+      setTestPushFeedback({
+        status: 'error',
+        message: e.message || 'Network error sending test push.'
+      });
+    } finally {
+      setIsSendingTestPush(false);
+    }
+  };
+
   // Load all posts for manage list & profile settings
   const fetchAdminPosts = async () => {
     if (!isAdmin) return;
@@ -159,6 +218,7 @@ export default function AdminView() {
           return dateB.getTime() - dateA.getTime();
         });
         setSubscribers(fetchedSubs);
+        fetchPushSubscribersCount();
       } catch (subErr) {
         console.warn('Could not load subscriber list from database', subErr);
       }
@@ -548,17 +608,41 @@ export default function AdminView() {
                 navigator.serviceWorker.ready.then((reg) => {
                   reg.showNotification(notifTitle, {
                     body: notifBody,
-                    icon: imageUrl || '/public/icon.png',
-                    badge: '/public/icon.png',
+                    icon: imageUrl || 'https://i.imgur.com/gFgShoZ.jpeg',
+                    badge: 'https://i.imgur.com/gFgShoZ.jpeg',
+                    image: imageUrl || undefined,
                     data: { url: postLink }
-                  });
+                  } as any);
                 }).catch(() => {});
               } else {
                 new Notification(notifTitle, {
                   body: notifBody,
-                  icon: imageUrl || '/public/icon.png'
+                  icon: imageUrl || 'https://i.imgur.com/gFgShoZ.jpeg'
                 });
               }
+            }
+
+            // 3. Automated 100% Background Server Push Dispatch to ALL Subscribed Devices (Android App, Mobile, Desktop)
+            // Wakes up closed apps, sleeping phones, and background service workers!
+            try {
+              fetch('/api/push/broadcast', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  title: notifTitle,
+                  body: notifBody,
+                  url: `/post/${publishedPostId}/${slugify(title.trim())}`,
+                  postId: publishedPostId,
+                  image: imageUrl || undefined,
+                  icon: 'https://i.imgur.com/gFgShoZ.jpeg'
+                })
+              }).then(res => res.json()).then(pushStats => {
+                console.log('[Automated Push Broadcast Complete]:', pushStats);
+              }).catch(err => {
+                console.warn('[Automated Push Broadcast Notice]:', err);
+              });
+            } catch (broadcastErr) {
+              console.warn('[Automated Push Broadcast Exception]:', broadcastErr);
             }
           } catch (notifErr) {
             console.warn('Notification broadcast note:', notifErr);
@@ -1240,7 +1324,7 @@ export default function AdminView() {
               </div>
 
               {/* Automated Email Alerts Toggle Option */}
-              <div className="flex items-center space-x-3 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/60 rounded-xl p-4 mb-4">
+              <div className="flex items-center space-x-3 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/60 rounded-xl p-4 mb-3">
                 <input
                   type="checkbox"
                   id="send-email-alert-checkbox"
@@ -1252,6 +1336,28 @@ export default function AdminView() {
                   <span>Send automated breaking news alert circular to dynamic subscriber list</span>
                   <span className="text-[10px] text-slate-400 font-normal mt-0.5">Currently targeting {subscribers.length} registered recipient(s) securely via your Resend API</span>
                 </label>
+              </div>
+
+              {/* Automated Background Push Notifications (100% Automatic for Android & Web) */}
+              <div className="flex items-center justify-between bg-amber-500/10 dark:bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 mb-4">
+                <div className="flex items-start space-x-3">
+                  <div className="p-2 bg-amber-500/20 text-amber-500 rounded-lg shrink-0 mt-0.5">
+                    <BellRing className="w-4 h-4 animate-pulse" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                        100% Automatic Background Push Notification
+                      </span>
+                      <span className="px-2 py-0.5 text-[9px] bg-emerald-500/20 text-emerald-500 dark:text-emerald-400 rounded-full font-bold uppercase tracking-wider">
+                        Active
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
+                      Publishing this article will automatically trigger an instant push notification to all subscribed Android devices and browsers ({pushDeviceCount !== null ? `${pushDeviceCount} device(s) registered` : 'loading...'})—<strong>even if users have closed their app or phone screen</strong>.
+                    </p>
+                  </div>
+                </div>
               </div>
 
               {/* Action buttons */}
@@ -1442,8 +1548,68 @@ export default function AdminView() {
         <div className="max-w-4xl mx-auto space-y-6 font-sans" id="audience-subscribers-list">
           <div className="border-b border-slate-150 dark:border-slate-800 pb-5">
             <p className="text-xs text-slate-400 leading-relaxed">
-              Real-time directory of citizens registered via the footer's news subscription form ({subscribers.length} subscribers). Use this audience list to gauge active subscriber engagement.
+              Real-time directory of citizens and connected devices registered for automated news alerts. Use this panel to verify automated push delivery and email circulars.
             </p>
+          </div>
+
+          {/* 100% Automated Background Push Notification Console */}
+          <div className="p-5 bg-amber-50/60 dark:bg-amber-950/25 border border-amber-200/80 dark:border-amber-900/40 rounded-xl">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+              <div>
+                <h3 className="text-xs font-bold text-amber-900 dark:text-amber-200 uppercase tracking-wider flex items-center gap-2">
+                  <span className="flex h-2 w-2 rounded-full bg-amber-500 animate-ping"></span>
+                  Automated Background Push System (Android & Web)
+                </h3>
+                <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">
+                  Subscribed devices receive instant push notifications whenever you release any article—<strong>even if the app is closed</strong>. No manual action in Firebase is needed.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 bg-white/80 dark:bg-slate-900/80 border border-amber-200 dark:border-amber-800 px-3 py-1.5 rounded-lg shrink-0 self-start sm:self-auto shadow-2xs">
+                <Bell className="w-4 h-4 text-amber-500" />
+                <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
+                  {pushDeviceCount !== null ? `${pushDeviceCount} Active Device(s)` : 'Checking devices...'}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-3 border-t border-amber-200/60 dark:border-amber-900/30">
+              <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                Trigger a broadcast test alert right now to verify closed-app delivery across all registered Android phones and PCs.
+              </span>
+              <button
+                type="button"
+                onClick={handleSendTestPush}
+                disabled={isSendingTestPush}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-xs rounded-lg transition-all duration-150 flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer shrink-0 shadow-xs"
+              >
+                {isSendingTestPush ? (
+                  <>
+                    <span className="h-3 w-3 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></span>
+                    <span>Broadcasting...</span>
+                  </>
+                ) : (
+                  <>
+                    <BellRing className="w-3.5 h-3.5" />
+                    <span>Send Test Push Alert</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {testPushFeedback.status !== 'idle' && (
+              <div className={`mt-3 p-3 rounded-lg text-xs flex items-center gap-2.5 ${
+                testPushFeedback.status === 'success'
+                  ? 'bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/50 text-emerald-800 dark:text-emerald-200'
+                  : 'bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 text-rose-800 dark:text-rose-200'
+              }`}>
+                {testPushFeedback.status === 'success' ? (
+                  <CheckCircle className="h-4 w-4 text-emerald-500 shrink-0" />
+                ) : (
+                  <AlertCircle className="h-4 w-4 text-rose-500 shrink-0" />
+                )}
+                <span className="font-semibold">{testPushFeedback.message}</span>
+              </div>
+            )}
           </div>
 
             {/* Resend API Test Section */}

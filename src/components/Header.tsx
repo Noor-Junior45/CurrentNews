@@ -29,6 +29,7 @@ import {
 import { GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
 import { motion } from 'motion/react';
 import GlassThemeToggle from './ThemeToggle';
+import { subscribeUserToPush, unsubscribeUserFromPush, isUserPushSubscribed } from '../utils/pushManager';
 
 // Glassmorphism ToggleSwitch matching the frosted glass theme toggle button
 interface ToggleSwitchProps {
@@ -226,39 +227,20 @@ export default function Header() {
   // Toggle Browser notifications and PWA alert settings
   const toggleNotifications = async () => {
     if (!('Notification' in window)) {
-      alert("This browser does not support desktop notifications.");
+      alert("This browser does not support push notifications.");
       return;
     }
 
     if (!notificationsEnabled) {
-      const permission = await Notification.requestPermission();
-      if (permission === 'granted') {
-        localStorage.setItem('browser_notifications_enabled', 'true');
+      const res = await subscribeUserToPush();
+      if (res.success) {
         setNotificationsEnabled(true);
-        window.dispatchEvent(new Event('settings-updated'));
-        
-        // Push-style notification to trigger immediately
-        new Notification("Current News Alerts Enabled!", {
-          body: "You will now receive automated dispatches directly on this device.",
-          icon: "https://i.imgur.com/gq2X5nE.jpeg"
-        });
-
-        // Simulating push/alerts to those who have downloaded browser app
-        if (isPwaInstalled) {
-          setTimeout(() => {
-            new Notification("PWA App Connected!", {
-              body: "Simulated alert sent to your downloaded browser app.",
-              icon: "https://i.imgur.com/gq2X5nE.jpeg"
-            });
-          }, 1000);
-        }
       } else {
-        alert("Notification permissions denied. Please enable notifications in your browser settings to activate this feature.");
+        alert(res.message || "Notification permissions denied. Please enable notifications in your browser settings to activate this feature.");
       }
     } else {
-      localStorage.setItem('browser_notifications_enabled', 'false');
+      await unsubscribeUserFromPush();
       setNotificationsEnabled(false);
-      window.dispatchEvent(new Event('settings-updated'));
     }
   };
 

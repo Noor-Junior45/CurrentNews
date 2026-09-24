@@ -12,6 +12,13 @@ import adsHandler from './api/ads.txt.js';
 import sitemapHandler from './api/sitemap.xml.js';
 import { handleR2Upload } from './src/server/r2Upload.js';
 import { handleSocialPreview } from './src/server/socialPreview.js';
+import {
+  handleGetVapidPublicKey,
+  handleSubscribe,
+  handleUnsubscribe,
+  handleBroadcast,
+  handleGetSubscribersCount
+} from './src/server/pushNotifications.js';
 
 // Load environment variables
 dotenv.config();
@@ -93,6 +100,13 @@ async function startServer() {
 
   // Serve the ads.txt file adapted from the Vercel handler
   app.all('/ads.txt', adaptVercelHandler(adsHandler));
+
+  // Automated Push Notification API routes (100% background alerts to Android devices & browsers)
+  app.get('/api/push/public-key', handleGetVapidPublicKey);
+  app.post('/api/push/subscribe', handleSubscribe);
+  app.post('/api/push/unsubscribe', handleUnsubscribe);
+  app.post('/api/push/broadcast', handleBroadcast);
+  app.get('/api/push/subscribers-count', handleGetSubscribersCount);
 
   // Fallback 404 handler for any unmatched /api/* route so it NEVER returns HTML to API clients
   app.all('/api/*', (_req, res) => {

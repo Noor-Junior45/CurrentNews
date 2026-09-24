@@ -72,5 +72,10 @@ service cloud.firestore {
       // Only administrators can dispatch news push notifications
       allow create, delete: if isAdmin();
     }
+
+    match /push_subscriptions/{subscriptionId} {
+      // Anyone can register, update, or remove their device push subscription
+      allow create, update, delete, read: if true;
+    }
   }
 }

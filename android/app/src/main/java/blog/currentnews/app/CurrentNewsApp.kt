@@ -18,7 +18,7 @@ class CurrentNewsApp : Application() {
         val crashlytics = FirebaseCrashlytics.getInstance()
         crashlytics.setCrashlyticsCollectionEnabled(true)
         crashlytics.setCustomKey("app_variant", "native_android")
-        crashlytics.setCustomKey("target_sdk", 34)
+        crashlytics.setCustomKey("target_sdk", 36)
 
         // 2. Set up Breaking News Notification Channel (Android O+)
         createNotificationChannels()

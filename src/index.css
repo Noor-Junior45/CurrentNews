@@ -729,22 +729,43 @@ html.dark .ql-snow .ql-picker {
   color: #e2e8f0 !important;
 }
 
-/* Interactivity helpers for article image lightboxing */
+/* Interactivity helpers for article image lightboxing - Compact, borderless, full photo visible */
 .ql-editor img,
 .article-body-photo,
 .article-rich-text img, 
-#article-main-box img {
+#article-main-box img,
+#article-content img,
+#featured-article-photo-container img,
+[id^="article-figure-"] img,
+article .prose img {
   display: block;
   margin: 1.25rem auto;
-  max-width: 100%;
-  height: auto;
+  max-width: 100% !important;
+  width: auto !important;
+  max-height: 400px !important;
+  height: auto !important;
   border-radius: 0.75rem;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
-  object-fit: cover;
+  border: none !important;
+  outline: none !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.06);
+  object-fit: contain !important;
+}
+
+@media (max-width: 640px) {
+  .ql-editor img,
+  .article-body-photo,
+  .article-rich-text img, 
+  #article-main-box img,
+  #article-content img,
+  #featured-article-photo-container img,
+  [id^="article-figure-"] img,
+  article .prose img {
+    max-height: 320px !important;
+  }
 }
 
 .ql-editor img {
-  max-height: 480px;
+  max-height: 360px !important;
 }
 
 .article-rich-text img, 
@@ -755,8 +776,8 @@ html.dark .ql-snow .ql-picker {
 
 .article-rich-text img:hover, 
 #article-main-box img:hover {
-  opacity: 0.95;
-  transform: scale(1.008);
+  opacity: 0.98;
+  transform: scale(1.005);
 }
 
 /* Premium Physical Newspaper Paper Style - Light Mode */

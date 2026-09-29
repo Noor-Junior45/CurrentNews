@@ -490,6 +490,7 @@ export default function AdminView() {
     };
 
     const path = 'posts';
+    let publishedPostId = (isEditing && editingPostId) ? editingPostId : '';
 
     try {
       if (isEditing && editingPostId) {
@@ -548,6 +549,7 @@ export default function AdminView() {
           dislikes: 0,
           createdAt: serverTimestamp()
         });
+        publishedPostId = newDocRef.id;
         setSuccessMsg(targetStatus === 'draft' ? 'Draft manuscript saved successfully!' : 'Story file published successfully on the feed!');
 
         // Dispatch alert to subscribers if checked and published
@@ -582,71 +584,70 @@ export default function AdminView() {
             console.warn('Failed to dispatch alerts to subscribers:', emailErr);
           }
         }
+      }
 
-        // Dispatch notification so new articles show as notifications on phone & devices
-        if (targetStatus === 'published') {
-          try {
-            const publishedPostId = isEditing && editingPostId ? editingPostId : (newDocRef?.id || '');
-            const postLink = `${window.location.origin}/post/${publishedPostId}/${slugify(title.trim())}`;
-            const notifTitle = `Breaking News: ${title.trim()}`;
-            const cleanSnippet = content.replace(/<[^>]*>/g, ' ').replace(/\[fig\.\s*\d+\]/gi, ' ').replace(/\s+/g, ' ').trim();
-            const notifBody = cleanSnippet.length > 120 ? cleanSnippet.substring(0, 117) + '...' : (cleanSnippet || 'A new article has just been published on Current News. Tap to read.');
+      // Dispatch push notification broadcast so published articles wake up closed phones & devices
+      if (targetStatus === 'published') {
+        try {
+          const postLink = `${window.location.origin}/post/${publishedPostId}/${slugify(title.trim())}`;
+          const notifTitle = `Breaking News: ${title.trim()}`;
+          const cleanSnippet = content.replace(/<[^>]*>/g, ' ').replace(/\[fig\.\s*\d+\]/gi, ' ').replace(/\s+/g, ' ').trim();
+          const notifBody = cleanSnippet.length > 120 ? cleanSnippet.substring(0, 117) + '...' : (cleanSnippet || 'A new article has just been published on Current News. Tap to read.');
 
-            // 1. Persist notification dispatch to Firestore for mobile listeners and app sync
-            await addDoc(collection(db, 'notifications'), {
-              title: notifTitle,
-              body: notifBody,
-              url: postLink,
-              postId: publishedPostId,
-              imageUrl: imageUrl || '',
-              createdAt: serverTimestamp()
-            });
+          // 1. Persist notification dispatch to Firestore for mobile listeners and app sync
+          await addDoc(collection(db, 'notifications'), {
+            title: notifTitle,
+            body: notifBody,
+            url: postLink,
+            postId: publishedPostId,
+            imageUrl: imageUrl || '',
+            createdAt: serverTimestamp()
+          });
 
-            // 2. Trigger native device/browser notification on phone if permission is granted
-            if ('Notification' in window && Notification.permission === 'granted') {
-              if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-                navigator.serviceWorker.ready.then((reg) => {
-                  reg.showNotification(notifTitle, {
-                    body: notifBody,
-                    icon: imageUrl || 'https://i.imgur.com/gFgShoZ.jpeg',
-                    badge: 'https://i.imgur.com/gFgShoZ.jpeg',
-                    image: imageUrl || undefined,
-                    data: { url: postLink }
-                  } as any);
-                }).catch(() => {});
-              } else {
-                new Notification(notifTitle, {
+          // 2. Trigger native device/browser notification on phone if permission is granted
+          if ('Notification' in window && Notification.permission === 'granted') {
+            if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+              navigator.serviceWorker.ready.then((reg) => {
+                reg.showNotification(notifTitle, {
                   body: notifBody,
-                  icon: imageUrl || 'https://i.imgur.com/gFgShoZ.jpeg'
-                });
-              }
-            }
-
-            // 3. Automated 100% Background Server Push Dispatch to ALL Subscribed Devices (Android App, Mobile, Desktop)
-            // Wakes up closed apps, sleeping phones, and background service workers!
-            try {
-              fetch('/api/push/broadcast', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  title: notifTitle,
-                  body: notifBody,
-                  url: `/post/${publishedPostId}/${slugify(title.trim())}`,
-                  postId: publishedPostId,
+                  icon: imageUrl || 'https://i.imgur.com/gFgShoZ.jpeg',
+                  badge: 'https://i.imgur.com/gFgShoZ.jpeg',
                   image: imageUrl || undefined,
-                  icon: 'https://i.imgur.com/gFgShoZ.jpeg'
-                })
-              }).then(res => res.json()).then(pushStats => {
-                console.log('[Automated Push Broadcast Complete]:', pushStats);
-              }).catch(err => {
-                console.warn('[Automated Push Broadcast Notice]:', err);
+                  data: { url: postLink }
+                } as any);
+              }).catch(() => {});
+            } else {
+              new Notification(notifTitle, {
+                body: notifBody,
+                icon: imageUrl || 'https://i.imgur.com/gFgShoZ.jpeg'
               });
-            } catch (broadcastErr) {
-              console.warn('[Automated Push Broadcast Exception]:', broadcastErr);
             }
-          } catch (notifErr) {
-            console.warn('Notification broadcast note:', notifErr);
           }
+
+          // 3. Automated 100% Background Server Push Dispatch to ALL Subscribed Devices (Android App, Mobile, Desktop)
+          // Wakes up closed apps, sleeping phones, and background service workers!
+          try {
+            fetch('/api/push/broadcast', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                title: notifTitle,
+                body: notifBody,
+                url: `/post/${publishedPostId}/${slugify(title.trim())}`,
+                postId: publishedPostId,
+                image: imageUrl || undefined,
+                icon: 'https://i.imgur.com/gFgShoZ.jpeg'
+              })
+            }).then(res => res.json()).then(pushStats => {
+              console.log('[Automated Push Broadcast Complete]:', pushStats);
+            }).catch(err => {
+              console.warn('[Automated Push Broadcast Notice]:', err);
+            });
+          } catch (broadcastErr) {
+            console.warn('[Automated Push Broadcast Exception]:', broadcastErr);
+          }
+        } catch (notifErr) {
+          console.warn('Notification broadcast note:', notifErr);
         }
       }
 

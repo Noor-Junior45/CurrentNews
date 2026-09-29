@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Post, slugify } from '../types';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { ThumbsUp, ThumbsDown, Eye } from 'lucide-react';
 import { doc, getDoc, setDoc, deleteDoc, updateDoc, increment } from 'firebase/firestore';
 import { auth, db } from '../firebase';
@@ -28,9 +28,24 @@ function getHtmlTextPreview(htmlString: string, maxLength: number = 160): string
 
 export default function BlogPostCard({ post, globalPenName }: BlogPostCardProps): React.JSX.Element {
   const navigate = useNavigate();
+  const location = useLocation();
   const previewText = getHtmlTextPreview(post.content);
   const displayedAuthor = post.authorName || globalPenName || 'Chronicle Staff Report';
   const postUrl = `/post/${post.id}/${slugify(post.title)}`;
+
+  const handleOpenPost = (e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+    }
+    try {
+      const currentSearch = location.search || '';
+      sessionStorage.setItem('current_news_return_search', currentSearch);
+      sessionStorage.setItem('current_news_return_scroll', String(window.scrollY));
+    } catch (err) {
+      console.debug('Failed to cache return position', err);
+    }
+    navigate(postUrl);
+  };
   
   const [likes, setLikes] = useState(post.likes || 0);
   const [dislikes, setDislikes] = useState(post.dislikes || 0);
@@ -190,11 +205,11 @@ export default function BlogPostCard({ post, globalPenName }: BlogPostCardProps)
 
   return (
     <article 
-      onClick={() => navigate(postUrl)}
+      onClick={() => handleOpenPost()}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          navigate(postUrl);
+          handleOpenPost();
         }
       }}
       tabIndex={0}
@@ -207,9 +222,9 @@ export default function BlogPostCard({ post, globalPenName }: BlogPostCardProps)
         <div>
           {/* Heading of article */}
           <h3 className="font-display font-bold text-lg sm:text-xl text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 tracking-tight leading-snug mb-2 transition-colors">
-            <Link to={`/post/${post.id}/${slugify(post.title)}`} className="text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+            <span onClick={handleOpenPost} className="text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
               {post.title}
-            </Link>
+            </span>
           </h3>
 
           {/* Writer name (no avatar), Date, Tag badge, YouTube & Facebook icons in the same line */}

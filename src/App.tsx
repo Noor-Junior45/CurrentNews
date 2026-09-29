@@ -7,6 +7,7 @@ import Footer from './components/Footer';
 import NewsletterPopup from './components/NewsletterPopup';
 import ConsentBanner from './components/ConsentBanner';
 import NotificationBanner from './components/NotificationBanner';
+import AndroidBackGestureHandler from './components/AndroidBackGestureHandler';
 import { syncPushSubscriptionOnAppBoot } from './utils/pushManager';
 import HomeView from './views/HomeView';
 import PostDetailView from './views/PostDetailView';
@@ -126,6 +127,9 @@ export default function App() {
 
         {/* Automated Background Push Notification Subscription Prompt */}
         <NotificationBanner />
+
+        {/* Native Android Phone Edge-Swipe Back Gesture & Navigation Handler */}
+        <AndroidBackGestureHandler />
 
       </div>
     </BrowserRouter>

@@ -17,23 +17,6 @@ export default function ProfilePageNavbar({
 }: ProfilePageNavbarProps) {
   const navigate = useNavigate();
 
-  // Intercept browser back button / Android back swipe gesture
-  // When on any profile subpage (where fallbackUrl is '/profile'), ensuring "back" always goes to the profile page
-  useEffect(() => {
-    if (fallbackUrl === '/profile') {
-      window.history.pushState({ isProfileSubpage: true }, '');
-
-      const handlePopState = () => {
-        navigate('/profile', { replace: true });
-      };
-
-      window.addEventListener('popstate', handlePopState);
-      return () => {
-        window.removeEventListener('popstate', handlePopState);
-      };
-    }
-  }, [fallbackUrl, navigate]);
-
   const handleBack = () => {
     if (onBack) {
       onBack();

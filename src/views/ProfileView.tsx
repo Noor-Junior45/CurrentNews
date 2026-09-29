@@ -15,23 +15,29 @@ import {
   Newspaper,
   Mail 
 } from 'lucide-react';
-import { signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
+import { signOut } from 'firebase/auth';
 import { auth } from '../firebase';
 import { useAuthState } from '../hooks/useAuthState';
 import ProfilePageNavbar from '../components/ProfilePageNavbar';
+import { signInWithGoogleSafe } from '../utils/authHelper';
 
 export default function ProfileView(): React.JSX.Element {
   const { user, loading, isAdmin } = useAuthState();
   const navigate = useNavigate();
+  const [authError, setAuthError] = React.useState<string | null>(null);
+  const [isSigningIn, setIsSigningIn] = React.useState(false);
 
   const handleLogin = async () => {
+    if (isSigningIn) return;
+    setIsSigningIn(true);
+    setAuthError(null);
     try {
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: 'select_account' });
-      await signInWithPopup(auth, provider);
-    } catch (err: any) {
-      console.error('Sign in failed', err);
-      alert('Sign in failed: ' + (err?.message || 'Authentication error'));
+      const res = await signInWithGoogleSafe();
+      if (!res.success && !res.cancelled && res.error) {
+        setAuthError('Authentication could not be completed. Please check your network and try again.');
+      }
+    } finally {
+      setIsSigningIn(false);
     }
   };
 
@@ -215,12 +221,28 @@ export default function ProfileView(): React.JSX.Element {
             <button 
               type="button"
               onClick={handleLogin}
-              className="w-full flex items-center justify-center space-x-2 py-3 px-4 bg-slate-950 dark:bg-slate-900 text-white hover:bg-slate-800 dark:hover:bg-transparent dark:hover:border-indigo-500/60 dark:hover:text-white text-xs font-semibold rounded-full cursor-pointer transition-all border border-transparent dark:border-slate-700/80 shadow-xs mb-5"
+              disabled={isSigningIn}
+              className="w-full flex items-center justify-center space-x-2 py-3 px-4 bg-slate-950 dark:bg-slate-900 text-white hover:bg-slate-800 dark:hover:bg-transparent dark:hover:border-indigo-500/60 dark:hover:text-white text-xs font-semibold rounded-full cursor-pointer transition-all border border-transparent dark:border-slate-700/80 shadow-xs mb-3 disabled:opacity-60"
               id="profile-signin-button"
             >
-              <LogIn className="h-3.5 w-3.5 text-white" />
-              <span className="font-bold text-white">Sign In with Google</span>
+              {isSigningIn ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span className="font-bold text-white">Opening Google Sign-In...</span>
+                </>
+              ) : (
+                <>
+                  <LogIn className="h-3.5 w-3.5 text-white" />
+                  <span className="font-bold text-white">Sign In with Google</span>
+                </>
+              )}
             </button>
+
+            {authError && (
+              <div className="w-full mb-4 px-3 py-2 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 rounded-xl text-rose-600 dark:text-rose-400 text-xs text-center">
+                {authError}
+              </div>
+            )}
 
             {/* Grey / liquid glass horizontal line */}
             <div className="w-full border-t border-slate-200/90 dark:border-slate-800/90 mb-5" />

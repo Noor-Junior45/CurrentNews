@@ -25,6 +25,7 @@ import ProfilePageNavbar from '../components/ProfilePageNavbar';
 import GlassThemeToggle from '../components/ThemeToggle';
 import ToggleSwitch from '../components/ToggleSwitch';
 import { subscribeUserToPush, unsubscribeUserFromPush, isUserPushSubscribed } from '../utils/pushManager';
+import { signInWithGoogleSafe } from '../utils/authHelper';
 
 export default function SettingsView() {
   const { user } = useAuthState();
@@ -172,13 +173,7 @@ export default function SettingsView() {
         "To manage newsletter alerts, please sign in with your Google account. Would you like to sign in now?"
       );
       if (confirmSignIn) {
-        try {
-          const provider = new GoogleAuthProvider();
-          provider.setCustomParameters({ prompt: 'select_account' });
-          await signInWithPopup(auth, provider);
-        } catch (err) {
-          console.error("Sign in failed", err);
-        }
+        await signInWithGoogleSafe();
       }
       return;
     }

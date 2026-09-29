@@ -1,3 +1,6 @@
+import java.io.File
+import java.util.Properties
+
 // Module-level build file for Kotlin DSL (app/build.gradle.kts)
 plugins {
     id("com.android.application")
@@ -24,6 +27,24 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            val keystorePropertiesFile = rootProject.file("keystore.properties")
+            if (keystorePropertiesFile.exists()) {
+                val properties = Properties()
+                keystorePropertiesFile.inputStream().use { stream ->
+                    properties.load(stream)
+                }
+                val storeFilePath: String = properties.getProperty("storeFile") ?: "currentnews-release-key.jks"
+                val file = File(storeFilePath)
+                storeFile = if (file.isAbsolute) file else rootProject.file(storeFilePath)
+                storePassword = properties.getProperty("storePassword") ?: ""
+                keyAlias = properties.getProperty("keyAlias") ?: "currentnews"
+                keyPassword = properties.getProperty("keyPassword") ?: ""
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -32,12 +53,17 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            val releaseSigning = signingConfigs.getByName("release")
+            if (releaseSigning.storeFile != null && releaseSigning.storeFile!!.exists()) {
+                signingConfig = releaseSigning
+            }
             firebaseCrashlytics {
                 mappingFileUploadEnabled = true
             }
         }
         debug {
             isDebuggable = true
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
@@ -91,6 +117,9 @@ dependencies {
     implementation("com.google.firebase:firebase-crashlytics-ktx")
     implementation("com.google.firebase:firebase-analytics-ktx")
     implementation("com.google.firebase:firebase-messaging-ktx")
+
+    // Google Play Services Auth (Native device account picker & Google Sign-In)
+    implementation("com.google.android.gms:play-services-auth:21.3.0")
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")

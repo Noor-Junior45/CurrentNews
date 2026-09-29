@@ -4,8 +4,9 @@ import { db, handleFirestoreError, OperationType } from '../firebase';
 import { Post, slugify } from '../types';
 import { sanitizePostImages } from '../utils/imageUrl';
 import BlogPostCard from '../components/BlogPostCard';
-import { Newspaper, Search, RefreshCw, AlertTriangle, ChevronLeft, ChevronRight, ThumbsUp, WifiOff } from 'lucide-react';
+import { Newspaper, Search, RefreshCw, AlertTriangle, ChevronLeft, ChevronRight, ThumbsUp, WifiOff, Bookmark, ArrowRight } from 'lucide-react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
+import { getRecentInProgressArticles, clearReadingProgress, ReadingProgressRecord } from '../utils/readingProgress';
 
 function getHtmlTextPreview(htmlString: string, maxLength: number = 160): string {
   if (!htmlString) return '';
@@ -92,6 +93,44 @@ export default function HomeView() {
   const initialPage = pageParam ? Math.max(1, parseInt(pageParam, 10) || 1) : 1;
   const [currentPage, setCurrentPage] = useState(initialPage);
   const postsPerPage = 20;
+
+  // Track articles saved in cache memory that were left in progress
+  const [inProgressArticles, setInProgressArticles] = useState<ReadingProgressRecord[]>([]);
+
+  // Keep return page updated so back navigation always returns to current page index
+  useEffect(() => {
+    sessionStorage.setItem('current_news_return_page', String(currentPage));
+  }, [currentPage]);
+
+  // Restore scroll position when returning from an article
+  useEffect(() => {
+    if (!loading) {
+      const savedScroll = sessionStorage.getItem('current_news_return_scroll');
+      if (savedScroll) {
+        const scrollY = parseInt(savedScroll, 10);
+        if (!isNaN(scrollY) && scrollY > 0) {
+          const timer = setTimeout(() => {
+            window.scrollTo({ top: scrollY, behavior: 'instant' });
+            sessionStorage.removeItem('current_news_return_scroll');
+          }, 100);
+          return () => clearTimeout(timer);
+        }
+      }
+    }
+  }, [loading]);
+
+  useEffect(() => {
+    const updateProgressList = () => {
+      setInProgressArticles(getRecentInProgressArticles());
+    };
+    updateProgressList();
+    window.addEventListener('reading-progress-updated', updateProgressList);
+    window.addEventListener('storage', updateProgressList);
+    return () => {
+      window.removeEventListener('reading-progress-updated', updateProgressList);
+      window.removeEventListener('storage', updateProgressList);
+    };
+  }, []);
 
   // Sync page state when URL parameter changes
   useEffect(() => {
@@ -282,6 +321,76 @@ export default function HomeView() {
           </p>
         </div>
       </div>
+
+      {/* 🔖 Pick Up Where You Left Off (Saved In Cache Memory) */}
+      {inProgressArticles.length > 0 && (
+        <section aria-label="Continue Reading" className="mb-10 p-5 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent dark:from-amber-950/30 dark:via-amber-900/15 dark:to-transparent border border-amber-300/50 dark:border-amber-700/40 rounded-2xl shadow-3xs" id="continue-reading-section">
+          <div className="flex items-center justify-between mb-3.5">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-full bg-amber-500/20 text-amber-500 dark:text-amber-400 flex items-center justify-center">
+                <Bookmark className="w-3.5 h-3.5" />
+              </div>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white">
+                Pick Up Where You Left Off
+              </h3>
+            </div>
+            <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+              Saved in cache memory
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {inProgressArticles.slice(0, 3).map((item) => (
+              <div
+                key={item.id}
+                className="bg-white/95 dark:bg-slate-900/90 backdrop-blur-md p-4 rounded-xl border border-slate-200/90 dark:border-slate-800 flex flex-col justify-between gap-3 shadow-xs hover:border-amber-500/60 transition-all group"
+              >
+                <div>
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                      {item.category || 'Story'}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      {item.progress}% read
+                    </span>
+                  </div>
+                  <h4 className="text-xs font-bold text-slate-900 dark:text-white line-clamp-2 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
+                    {item.title}
+                  </h4>
+                </div>
+
+                <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800/80">
+                  {/* Visual Progress bar */}
+                  <div className="w-full bg-slate-150 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                    <div
+                      className="bg-amber-500 h-full rounded-full transition-all duration-300"
+                      style={{ width: `${item.progress}%` }}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1">
+                    <button
+                      type="button"
+                      onClick={() => clearReadingProgress(item.id)}
+                      className="text-[10px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors cursor-pointer"
+                      title="Remove from saved in-progress"
+                    >
+                      Clear
+                    </button>
+                    <Link
+                      to={`/post/${item.id}/${item.slug}`}
+                      className="inline-flex items-center gap-1 text-xs font-bold text-amber-600 dark:text-amber-400 hover:underline cursor-pointer"
+                    >
+                      <span>Resume</span>
+                      <ArrowRight className="w-3 h-3" />
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* 🚀 Dynamic Trending Spotlight */}
       {trendingPosts.length > 0 && (

@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { doc, getDoc, setDoc, deleteDoc, updateDoc, increment, collection, query, where, limit, getDocs } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
-import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged } from 'firebase/auth';
 import { Post, slugify } from '../types';
 import { cleanImageUrl, getFallbackImageUrl, sanitizePostImages } from '../utils/imageUrl';
 import AdSpace from '../components/AdSpace';
 import EmbedHandler from '../components/EmbedHandler';
-import { Calendar, ChevronLeft, Award, Clock, Send, Copy, Check, Share2, ThumbsUp, ThumbsDown, ArrowRight, WifiOff, Eye, Hash } from 'lucide-react';
+import { Calendar, ChevronLeft, Award, Clock, Send, Copy, Check, Share2, ThumbsUp, ThumbsDown, ArrowRight, WifiOff, Eye, Hash, Bookmark, X } from 'lucide-react';
+import { saveReadingProgress, getReadingProgress, ReadingProgressRecord } from '../utils/readingProgress';
+import { signInWithGoogleSafe } from '../utils/authHelper';
 
 function getHtmlTextPreview(htmlString: string, maxLength: number = 160): string {
   if (!htmlString) return '';
@@ -23,6 +25,7 @@ function getHtmlTextPreview(htmlString: string, maxLength: number = 160): string
 
 export default function PostDetailView() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [post, setPost] = useState<Post | null>(null);
   const [globalPenName, setGlobalPenName] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -32,10 +35,80 @@ export default function PostDetailView() {
   const [relatedPosts, setRelatedPosts] = useState<Post[]>([]);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
 
+  const handleReturnToFeed = (e?: React.MouseEvent) => {
+    if (e) e.preventDefault();
+    const returnSearch = sessionStorage.getItem('current_news_return_search');
+    const returnPage = sessionStorage.getItem('current_news_return_page');
+    if (returnSearch && returnSearch.trim().length > 0) {
+      navigate('/' + (returnSearch.startsWith('?') ? returnSearch : '?' + returnSearch));
+    } else if (returnPage && returnPage !== '1') {
+      navigate(`/?page=${returnPage}`);
+    } else {
+      navigate('/');
+    }
+  };
+
   // Reactions Local States
   const [likes, setLikes] = useState(0);
   const [dislikes, setDislikes] = useState(0);
   const [myReaction, setMyReaction] = useState<'liked' | 'disliked' | null>(null);
+
+  // Resume Reading & Cache State
+  const [savedResumeProgress, setSavedResumeProgress] = useState<ReadingProgressRecord | null>(null);
+  const [showResumeBanner, setShowResumeBanner] = useState<boolean>(false);
+
+  // Check saved reading progress when post is loaded
+  useEffect(() => {
+    if (post && post.id) {
+      const saved = getReadingProgress(post.id);
+      if (saved && saved.progress >= 5 && saved.progress < 92 && saved.scrollY > 150) {
+        setSavedResumeProgress(saved);
+        setShowResumeBanner(true);
+      }
+    }
+  }, [post?.id]);
+
+  // Track scrolling progress in background cache
+  useEffect(() => {
+    if (!post) return;
+    let scrollTimeout: NodeJS.Timeout | null = null;
+
+    const handleScroll = () => {
+      if (scrollTimeout) clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(() => {
+        const totalHeight = document.documentElement.scrollHeight;
+        const maxScroll = totalHeight - window.innerHeight;
+        if (maxScroll > 150) {
+          saveReadingProgress(
+            post.id,
+            post.title,
+            slugify(post.title || ''),
+            window.scrollY,
+            maxScroll,
+            post.imageUrl,
+            post.category,
+            getHtmlTextPreview(post.content || '', 120)
+          );
+        }
+      }, 300);
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      if (scrollTimeout) clearTimeout(scrollTimeout);
+    };
+  }, [post]);
+
+  const handleJumpToSavedPosition = () => {
+    if (savedResumeProgress && savedResumeProgress.scrollY) {
+      window.scrollTo({
+        top: savedResumeProgress.scrollY,
+        behavior: 'smooth'
+      });
+      setShowResumeBanner(false);
+    }
+  };
 
   // Close lightbox with Escape key
   useEffect(() => {
@@ -323,13 +396,7 @@ export default function PostDetailView() {
     if (!user) {
       const confirmSignIn = window.confirm("To react to this article, you must be logged in. Would you like to sign in with your Google account now?");
       if (confirmSignIn) {
-        try {
-          const provider = new GoogleAuthProvider();
-          provider.setCustomParameters({ prompt: 'select_account' });
-          await signInWithPopup(auth, provider);
-        } catch (err) {
-          console.error("Popup sign in failed", err);
-        }
+        await signInWithGoogleSafe();
       }
       return;
     }
@@ -591,13 +658,14 @@ export default function PostDetailView() {
         <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/40 rounded-xl p-8" id="error-box">
           <h3 className="font-display font-bold text-lg text-slate-900 dark:text-white mb-2">Failed to Load Article</h3>
           <p className="text-sm text-slate-600 dark:text-slate-300 mb-6">{error || 'Unknown error occurred.'}</p>
-          <Link 
-            to="/" 
-            className="inline-flex items-center space-x-1 bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-white text-white dark:text-slate-900 px-5 py-2.5 rounded-lg text-sm font-medium transition-colors"
+          <button 
+            type="button"
+            onClick={handleReturnToFeed} 
+            className="inline-flex items-center space-x-1 bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-white text-white dark:text-slate-900 px-5 py-2.5 rounded-lg text-sm font-medium transition-colors cursor-pointer"
           >
             <ChevronLeft className="h-4 w-4" />
             <span>Back to Public Feed</span>
-          </Link>
+          </button>
         </div>
       </div>
     );
@@ -817,12 +885,14 @@ export default function PostDetailView() {
         
         {/* Article Breadcrumbs Path */}
         <nav className="flex items-center space-x-2 text-xs font-semibold uppercase tracking-wider text-slate-500 mb-6" id="breadcrumbs-header">
-          <Link 
-            to="/" 
-            className="hover:text-slate-900 dark:hover:text-white transition-colors"
+          <button 
+            type="button"
+            onClick={handleReturnToFeed} 
+            className="hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer inline-flex items-center gap-1 font-bold"
           >
-            Home
-          </Link>
+            <ChevronLeft className="h-3.5 w-3.5 -ml-1 text-slate-400" />
+            <span>Home</span>
+          </button>
           <span className="text-slate-400 font-normal">/</span>
           <Link 
             to={`/?category=${encodeURIComponent(post.category || 'General')}`} 
@@ -1205,6 +1275,41 @@ export default function PostDetailView() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Floating Quick Resume Banner when returning to an in-progress article */}
+        {showResumeBanner && savedResumeProgress && (
+          <aside 
+            aria-label="Resume reading notification" 
+            className="fixed bottom-6 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-md z-40 bg-slate-950/95 dark:bg-slate-900/95 text-white p-3.5 rounded-2xl shadow-2xl backdrop-blur-md border border-slate-700/80 flex items-center justify-between gap-3 animate-in fade-in slide-in-from-bottom-4 duration-300"
+          >
+            <div className="flex items-center gap-2.5 overflow-hidden">
+              <div className="w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/30">
+                <Bookmark className="w-4 h-4" />
+              </div>
+              <div className="overflow-hidden">
+                <p className="text-xs font-bold text-white truncate">Pick up where you left off</p>
+                <p className="text-[11px] text-slate-300">You read {savedResumeProgress.progress}% of this story</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={handleJumpToSavedPosition}
+                className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-950 text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer"
+              >
+                Resume
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowResumeBanner(false)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg transition-colors cursor-pointer"
+                aria-label="Dismiss reading resume notice"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </aside>
         )}
 
       </article>

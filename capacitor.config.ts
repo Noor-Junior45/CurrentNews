@@ -4,9 +4,8 @@ const config: CapacitorConfig = {
   appId: 'blog.currentnews.app',
   appName: 'Current News',
   webDir: 'dist',
-  server: {
-    url: 'https://www.currentnews.blog',
-    cleartext: false
+  plugins: {
+    // Native plugins configuration
   }
 };
 

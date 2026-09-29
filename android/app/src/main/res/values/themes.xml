@@ -9,9 +9,14 @@
         <item name="colorSecondary">@color/accent</item>
         <item name="colorSecondaryVariant">@color/accent</item>
         <item name="colorOnSecondary">#FFFFFF</item>
-        <!-- Status bar color. -->
+        <!-- Status bar color for app -->
         <item name="android:statusBarColor">#FFFFFF</item>
         <item name="android:windowLightStatusBar" tools:targetApi="m">true</item>
         <item name="android:windowBackground">@color/background</item>
+
+        <!-- Android 12+ (API 31-36) Native Launch / SplashScreen Configuration -->
+        <item name="android:windowSplashScreenBackground" tools:targetApi="31">#071B3A</item>
+        <item name="android:windowSplashScreenAnimatedIcon" tools:targetApi="31">@drawable/splash_icon</item>
+        <item name="android:windowSplashScreenIconBackgroundColor" tools:targetApi="31">@null</item>
     </style>
 </resources>

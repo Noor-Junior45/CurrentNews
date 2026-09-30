@@ -1088,14 +1088,14 @@ export default function AdminView() {
               <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5" id="youtube-integration-group">
                 <label className="block text-xs font-semibold text-red-650 dark:text-red-450 uppercase tracking-wider mb-1 font-mono flex items-center space-x-1.5">
                   <Youtube className="h-4 w-4" />
-                  <span>YouTube Media Integration (Paste URL or raw embed iframe code)</span>
+                  <span>YouTube Video</span>
                 </label>
                 <span className="block text-[10px] text-slate-400 dark:text-slate-500 mb-3 leading-relaxed">
-                  Paste a simple YouTube video URL (e.g. <code>https://youtube.com/watch?v=...</code>) <strong>or</strong> paste the entire copied <code>&lt;iframe&gt;</code> embed block code directly.
+                  Paste a YouTube video URL or embed code.
                 </span>
                 <input
                   type="text"
-                  placeholder="Paste YouTube watch link, short, or iframe embed code"
+                  placeholder="Paste YouTube link or embed code"
                   value={youtubeUrl}
                   onChange={(e) => setYoutubeUrl(e.target.value)}
                   className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-700 rounded-lg text-xs bg-white dark:bg-slate-800 focus:ring-1 focus:ring-red-500 font-sans font-medium text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500"
@@ -1115,14 +1115,14 @@ export default function AdminView() {
               <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5" id="facebook-integration-group">
                 <label className="block text-xs font-semibold text-blue-650 dark:text-blue-450 uppercase tracking-wider mb-1 font-mono flex items-center space-x-1.5">
                   <Facebook className="h-4 w-4" />
-                  <span>Facebook Resource integration (Paste URL or raw embed iframe code)</span>
+                  <span>Facebook Post</span>
                 </label>
                 <span className="block text-[10px] text-slate-400 dark:text-slate-500 mb-3 leading-relaxed">
-                  Embed a Facebook feed reference. Paste a post link (e.g. <code>https://facebook.com/...</code>) <strong>or</strong> paste the full Facebook <code>&lt;iframe&gt;</code> embed layout code.
+                  Paste a Facebook post URL or embed code.
                 </span>
                 <input
                   type="text"
-                  placeholder="Paste Facebook item link, page reference, view, or iframe code block"
+                  placeholder="Paste Facebook link or embed code"
                   value={facebookUrl}
                   onChange={(e) => setFacebookUrl(e.target.value)}
                   className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-700 rounded-lg text-xs bg-white dark:bg-slate-800 focus:ring-1 focus:ring-blue-500 font-sans font-medium text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500"
@@ -1335,31 +1335,9 @@ export default function AdminView() {
                   className="h-4.5 w-4.5 rounded-md border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                 />
                 <label htmlFor="send-email-alert-checkbox" className="text-xs font-semibold text-slate-700 dark:text-slate-300 select-none cursor-pointer flex flex-col">
-                  <span>Send automated breaking news alert circular to dynamic subscriber list</span>
-                  <span className="text-[10px] text-slate-400 font-normal mt-0.5">Currently targeting {subscribers.length} registered recipient(s) securely via your Resend API</span>
+                  <span>Send Breaking News Alert</span>
+                  <span className="text-[10px] text-slate-400 font-normal mt-0.5">Notify {subscribers.length} subscriber(s)</span>
                 </label>
-              </div>
-
-              {/* Automated Background Push Notifications (100% Automatic for Android & Web) */}
-              <div className="flex items-center justify-between bg-amber-500/10 dark:bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 mb-4">
-                <div className="flex items-start space-x-3">
-                  <div className="p-2 bg-amber-500/20 text-amber-500 rounded-lg shrink-0 mt-0.5">
-                    <BellRing className="w-4 h-4 animate-pulse" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
-                        100% Automatic Background Push Notification
-                      </span>
-                      <span className="px-2 py-0.5 text-[9px] bg-emerald-500/20 text-emerald-500 dark:text-emerald-400 rounded-full font-bold uppercase tracking-wider">
-                        Active
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
-                      Publishing this article will automatically trigger an instant push notification to all subscribed Android devices and browsers ({pushDeviceCount !== null ? `${pushDeviceCount} device(s) registered` : 'loading...'})—<strong>even if users have closed their app or phone screen</strong>.
-                    </p>
-                  </div>
-                </div>
               </div>
 
               {/* Action buttons */}
@@ -1410,28 +1388,33 @@ export default function AdminView() {
       {/* SEGMENT 3: CURRENT PUBLICATIONS */}
       {currentSegment === 'publications' && (
         <div className="max-w-4xl mx-auto space-y-6" id="current-publications-list">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-150 dark:border-slate-800 pb-5">
-            <p className="text-xs text-slate-400">Manage, edit or delete your posted articles and draft manuscripts ({posts.length} total).</p>
-
-            {/* Status filter switcher buttons */}
-            <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl self-start md:self-auto shrink-0">
-              {(['all', 'published', 'drafts'] as const).map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => setPubListFilter(mode)}
-                  className={`px-3 py-1.5 rounded-lg text-[10px] uppercase font-bold tracking-wider transition-all cursor-pointer ${
-                    pubListFilter === mode
-                      ? 'bg-slate-950 dark:bg-indigo-600 text-white shadow-xs'
-                      : 'text-slate-550 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-                  }`}
-                >
-                  {mode === 'all' && 'All'}
-                  {mode === 'published' && 'Published'}
-                  {mode === 'drafts' && 'Drafts'}
-                </button>
-              ))}
+          <div className="flex flex-col gap-3.5 border-b border-slate-150 dark:border-slate-800 pb-5">
+            {/* Status filter switcher buttons (at top, equal & centered on phone) */}
+            <div className="w-full flex items-center justify-center sm:justify-start">
+              <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl w-full sm:w-auto max-w-md sm:max-w-none">
+                {(['all', 'published', 'drafts'] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setPubListFilter(mode)}
+                    className={`flex-1 sm:flex-initial px-3 sm:px-4 py-2 sm:py-1.5 rounded-lg text-[11px] sm:text-[10px] uppercase font-bold tracking-wider transition-all cursor-pointer text-center ${
+                      pubListFilter === mode
+                        ? 'bg-slate-950 dark:bg-indigo-600 text-white shadow-xs'
+                        : 'text-slate-550 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    {mode === 'all' && 'All'}
+                    {mode === 'published' && 'Published'}
+                    {mode === 'drafts' && 'Drafts'}
+                  </button>
+                ))}
+              </div>
             </div>
+
+            {/* Description below the buttons */}
+            <p className="text-xs text-slate-400 text-center sm:text-left">
+              Manage, edit or delete your posted articles and draft manuscripts ({posts.length} total).
+            </p>
           </div>
 
             {feedLoading ? (

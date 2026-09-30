@@ -1248,6 +1248,21 @@ export default function PostDetailView() {
           </div>
         )}
 
+        {/* Bottom Editorial Navigation (About, Editorial Policy, Contact) positioned above Footer */}
+        <div className="mt-14 pt-8 pb-4 border-t border-slate-200 dark:border-slate-800 text-center" id="post-bottom-editorial-nav-section">
+          <nav className="flex flex-wrap items-center justify-center gap-6 sm:gap-8 text-xs sm:text-sm font-semibold text-slate-600 dark:text-slate-400" id="post-bottom-editorial-nav">
+            <Link to="/about" className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">
+              About
+            </Link>
+            <Link to="/editorial-policy" className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">
+              Editorial Policy
+            </Link>
+            <Link to="/contact" className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">
+              Contact
+            </Link>
+          </nav>
+        </div>
+
         {/* Dynamic Lightbox Modal Overlay */}
         {lightboxImage && (
           <div 

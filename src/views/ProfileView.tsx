@@ -52,7 +52,7 @@ export default function ProfileView(): React.JSX.Element {
 
   return (
     <div className="min-h-screen bg-white dark:bg-slate-950 flex flex-col font-sans" id="profile-page-stage">
-      {/* Top Navbar with pill shaped liquid glass Back button that returns to Home */}
+      {/* Top Navbar with tailless arrow Back button that returns to Home */}
       <ProfilePageNavbar title="Profile" fallbackUrl="/" />
 
       <main className="flex-1 max-w-md mx-auto w-full px-5 py-8 flex flex-col items-center">

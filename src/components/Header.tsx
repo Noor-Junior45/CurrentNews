@@ -16,6 +16,7 @@ import {
   ThumbsUp, 
   X, 
   ArrowLeft,
+  ChevronLeft,
   CheckCircle2,
   Settings as SettingsIcon, 
   Bell, 
@@ -414,19 +415,6 @@ export default function Header() {
               </span>
             </div>
           </Link>
-
-          {/* Editorial Trust Navigation */}
-          <nav className="hidden md:flex items-center space-x-4 text-xs font-semibold text-slate-600 dark:text-slate-400" id="header-editorial-nav">
-            <Link to="/about" className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">
-              About
-            </Link>
-            <Link to="/editorial-policy" className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">
-              Editorial Policy
-            </Link>
-            <Link to="/contact" className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">
-              Contact
-            </Link>
-          </nav>
         </div>
 
         {/* Global Action Controls */}
@@ -490,15 +478,16 @@ export default function Header() {
                 <div className="w-full px-5 pt-5 pb-0 sm:px-6 sm:pt-6 relative shrink-0">
                   {/* Top Bar: Back button (phone only) and Close button (larger screens) */}
                   <div className="flex items-center justify-between w-full mb-3">
-                    {/* Back Button (Phone screen shows liquid glass Back button, hidden on larger screens) */}
+                    {/* Back Button (Phone screen shows Back button with tailless arrow and no background, hidden on larger screens) */}
                     <button
                       type="button"
                       onClick={() => setIsDropdownOpen(false)}
-                      className="sm:hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-900/80 dark:hover:bg-transparent backdrop-blur-md border border-slate-200/80 dark:border-slate-700/80 dark:hover:border-indigo-500/60 text-slate-700 dark:text-slate-100 dark:hover:text-white text-xs font-semibold shadow-2xs transition-all cursor-pointer z-10 whitespace-nowrap shrink-0 select-none group"
+                      className="sm:hidden h-10 w-10 -ml-2 bg-transparent hover:bg-transparent border-0 shadow-none text-slate-700 hover:text-slate-900 dark:text-slate-200 dark:hover:text-white transition-colors cursor-pointer active:scale-90 inline-flex items-center justify-center z-10 shrink-0 select-none group focus-visible:outline-none"
                       id="profile-back-button"
+                      aria-label="Go back"
+                      title="Go back"
                     >
-                      <ArrowLeft className="h-3.5 w-3.5 text-slate-700 dark:text-slate-200 group-hover:text-slate-900 dark:group-hover:text-white shrink-0 transition-colors" />
-                      <span className="whitespace-nowrap font-bold text-slate-800 dark:text-slate-100 dark:group-hover:text-white transition-colors">Back</span>
+                      <ChevronLeft className="h-6 w-6 stroke-[2.2] shrink-0 transition-transform group-hover:-translate-x-0.5" />
                     </button>
 
                     {/* Desktop Close Button (Only on larger screens, hidden on phone screens) */}

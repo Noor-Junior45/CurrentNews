@@ -25,22 +25,26 @@ import { useAdSenseRouteGuard } from './hooks/useAdSenseRouteGuard';
 
 import { useLocation } from 'react-router-dom';
 
+const PROFILE_PAGES = [
+  '/profile',
+  '/liked',
+  '/admin',
+  '/settings',
+  '/privacy',
+  '/terms',
+  '/delete-account',
+  '/about',
+  '/contact',
+  '/editorial-policy'
+];
+
+function isProfileSection(pathname: string) {
+  return PROFILE_PAGES.some(path => pathname === path || pathname.startsWith(path + '/'));
+}
+
 function ConditionalHeader() {
   const location = useLocation();
-  const isProfilePage = [
-    '/profile',
-    '/liked',
-    '/admin',
-    '/settings',
-    '/privacy',
-    '/terms',
-    '/delete-account',
-    '/about',
-    '/contact',
-    '/editorial-policy'
-  ].some(path => location.pathname === path || location.pathname.startsWith(path + '/'));
-
-  if (isProfilePage) {
+  if (isProfileSection(location.pathname)) {
     return null;
   }
   return <Header />;
@@ -48,8 +52,8 @@ function ConditionalHeader() {
 
 function ConditionalFooter() {
   const location = useLocation();
-  // Hide footer ONLY on /admin (the editorial back-office)
-  if (location.pathname === '/admin' || location.pathname.startsWith('/admin/')) {
+  // Hide footer on profile page and all individual profile subpages
+  if (isProfileSection(location.pathname)) {
     return null;
   }
   return <Footer />;

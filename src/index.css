@@ -391,13 +391,28 @@ html.dark #liked-dispatches-guest-button span {
   color: #f1f5f9 !important;
 }
 
+/* Profile Back Button: Tailless arrow, no background design, border, or shadow */
+#page-liquid-glass-back-btn,
+#profile-back-button,
+#page-liquid-glass-back-btn:hover,
+#profile-back-button:hover,
+html.dark #page-liquid-glass-back-btn,
+html.dark #profile-back-button,
+html.dark #page-liquid-glass-back-btn:hover,
+html.dark #profile-back-button:hover {
+  background: transparent !important;
+  background-color: transparent !important;
+  border: 0 !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
 /* ==========================================================================
    Profile Page & Key Buttons in Dark Theme: Transparent Hover Effect
    Ensures button text is completely visible, crisp, and never hidden
    ========================================================================== */
-html.dark #page-liquid-glass-back-btn:hover,
-html.dark #profile-back-button:hover,
-html.dark [id^="profile-"]:hover:not(#profile-signout-button),
+html.dark [id^="profile-"]:hover:not(#profile-signout-button):not(#profile-back-button),
 html.dark #profile-page-stage a:hover,
 html.dark #profile-page-stage button:hover:not(#profile-signout-button),
 html.dark #admin-dashboard-button:hover,
@@ -419,11 +434,8 @@ html.dark #pagination-next-btn:hover:not(:disabled) {
   color: #ffffff !important;
 }
 
-html.dark #page-liquid-glass-back-btn:hover span,
-html.dark #page-liquid-glass-back-btn:hover svg,
-html.dark #profile-back-button:hover span,
-html.dark [id^="profile-"]:hover:not(#profile-signout-button) span,
-html.dark [id^="profile-"]:hover:not(#profile-signout-button) svg,
+html.dark [id^="profile-"]:hover:not(#profile-signout-button):not(#profile-back-button) span,
+html.dark [id^="profile-"]:hover:not(#profile-signout-button):not(#profile-back-button) svg,
 html.dark #profile-page-stage a:hover span,
 html.dark #profile-page-stage a:hover svg,
 html.dark #profile-page-stage button:hover:not(#profile-signout-button) span,

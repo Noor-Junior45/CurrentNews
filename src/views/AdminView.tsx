@@ -8,6 +8,7 @@ import RichTextEditor, { RichTextEditorHandle } from '../components/RichTextEdit
 import PhotoAttachmentSection from '../components/PhotoAttachmentSection';
 import ProfilePageNavbar from '../components/ProfilePageNavbar';
 import EmbedHandler from '../components/EmbedHandler';
+import { safeParseDate, safeFormatDate } from '../utils/dateHelper';
 import { 
   collection, 
   getDocs, 
@@ -213,9 +214,9 @@ export default function AdminView() {
         });
         // Sort in-memory to safely include old subscriber documents that might be missing the 'createdAt' field
         fetchedSubs.sort((a, b) => {
-          const dateA = a.createdAt ? (typeof a.createdAt.toDate === 'function' ? a.createdAt.toDate() : new Date(a.createdAt)) : new Date(0);
-          const dateB = b.createdAt ? (typeof b.createdAt.toDate === 'function' ? b.createdAt.toDate() : new Date(b.createdAt)) : new Date(0);
-          return dateB.getTime() - dateA.getTime();
+          const timeA = safeParseDate(a.createdAt)?.getTime() || 0;
+          const timeB = safeParseDate(b.createdAt)?.getTime() || 0;
+          return timeB - timeA;
         });
         setSubscribers(fetchedSubs);
         fetchPushSubscribersCount();
@@ -1452,11 +1453,7 @@ export default function AdminView() {
                     return true;
                   })
                   .map((postItem) => {
-                    let formattedDate = 'Recent';
-                    if (postItem.createdAt) {
-                      const d = typeof postItem.createdAt.toDate === 'function' ? postItem.createdAt.toDate() : new Date(postItem.createdAt);
-                      formattedDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-                    }
+                    const formattedDate = safeFormatDate(postItem?.createdAt, { month: 'short', day: 'numeric', year: 'numeric' }, 'Recent');
                     const isDraftStatus = postItem.status === 'draft';
                     
                     return (
@@ -1695,11 +1692,7 @@ export default function AdminView() {
             ) : (
               <div className="space-y-3">
                 {subscribers.map((sub) => {
-                  let formattedDate = 'Recent signup';
-                  if (sub.createdAt) {
-                    const d = typeof sub.createdAt.toDate === 'function' ? sub.createdAt.toDate() : new Date(sub.createdAt);
-                    formattedDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-                  }
+                  const formattedDate = safeFormatDate(sub?.createdAt, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }, 'Recent signup');
                   return (
                     <div key={sub.id} className="p-3.5 bg-slate-50 hover:bg-indigo-50/30 dark:bg-slate-900 dark:hover:bg-slate-850 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center justify-between transition-colors">
                       <div className="min-w-0 flex-1 mr-2">

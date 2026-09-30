@@ -110,22 +110,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     <priority>1.0</priority>
   </url>
   <url>
+    <loc>${siteUrl}/about</loc>
+    <lastmod>${todayIso}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>${siteUrl}/editorial-policy</loc>
+    <lastmod>${todayIso}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>${siteUrl}/contact</loc>
+    <lastmod>${todayIso}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>${siteUrl}/privacy</loc>
     <lastmod>${todayIso}</lastmod>
     <changefreq>monthly</changefreq>
-    <priority>0.3</priority>
+    <priority>0.5</priority>
   </url>
   <url>
     <loc>${siteUrl}/terms</loc>
     <lastmod>${todayIso}</lastmod>
     <changefreq>monthly</changefreq>
-    <priority>0.3</priority>
-  </url>
-  <url>
-    <loc>${siteUrl}/delete-account</loc>
-    <lastmod>${todayIso}</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.3</priority>
+    <priority>0.5</priority>
   </url>
 `;
 

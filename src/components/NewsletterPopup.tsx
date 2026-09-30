@@ -83,7 +83,7 @@ export default function NewsletterPopup() {
 
   return (
     <div 
-      className="fixed bottom-6 right-6 z-50 max-w-sm w-[90%] sm:w-96 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-5 mb-safe animate-in slide-in-from-bottom-5 duration-300 pointer-events-auto"
+      className="fixed bottom-6 right-6 z-50 max-w-sm w-[90%] sm:w-96 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-5 mb-safe animate-in slide-in-from-bottom-5 duration-300 pointer-events-auto adsbygoogle-noablate"
       id="newsletter-slideout-popup"
     >
       {/* Absolute Close Header Button */}

@@ -83,25 +83,30 @@ export default function PrivacyView() {
 
         <section className="space-y-2">
           <h2 className="font-display font-bold text-sm uppercase tracking-wider text-slate-950 dark:text-slate-50 border-b border-slate-100 dark:border-slate-800 pb-1.5 flex items-center gap-2">
-            <span className="text-indigo-600 font-mono">03.</span> Advertising & Consent Protocols
+            <span className="text-indigo-600 font-mono">03.</span> Advertising, Cookies & Google AdSense Disclosure
           </h2>
           <p>
-            To sustain our journalistic operations and fund independent investigative reporting, we display advertisements in adherence to the <strong>Google Publisher Policies</strong>.
+            To sustain our journalistic operations and fund independent investigative reporting, we display advertisements in strict adherence to the <strong>Google Publisher Policies</strong> and <strong>Google AdSense Program Policies</strong>.
           </p>
-          <p>
-            In complete compliance with GDPR and CCPA digital consent frameworks, our application incorporates an active, user-facing <strong>Data & Ads Policy Preference Center</strong> inside the footer, along with a Consent Banner.
-          </p>
-          <ul className="list-disc pl-5 space-y-1">
-            <li>
-              <strong>Personalized Ads Option:</strong> If you grant permission, advertising networks may deliver interest-based ads utilizing standard cryptographic device identifiers.
-            </li>
-            <li>
-              <strong>Non-Personalized Ads Option:</strong> If you decline permission, we override the advertising stack to request exclusively contextual ads that are not correlated with your historical browsing behavior.
-            </li>
-            <li>
-              You can modify or completely reset your preferences at any moment via the interactive footer widget.
-            </li>
-          </ul>
+          <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-2 text-xs">
+            <p className="font-semibold text-slate-900 dark:text-white">
+              Google AdSense & Third-Party Vendor Notice:
+            </p>
+            <ul className="list-disc pl-5 space-y-1.5">
+              <li>
+                Third-party vendors, including Google, use cookies (such as the DoubleClick cookie) to serve ads based on a user's prior visits to our website or other websites on the Internet.
+              </li>
+              <li>
+                Google's use of advertising cookies enables it and its partners to serve ads to our users based on their visit to our sites and/or other sites on the Internet.
+              </li>
+              <li>
+                <strong>Opt-Out Options:</strong> Users may opt out of personalized advertising by visiting Google's <a href="https://adssettings.google.com" target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-400 underline font-bold">Google Ads Settings (adssettings.google.com)</a>. Alternatively, you can opt out of a third-party vendor's use of cookies for personalized advertising by visiting <a href="https://www.aboutads.info/choices/" target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-400 underline font-bold">AboutAds.info (www.aboutads.info/choices/)</a> or the Network Advertising Initiative at <a href="https://optout.networkadvertising.org" target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-400 underline font-bold">networkadvertising.org</a>.
+              </li>
+              <li>
+                <strong>GDPR / CCPA In-App Consent:</strong> Our application incorporates an active, user-facing consent banner and footer policy toggle. Users can select either Personalized or Non-Personalized contextual ads at any time.
+              </li>
+            </ul>
+          </div>
         </section>
 
         <section className="space-y-2">

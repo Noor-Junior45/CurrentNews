@@ -4,6 +4,7 @@ import { db, handleFirestoreError, OperationType } from '../firebase';
 import { Post, slugify } from '../types';
 import { sanitizePostImages } from '../utils/imageUrl';
 import BlogPostCard from '../components/BlogPostCard';
+import AdSpace from '../components/AdSpace';
 import { Newspaper, Search, RefreshCw, AlertTriangle, ChevronLeft, ChevronRight, ThumbsUp, WifiOff, Bookmark, ArrowRight } from 'lucide-react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { getRecentInProgressArticles, clearReadingProgress, ReadingProgressRecord } from '../utils/readingProgress';
@@ -485,8 +486,15 @@ export default function HomeView() {
       ) : (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-0 sm:gap-8 -mx-4 sm:mx-0" id="posts-grid">
-            {paginatedPosts.map((post) => (
-              <BlogPostCard key={post.id} post={post} globalPenName={globalPenName} />
+            {paginatedPosts.map((post, idx) => (
+              <React.Fragment key={post.id}>
+                <BlogPostCard post={post} globalPenName={globalPenName} />
+                {idx === 5 && paginatedPosts.length > 6 && (
+                  <div className="col-span-1 sm:col-span-2 lg:col-span-3 px-4 sm:px-0">
+                    <AdSpace type="in-feed" />
+                  </div>
+                )}
+              </React.Fragment>
             ))}
           </div>
 

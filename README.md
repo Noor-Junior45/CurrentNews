@@ -26,10 +26,11 @@ Current News Live is a lightweight, installable news platform where an admin wri
 - 🔥 **Firebase / Firestore backend** — no separate database to manage
 - ❤️ **Liked posts view** — readers can save articles for later
 - 🌗 **Light/dark theme toggle**
-- 💰 **Google AdSense** integration for monetization
-- 📊 **Google Analytics** tracking
-- ⚙️ **SEO-optimized** — Open Graph, Twitter Cards, structured metadata baked into `index.html`
-- ⚡ **Serverless on Vercel** — mail, RSS, and `ads.txt` run as Vercel functions in production
+- 💰 **Google AdSense Certified Compliance** — Dynamic route guarding, automated `adsbygoogle-noablate` protection, and standard labeled in-article and in-feed ad units
+- 🏛️ **E-E-A-T Editorial Standard Pages** — Dedicated About Us (`/about`), Fact-Checking & Editorial Policy (`/editorial-policy`), and Newsroom Contact (`/contact`) pages
+- 📊 **Google Analytics & Web Vitals** tracking
+- ⚙️ **SEO & Crawler Pre-Rendering** — Server pre-renders full articles, JSON-LD Schema.org `NewsArticle` and `NewsMediaOrganization` data for search and AdSense review bots
+- ⚡ **Serverless on Vercel** — mail, RSS, sitemap, and `ads.txt` run as Vercel functions in production
 
 ## 🛠 Tech Stack
 

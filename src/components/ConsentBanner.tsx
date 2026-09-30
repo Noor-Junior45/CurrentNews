@@ -72,7 +72,7 @@ export default function ConsentBanner() {
           transition={{ duration: 0.3, ease: 'easeOut' }}
           onMouseEnter={handleInteraction}
           onClick={handleInteraction}
-          className="bg-slate-950/75 dark:bg-slate-900/75 border border-slate-800/60 backdrop-blur-md text-slate-100 rounded-xl shadow-xl p-3 pointer-events-auto flex flex-col gap-2.5 transition-all w-full"
+          className="bg-slate-950/75 dark:bg-slate-900/75 border border-slate-800/60 backdrop-blur-md text-slate-100 rounded-xl shadow-xl p-3 pointer-events-auto flex flex-col gap-2.5 transition-all w-full adsbygoogle-noablate"
           id="google-consent-banner"
         >
           {/* Main small description bar */}

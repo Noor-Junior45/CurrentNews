@@ -399,20 +399,35 @@ export default function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-50 bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-700 shadow-xs" id="main-header">
+    <header className="sticky top-0 z-50 bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-700 shadow-xs adsbygoogle-noablate" id="main-header">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between">
         
-        {/* Brand Name */}
-        <Link to="/" className="flex items-center text-slate-900 dark:text-white hover:opacity-90 transition-opacity min-w-0" id="header-brand-link">
-          <div className="flex flex-col min-w-0">
-            <span className="font-display font-bold text-base sm:text-lg md:text-xl tracking-tight leading-none uppercase text-slate-950 dark:text-white">
-              Current News
-            </span>
-            <span className="text-[9px] sm:text-[10px] text-slate-500 dark:text-slate-400 font-semibold font-mono uppercase tracking-wider truncate">
-              Independent Ledger
-            </span>
-          </div>
-        </Link>
+        {/* Brand Name & Newsroom Navigation */}
+        <div className="flex items-center space-x-5 sm:space-x-8 min-w-0">
+          <Link to="/" className="flex items-center text-slate-900 dark:text-white hover:opacity-90 transition-opacity min-w-0" id="header-brand-link">
+            <div className="flex flex-col min-w-0">
+              <span className="font-display font-bold text-base sm:text-lg md:text-xl tracking-tight leading-none uppercase text-slate-950 dark:text-white">
+                Current News
+              </span>
+              <span className="text-[9px] sm:text-[10px] text-slate-500 dark:text-slate-400 font-semibold font-mono uppercase tracking-wider truncate">
+                Independent Ledger
+              </span>
+            </div>
+          </Link>
+
+          {/* Editorial Trust Navigation */}
+          <nav className="hidden md:flex items-center space-x-4 text-xs font-semibold text-slate-600 dark:text-slate-400" id="header-editorial-nav">
+            <Link to="/about" className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">
+              About
+            </Link>
+            <Link to="/editorial-policy" className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">
+              Editorial Policy
+            </Link>
+            <Link to="/contact" className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">
+              Contact
+            </Link>
+          </nav>
+        </div>
 
         {/* Global Action Controls */}
         <div className="flex items-center space-x-2.5 sm:space-x-4">

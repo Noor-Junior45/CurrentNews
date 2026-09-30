@@ -101,6 +101,11 @@ async function startServer() {
   // Serve the ads.txt file adapted from the Vercel handler
   app.all('/ads.txt', adaptVercelHandler(adsHandler));
 
+  // Explicitly serve robots.txt with text/plain
+  app.get('/robots.txt', (_req, res) => {
+    res.type('text/plain; charset=utf-8').sendFile(path.join(process.cwd(), 'public', 'robots.txt'));
+  });
+
   // Automated Push Notification API routes (100% background alerts to Android devices & browsers)
   app.get('/api/push/public-key', handleGetVapidPublicKey);
   app.post('/api/push/subscribe', handleSubscribe);

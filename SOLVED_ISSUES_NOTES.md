@@ -74,6 +74,57 @@ This file tracks all resolved issues, technical architectural decisions, and con
 
 ---
 
+### 6. Google AdSense Review Approval & Policy Compliance
+* **Symptoms:**
+  * Site failed Google AdSense review with two policy rejection notices:
+    1. *"Google-served ads on screens without publisher-content (We do not allow Google-served ads on screens without content or with low value content, that are under construction, that are used for alerts, navigation or other behavioral purposes)."*
+    2. *"Low value content (Site must provide authentic, high-quality information, exhibit ongoing curation, and sustain genuine user interest)."*
+* **Root Causes:**
+  1. **Global Auto-Ads on Utility/Empty Screens:** The global AdSense script in `<head>` was attempting to inject automated ads into administrative screens (`/admin`), login/profile hubs (`/profile`), settings toggles (`/settings`), empty bookmarks (`/liked`), and account deletion forms (`/delete-account`).
+  2. **Blank Static HTML for AdSense Crawlers:** Being a single-page app (SPA), the server initially returned an empty `<div id="root"></div>`. When `Mediapartners-Google` (the AdSense review bot) fetched pages, it saw zero words of content alongside the AdSense tag.
+  3. **Misconfigured Sitemap:** `sitemap.xml` included the utility route `/delete-account`, directing review crawlers directly to a form with zero editorial content.
+  4. **Missing Core E-E-A-T Trust Pages:** The publication lacked dedicated "About Us", "Editorial & Fact-Checking Policy", and "Newsroom Contact" pages required by Google Quality Guidelines.
+  5. **Footer Isolation:** The footer and legal navigation links were hidden on article pages (`/post/*`), preventing readers and reviewers from accessing policies from articles.
+  6. **Missing AdSense Disclosures:** Privacy policy lacked explicit DoubleClick DART cookie clauses and opt-out links.
+* **Resolution:**
+  1. **Dynamic AdSense Route Guard (`useAdSenseRouteGuard.ts`):** Restricts AdSense script execution strictly to verified editorial publisher screens (`/`, `/post/*`, `/about`, `/editorial-policy`). Injects `<meta name="robots" content="noindex, nofollow" />` on utility pages (`/admin`, `/profile`, `/settings`, `/liked`, `/delete-account`) to completely exclude them from ad evaluation.
+  2. **Auto-Ads Ablation Protection (`adsbygoogle-noablate`):** Added the standard `adsbygoogle-noablate` class to the Header, Footer, NewsletterPopup, NotificationBanner, and ConsentBanner to strictly prohibit Google Auto-Ads from inserting ads into navigation, alerts, or modals.
+  3. **Core Publisher Trust & Transparency Pages:**
+     * `/about` (`AboutView.tsx`): Detailed newsroom mission, journalistic charter, masthead & desk editors, and commercial independence firewall.
+     * `/editorial-policy` (`EditorialPolicyView.tsx`): Sourcing protocols (two-source rule, primary documents), fact-checking workflows, transparent corrections and retractions timeline, and human curation & AI oversight policy.
+     * `/contact` (`ContactView.tsx`): Newsroom contact directory, tips hotline, corrections desk email, and interactive inquiry form.
+  4. **Server-Side Pre-Rendering for AdSense Crawlers (`socialPreview.ts`):** Enabled comprehensive server-side pre-rendering for `Mediapartners-Google`, `Googlebot`, and search spiders:
+     * Full article headlines, author bylines, categories, publication dates, and complete body text rendered directly into `<div id="root">`.
+     * Automated Schema.org `NewsArticle` JSON-LD structured data.
+     * Server pre-rendering for `/`, `/about`, `/contact`, and `/editorial-policy`.
+  5. **Semantic Fallback Content in `index.html`:** Provided authentic, structured publisher content inside `<div id="root">` so raw HTML requests always contain substantial news content.
+  6. **Compliant Ad Placement Units (`AdSpace.tsx`):**
+     * Balanced in-article and in-feed ad units placed with standard dimensions and clear `"ADVERTISEMENT"` labels.
+     * Suppressed automatically if content is too short or during loading/error states.
+  7. **Clean Sitemap & Robots.txt:**
+     * `sitemap.xml`: Removed `/delete-account`; added `/about`, `/editorial-policy`, `/contact`, `/privacy`, `/terms`, and article permalinks.
+     * `robots.txt`: Added explicit disallow directives for `Mediapartners-Google` and all bots on `/admin`, `/profile`, `/settings`, `/liked`, and `/delete-account`.
+  8. **Global Legal Footer (`Footer.tsx`):** Unlocked footer navigation across all public reader screens with structured columns for Newsroom, Policy, Compliance, and Publisher Credentials.
+
+---
+
+### 7. Uncaught RangeError: Invalid time value
+* **Symptoms:**
+  * Application crashed or logged `Uncaught RangeError: Invalid time value` in console when reading or rendering article views, post cards, or liked dispatches.
+* **Root Cause:**
+  * When Firestore articles are cached in `localStorage` via `JSON.stringify()`, or retrieved via Firestore REST APIs, `createdAt` / `updatedAt` timestamps lose the prototype method `.toDate()` and become raw objects `{ seconds: number, nanoseconds: number }` or numeric strings.
+  * Direct invocation of `new Date(post.createdAt)` when `post.createdAt` is an object evaluates to `new Date("[object Object]")`, resulting in an `Invalid Date` object.
+  * Calling `.toISOString()` or `.toLocaleDateString()` on an `Invalid Date` throws a native JavaScript `RangeError: Invalid time value`.
+* **Resolution:**
+  * Created `src/utils/dateHelper.ts` with bulletproof safe utilities:
+    * `safeParseDate(rawDate)`: Handles JS `Date`, Firestore `Timestamp` with `.toDate()`, serialized `{ seconds, nanoseconds }` / `{ _seconds }`, REST `{ timestampValue }`, unix millisecond/second numbers, and date strings. Returns a valid `Date` or `null`.
+    * `safeFormatDate(rawDate, options, fallback)`: Safely formats any date without throwing errors, gracefully falling back to a default label (e.g. `'Recent Post'`).
+    * `safeToIsoString(rawDate, fallback)`: Safely outputs an ISO 8601 string without throwing `RangeError`.
+  * Removed redundant schema injection in `PostDetailView.tsx` that invoked raw `.toISOString()` without date validation.
+  * Replaced direct `d.toLocaleDateString()` calls with `safeFormatDate` across `PostDetailView.tsx`, `BlogPostCard.tsx`, `LikedView.tsx`, `AdminView.tsx`, and `socialPreview.ts`.
+
+---
+
 ## 📌 How to Add This to Google AI Studio System Instructions
 
 To ensure Google AI Studio always checks and updates this notes file in future conversations, add the following snippet to your **System Instructions** in Google AI Studio:

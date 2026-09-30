@@ -18,6 +18,10 @@ import TermsView from './views/TermsView';
 import DeleteAccountView from './views/DeleteAccountView';
 import SettingsView from './views/SettingsView';
 import ProfileView from './views/ProfileView';
+import AboutView from './views/AboutView';
+import ContactView from './views/ContactView';
+import EditorialPolicyView from './views/EditorialPolicyView';
+import { useAdSenseRouteGuard } from './hooks/useAdSenseRouteGuard';
 
 import { useLocation } from 'react-router-dom';
 
@@ -30,7 +34,10 @@ function ConditionalHeader() {
     '/settings',
     '/privacy',
     '/terms',
-    '/delete-account'
+    '/delete-account',
+    '/about',
+    '/contact',
+    '/editorial-policy'
   ].some(path => location.pathname === path || location.pathname.startsWith(path + '/'));
 
   if (isProfilePage) {
@@ -41,11 +48,16 @@ function ConditionalHeader() {
 
 function ConditionalFooter() {
   const location = useLocation();
-  // Hide footer on /privacy, /terms, /delete-account and profile/admin pages
-  if (location.pathname !== '/') {
+  // Hide footer ONLY on /admin (the editorial back-office)
+  if (location.pathname === '/admin' || location.pathname.startsWith('/admin/')) {
     return null;
   }
   return <Footer />;
+}
+
+function AdSenseRouteWatcher() {
+  useAdSenseRouteGuard();
+  return null;
 }
 
 export default function App() {
@@ -79,6 +91,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <AdSenseRouteWatcher />
       <div className="flex flex-col min-h-screen bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 overflow-x-hidden" id="app-root-container">
         
         {/* Dynamic Responsive Header (hidden on profile button pages) */}
@@ -106,7 +119,12 @@ export default function App() {
             {/* 6. Settings Page */}
             <Route path="/settings" element={<SettingsView />} />
 
-            {/* 7. Legal & Policies Pages */}
+            {/* 7. Essential Editorial & E-E-A-T Pages for AdSense Compliance */}
+            <Route path="/about" element={<AboutView />} />
+            <Route path="/contact" element={<ContactView />} />
+            <Route path="/editorial-policy" element={<EditorialPolicyView />} />
+
+            {/* 8. Legal & Policies Pages */}
             <Route path="/privacy" element={<PrivacyView />} />
             <Route path="/terms" element={<TermsView />} />
             <Route path="/delete-account" element={<DeleteAccountView />} />

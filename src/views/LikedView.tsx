@@ -7,6 +7,7 @@ import { cleanImageUrl, getFallbackImageUrl, sanitizePostImages } from '../utils
 import { Link, useNavigate } from 'react-router-dom';
 import { BookOpen, Clock } from 'lucide-react';
 import ProfilePageNavbar from '../components/ProfilePageNavbar';
+import { safeFormatDate } from '../utils/dateHelper';
 
 export default function LikedView() {
   const navigate = useNavigate();
@@ -208,7 +209,7 @@ export default function LikedView() {
 
                   <div className="flex items-center justify-between gap-2 mt-2 text-[11px] font-mono text-slate-400 dark:text-slate-500">
                     <span>
-                      {post.createdAt ? (typeof post.createdAt.toDate === 'function' ? post.createdAt.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : new Date(post.createdAt).toLocaleDateString()) : ''}
+                      {safeFormatDate(post?.createdAt, { month: 'short', day: 'numeric', year: 'numeric' }, '')}
                     </span>
                     <span 
                       className="text-indigo-600 dark:text-indigo-400 group-hover:underline text-xs font-semibold shrink-0 py-1"

@@ -10,6 +10,7 @@ import EmbedHandler from '../components/EmbedHandler';
 import { Calendar, ChevronLeft, Award, Clock, Send, Copy, Check, Share2, ThumbsUp, ThumbsDown, ArrowRight, WifiOff, Eye, Hash, Bookmark, X } from 'lucide-react';
 import { saveReadingProgress, getReadingProgress, ReadingProgressRecord } from '../utils/readingProgress';
 import { signInWithGoogleSafe } from '../utils/authHelper';
+import { safeFormatDate, safeToIsoString } from '../utils/dateHelper';
 
 function getHtmlTextPreview(htmlString: string, maxLength: number = 160): string {
   if (!htmlString) return '';
@@ -236,21 +237,8 @@ export default function PostDetailView() {
     const summary = rawExcerpt.replace(/\s+/g, ' ').trim();
     const authorVal = post.authorName || globalPenName || 'Chronicle Staff Report';
     
-    let publishedIso = '';
-    if (post.createdAt) {
-      const d = typeof post.createdAt.toDate === 'function' ? post.createdAt.toDate() : new Date(post.createdAt);
-      if (!isNaN(d.getTime())) {
-        publishedIso = d.toISOString();
-      }
-    }
-    
-    let modifiedIso = publishedIso;
-    if (post.updatedAt) {
-      const d = typeof post.updatedAt.toDate === 'function' ? post.updatedAt.toDate() : new Date(post.updatedAt);
-      if (!isNaN(d.getTime())) {
-        modifiedIso = d.toISOString();
-      }
-    }
+    const publishedIso = safeToIsoString(post.createdAt);
+    const modifiedIso = post.updatedAt ? safeToIsoString(post.updatedAt) : publishedIso;
 
     const postSlug = slugify(post.title || '');
     const baseOrigin = typeof window !== 'undefined' && window.location.origin && !window.location.origin.includes('localhost')
@@ -671,16 +659,12 @@ export default function PostDetailView() {
     );
   }
 
-  // Format publication date
-  let publishDate = 'Recent Post';
-  if (post.createdAt) {
-    const d = typeof post.createdAt.toDate === 'function' ? post.createdAt.toDate() : new Date(post.createdAt);
-    publishDate = d.toLocaleDateString('en-US', {
-      month: 'long',
-      day: 'numeric',
-      year: 'numeric'
-    });
-  }
+  // Format publication date safely
+  const publishDate = safeFormatDate(post?.createdAt, {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric'
+  });
 
   const renderArticleContent = () => {
     if (!post) return null;
@@ -861,6 +845,30 @@ export default function PostDetailView() {
           </div>
         );
       }
+    }
+
+    const paragraphs = contentHtml.split('</p>');
+    if (paragraphs.length >= 4) {
+      const splitIndex = Math.min(3, Math.floor(paragraphs.length / 2));
+      const firstChunk = paragraphs.slice(0, splitIndex).join('</p>') + '</p>';
+      const secondChunk = paragraphs.slice(splitIndex).join('</p>');
+      return (
+        <div>
+          {topPhotos}
+          <div 
+            className="article-rich-text prose max-w-none break-word break-words"
+            dangerouslySetInnerHTML={{ __html: firstChunk }}
+          />
+          {middlePhotos}
+          <AdSpace type="in-article" />
+          <div 
+            className="article-rich-text prose max-w-none break-word break-words mt-4"
+            dangerouslySetInnerHTML={{ __html: secondChunk }}
+            id="article-content"
+          />
+          {bottomPhotos}
+        </div>
+      );
     }
 
     return (
@@ -1133,6 +1141,11 @@ export default function PostDetailView() {
               );
             })}
           </div>
+        )}
+
+        {/* AdSense Compliant In-Article Bottom Unit (displayed only when substantive content exists) */}
+        {post && post.content && post.content.length > 200 && (
+          <AdSpace type="article-bottom" className="my-8" />
         )}
 
         {/* Bottom Reactions Section with message */}

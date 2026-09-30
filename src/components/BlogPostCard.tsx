@@ -5,6 +5,7 @@ import { ThumbsUp, ThumbsDown, Eye } from 'lucide-react';
 import { doc, getDoc, setDoc, deleteDoc, updateDoc, increment } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged } from 'firebase/auth';
+import { safeFormatDate } from '../utils/dateHelper';
 
 interface BlogPostCardProps {
   post: Post;
@@ -190,15 +191,11 @@ export default function BlogPostCard({ post, globalPenName }: BlogPostCardProps)
   };
 
   // Format creation date elegantly
-  let publishDate = 'Recent Post';
-  if (post.createdAt) {
-    const d = typeof post.createdAt.toDate === 'function' ? post.createdAt.toDate() : new Date(post.createdAt);
-    publishDate = d.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric'
-    });
-  }
+  const publishDate = safeFormatDate(post?.createdAt, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  });
 
   const hasYt = !!post.youtubeUrl && post.youtubeUrl.trim().length > 0;
   const hasFb = !!post.facebookUrl && post.facebookUrl.trim().length > 0;

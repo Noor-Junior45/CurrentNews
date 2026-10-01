@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Mail, Lock, Eye, EyeOff, LogIn, ChevronLeft } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, LogIn, ChevronLeft, Key, Copy, Check, X } from 'lucide-react';
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
@@ -8,7 +8,7 @@ import {
   onAuthStateChanged
 } from 'firebase/auth';
 import { auth } from '../firebase';
-import { signInWithGoogleSafe } from '../utils/authHelper';
+import { signInWithGoogleSafe, getApkFingerprintsSafe, ApkFingerprints } from '../utils/authHelper';
 
 export default function SignInView(): React.JSX.Element {
   const navigate = useNavigate();
@@ -26,6 +26,20 @@ export default function SignInView(): React.JSX.Element {
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Android Capacitor APK SHA-1 and SHA-256 fingerprints
+  const [apkFingerprints, setApkFingerprints] = useState<ApkFingerprints | null>(null);
+  const [showFingerprintsModal, setShowFingerprintsModal] = useState(false);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  // Check if running on Android Native and load fingerprints
+  useEffect(() => {
+    getApkFingerprintsSafe().then((fp) => {
+      if (fp) {
+        setApkFingerprints(fp);
+      }
+    });
+  }, []);
 
   // If already authenticated, redirect to /profile
   useEffect(() => {
@@ -322,7 +336,7 @@ export default function SignInView(): React.JSX.Element {
           type="button"
           onClick={handleGoogleSignIn}
           disabled={isGoogleSubmitting}
-          className="w-full flex items-center justify-center gap-3 py-3 px-6 rounded-full border border-slate-300 dark:border-slate-700 bg-slate-200/80 hover:bg-slate-300/80 dark:bg-slate-800/90 dark:hover:bg-slate-700/90 text-slate-900 dark:text-white font-bold text-sm shadow-2xs hover:shadow-xs transition-all active:scale-[0.98] cursor-pointer mb-5 disabled:opacity-60"
+          className="w-full flex items-center justify-center gap-3 py-3 px-6 rounded-full border border-slate-300 dark:border-slate-700 bg-slate-200/80 hover:bg-slate-300/80 dark:bg-slate-800/90 dark:hover:bg-slate-700/90 text-slate-900 dark:text-white font-bold text-sm shadow-2xs hover:shadow-xs transition-all active:scale-[0.98] cursor-pointer mb-3 disabled:opacity-60"
           id="signin-google-continue-button"
         >
           {isGoogleSubmitting ? (
@@ -339,6 +353,18 @@ export default function SignInView(): React.JSX.Element {
             </>
           )}
         </button>
+
+        {/* Diagnostic button to inspect APK SHA-1 and SHA-256 for Firebase setup */}
+        {apkFingerprints && (
+          <button
+            type="button"
+            onClick={() => setShowFingerprintsModal(true)}
+            className="mb-4 text-[11px] text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 font-semibold flex items-center justify-center gap-1.5 cursor-pointer select-none py-1 px-3 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors"
+          >
+            <Key className="w-3.5 h-3.5 text-amber-500" />
+            <span>View SHA-1 & SHA-256 for Firebase</span>
+          </button>
+        )}
 
         {/* Toggle between Sign in and Create one */}
         <p className="text-xs text-slate-600 dark:text-slate-400 mb-6 text-center">
@@ -406,6 +432,98 @@ export default function SignInView(): React.JSX.Element {
           </p>
         </div>
       </main>
+
+      {/* Modal displaying APK SHA-1 and SHA-256 for Firebase Console */}
+      {showFingerprintsModal && apkFingerprints && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 max-w-md w-full shadow-2xl">
+            <div className="flex items-center justify-between mb-3 border-b border-slate-100 dark:border-slate-800 pb-2">
+              <div className="flex items-center gap-2">
+                <Key className="w-5 h-5 text-amber-500" />
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                  Android Certificate Fingerprints
+                </h3>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setShowFingerprintsModal(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600 dark:text-slate-400 mb-4 leading-relaxed">
+              Add these fingerprints to <strong className="text-slate-800 dark:text-slate-200">Firebase Console &rarr; Project Settings &rarr; Your Apps</strong> to enable Google Sign-In on this APK.
+            </p>
+
+            <div className="space-y-3 mb-5">
+              <div>
+                <span className="block text-[10px] font-mono uppercase tracking-wider text-slate-500 mb-1">
+                  Package Name
+                </span>
+                <code className="block text-xs bg-slate-100 dark:bg-slate-800 p-2 rounded-lg font-mono text-slate-800 dark:text-slate-200 break-all select-all">
+                  {apkFingerprints.packageName}
+                </code>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500">
+                    SHA-1 (Required for Google Sign-In)
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(apkFingerprints.sha1);
+                      setCopiedKey('sha1');
+                      setTimeout(() => setCopiedKey(null), 2000);
+                    }}
+                    className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1 cursor-pointer hover:underline"
+                  >
+                    {copiedKey === 'sha1' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedKey === 'sha1' ? 'Copied!' : 'Copy SHA-1'}</span>
+                  </button>
+                </div>
+                <code className="block text-xs bg-slate-100 dark:bg-slate-800 p-2 rounded-lg font-mono text-slate-800 dark:text-slate-200 break-all select-all">
+                  {apkFingerprints.sha1}
+                </code>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500">
+                    SHA-256 (Recommended)
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(apkFingerprints.sha256);
+                      setCopiedKey('sha256');
+                      setTimeout(() => setCopiedKey(null), 2000);
+                    }}
+                    className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1 cursor-pointer hover:underline"
+                  >
+                    {copiedKey === 'sha256' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedKey === 'sha256' ? 'Copied!' : 'Copy SHA-256'}</span>
+                  </button>
+                </div>
+                <code className="block text-xs bg-slate-100 dark:bg-slate-800 p-2 rounded-lg font-mono text-slate-800 dark:text-slate-200 break-all select-all">
+                  {apkFingerprints.sha256}
+                </code>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowFingerprintsModal(false)}
+              className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-950 font-bold text-xs rounded-xl transition-all cursor-pointer"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

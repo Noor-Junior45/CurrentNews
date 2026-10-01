@@ -6,12 +6,14 @@ import android.app.Dialog
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.webkit.CookieManager
 import android.webkit.WebSettings
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import com.getcapacitor.BridgeActivity
+import java.security.MessageDigest
 
 class MainActivity : BridgeActivity() {
 
@@ -26,9 +28,48 @@ class MainActivity : BridgeActivity() {
         registerPlugin(NativeGoogleAuthPlugin::class.java)
 
         super.onCreate(savedInstanceState)
+        printFingerprintsToLogcat()
         requestNotificationPermission()
         setupNativeWebViewSettings()
         setupNativeBackGestureHandler()
+    }
+
+    /**
+     * Prints the exact SHA-1 and SHA-256 fingerprints of this running APK
+     * directly to Android Studio's Logcat under tag CURRENTNEWS_SIGNING.
+     * Easily copied into Firebase Console -> Project Settings -> Your Apps.
+     */
+    private fun printFingerprintsToLogcat() {
+        try {
+            val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNATURES)
+            }
+
+            val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                packageInfo.signingInfo?.apkContentsSigners
+            } else {
+                @Suppress("DEPRECATION")
+                packageInfo.signatures
+            }
+
+            val cert = signatures?.firstOrNull()?.toByteArray() ?: return
+            
+            val sha1 = MessageDigest.getInstance("SHA-1").digest(cert).joinToString(":") { String.format("%02X", it) }
+            val sha256 = MessageDigest.getInstance("SHA-256").digest(cert).joinToString(":") { String.format("%02X", it) }
+
+            Log.i("CURRENTNEWS_SIGNING", "==========================================================================")
+            Log.i("CURRENTNEWS_SIGNING", "🔑 [Current News] ANDROID CERTIFICATE FINGERPRINTS:")
+            Log.i("CURRENTNEWS_SIGNING", "📱 Package Name: $packageName")
+            Log.i("CURRENTNEWS_SIGNING", "👉 SHA-1:   $sha1")
+            Log.i("CURRENTNEWS_SIGNING", "👉 SHA-256: $sha256")
+            Log.i("CURRENTNEWS_SIGNING", "ℹ️ Add these in Firebase Console -> Project Settings -> Your Apps (blog.currentnews.app)")
+            Log.i("CURRENTNEWS_SIGNING", "==========================================================================")
+        } catch (e: Exception) {
+            Log.e("CURRENTNEWS_SIGNING", "Could not read signing certificate: ${e.message}")
+        }
     }
 
     @SuppressLint("SetJavaScriptEnabled")

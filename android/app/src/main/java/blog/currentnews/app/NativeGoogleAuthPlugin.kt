@@ -22,6 +22,7 @@ import java.security.MessageDigest
  * NativeGoogleAuthPlugin
  * Provides native Android Google Account Chooser bottom sheet/dialog via Google Play Services.
  * Users simply select their device Gmail account with one tap without webview redirects or typing passwords.
+ * Also provides self-diagnostic methods to retrieve SHA-1 and SHA-256 certificate fingerprints.
  */
 @CapacitorPlugin(name = "NativeGoogleAuth")
 class NativeGoogleAuthPlugin : Plugin() {
@@ -37,7 +38,7 @@ class NativeGoogleAuthPlugin : Plugin() {
         return GoogleSignIn.getClient(activity, gso)
     }
 
-    private fun getAppCertificateSha1(): String {
+    private fun getAppCertificateFingerprints(): Pair<String, String> {
         return try {
             val context = activity.applicationContext
             val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -60,12 +61,13 @@ class NativeGoogleAuthPlugin : Plugin() {
                 packageInfo.signatures
             }
 
-            val cert = signatures?.firstOrNull()?.toByteArray() ?: return "Unknown"
-            val md = MessageDigest.getInstance("SHA-1")
-            val digest = md.digest(cert)
-            digest.joinToString(":") { String.format("%02X", it) }
+            val cert = signatures?.firstOrNull()?.toByteArray() ?: return Pair("Unknown", "Unknown")
+
+            val sha1 = MessageDigest.getInstance("SHA-1").digest(cert).joinToString(":") { String.format("%02X", it) }
+            val sha256 = MessageDigest.getInstance("SHA-256").digest(cert).joinToString(":") { String.format("%02X", it) }
+            Pair(sha1, sha256)
         } catch (e: Exception) {
-            "Unknown"
+            Pair("Unknown", "Unknown")
         }
     }
 
@@ -105,7 +107,7 @@ class NativeGoogleAuthPlugin : Plugin() {
             val account: GoogleSignInAccount = task.getResult(ApiException::class.java)
             val idToken = account.idToken
             if (idToken.isNullOrEmpty()) {
-                val sha1 = getAppCertificateSha1()
+                val (sha1, sha256) = getAppCertificateFingerprints()
                 val errorMsg = "Google Sign-In succeeded but no ID token was returned. Make sure the APK SHA-1 ($sha1) is registered in Firebase Console for package ${activity.packageName}."
                 android.util.Log.e("NativeGoogleAuth", errorMsg)
                 call.reject(errorMsg, "NO_ID_TOKEN")
@@ -132,10 +134,16 @@ class NativeGoogleAuthPlugin : Plugin() {
                 }
                 call.resolve(res)
             } else if (e.statusCode == CommonStatusCodes.DEVELOPER_ERROR || e.statusCode == 10) {
-                val sha1 = getAppCertificateSha1()
-                val errorMsg = "Google Sign-In Developer Error (Status 10): The APK SHA-1 fingerprint ($sha1) is not added in Firebase Console for package ${activity.packageName}. Please add this SHA-1 fingerprint under Firebase Console -> Project Settings -> Your Apps."
+                val (sha1, sha256) = getAppCertificateFingerprints()
+                val errorMsg = "Google Sign-In Error (Code 10): The APK SHA-1 fingerprint ($sha1) is not added in Firebase Console for package ${activity.packageName}."
                 android.util.Log.e("NativeGoogleAuth", errorMsg)
-                call.reject(errorMsg, "DEVELOPER_ERROR_10")
+                val data = JSObject().apply {
+                    put("code", "DEVELOPER_ERROR_10")
+                    put("sha1", sha1)
+                    put("sha256", sha256)
+                    put("packageName", activity.packageName)
+                }
+                call.reject(errorMsg, "DEVELOPER_ERROR_10", null, data)
             } else {
                 val errorMsg = "Google Sign-In failed (status code ${e.statusCode}): ${e.message ?: "Unknown error"}"
                 android.util.Log.e("NativeGoogleAuth", errorMsg)
@@ -147,8 +155,19 @@ class NativeGoogleAuthPlugin : Plugin() {
     }
 
     @PluginMethod
+    fun getApkFingerprints(call: PluginCall) {
+        val (sha1, sha256) = getAppCertificateFingerprints()
+        val res = JSObject().apply {
+            put("sha1", sha1)
+            put("sha256", sha256)
+            put("packageName", activity.packageName)
+        }
+        call.resolve(res)
+    }
+
+    @PluginMethod
     fun getApkSha1(call: PluginCall) {
-        val sha1 = getAppCertificateSha1()
+        val (sha1, _) = getAppCertificateFingerprints()
         val res = JSObject().apply {
             put("sha1", sha1)
             put("packageName", activity.packageName)

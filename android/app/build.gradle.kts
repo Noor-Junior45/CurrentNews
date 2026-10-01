@@ -129,3 +129,21 @@ dependencies {
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
 }
+
+tasks.register("printSigningFingerprints") {
+    group = "signing"
+    description = "Prints instructions and helper commands to extract SHA-1 and SHA-256 for Firebase"
+    doLast {
+        println("\n" + "=".repeat(75))
+        println("🔑 [Current News] ANDROID SIGNING FINGERPRINTS GUIDE")
+        println("=".repeat(75))
+        println("📱 Application ID: blog.currentnews.app")
+        println("\n👉 1. To print Debug SHA-1 & SHA-256 in Android Studio Terminal, run:")
+        println("   keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android")
+        println("\n👉 2. To print directly from any signed APK file, run:")
+        println("   keytool -printcert -jarfile app-release.apk")
+        println("\n👉 3. In Android Studio, check Logcat for tag 'CURRENTNEWS_SIGNING'")
+        println("=".repeat(75) + "\n")
+    }
+}
+

@@ -18,6 +18,11 @@ interface NativeGoogleAuthPlugin {
     photoUrl?: string;
     id?: string;
   }>;
+  getApkFingerprints(): Promise<{
+    sha1: string;
+    sha256: string;
+    packageName: string;
+  }>;
   getApkSha1(): Promise<{
     sha1: string;
     packageName: string;
@@ -142,6 +147,23 @@ export async function signInWithGoogleSafe(): Promise<AuthResult> {
       isAuthPending = false;
     }, 500);
   }
+}
+
+export interface ApkFingerprints {
+  sha1: string;
+  sha256: string;
+  packageName: string;
+}
+
+export async function getApkFingerprintsSafe(): Promise<ApkFingerprints | null> {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      return await NativeGoogleAuth.getApkFingerprints();
+    } catch (_) {
+      return null;
+    }
+  }
+  return null;
 }
 
 export async function getApkSha1Safe(): Promise<{ sha1: string; packageName: string } | null> {

@@ -87,7 +87,7 @@ export default function SignInView(): React.JSX.Element {
       } else {
         await signInWithEmailAndPassword(auth, trimmedEmail, password);
       }
-      navigate('/profile');
+      navigate('/profile', { replace: true });
     } catch (err: any) {
       console.warn('Email authentication result:', err?.code || err?.message);
       let msg = 'Authentication failed. Please check your credentials.';
@@ -129,7 +129,7 @@ export default function SignInView(): React.JSX.Element {
     try {
       const res = await signInWithGoogleSafe();
       if (res.success) {
-        navigate('/profile');
+        navigate('/profile', { replace: true });
       } else if (!res.cancelled && res.error) {
         setErrorMessage('Google Sign-In could not be completed. Please try again.');
       }
@@ -163,7 +163,7 @@ export default function SignInView(): React.JSX.Element {
       {/* Tailless arrow back button with no background design */}
       <button
         type="button"
-        onClick={() => navigate('/profile')}
+        onClick={() => navigate('/profile', { replace: true })}
         className="absolute top-4 left-4 p-2 text-slate-600 dark:text-slate-400 hover:text-black dark:hover:text-white transition-colors cursor-pointer bg-transparent border-0 shadow-none focus:outline-none"
         aria-label="Go back"
         title="Go back"

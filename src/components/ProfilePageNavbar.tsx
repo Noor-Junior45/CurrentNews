@@ -20,6 +20,8 @@ export default function ProfilePageNavbar({
   const handleBack = () => {
     if (onBack) {
       onBack();
+    } else if (fallbackUrl === '/') {
+      navigate('/');
     } else if (window.history.state && typeof window.history.state.idx === 'number' && window.history.state.idx > 0) {
       navigate(-1);
     } else {

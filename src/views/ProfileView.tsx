@@ -36,8 +36,22 @@ export default function ProfileView(): React.JSX.Element {
 
   return (
     <div className="min-h-screen bg-white dark:bg-slate-950 flex flex-col font-sans" id="profile-page-stage">
-      {/* Top Navbar with tailless arrow Back button that returns to Home */}
-      <ProfilePageNavbar title="Profile" fallbackUrl="/" />
+      {/* Top Navbar with tailless arrow Back button that returns to Home on the very first click */}
+      <ProfilePageNavbar 
+        title="Profile" 
+        onBack={() => {
+          const returnSearch = sessionStorage.getItem('current_news_return_search');
+          const returnPage = sessionStorage.getItem('current_news_return_page');
+          if (returnSearch && returnSearch.trim().length > 0) {
+            navigate('/' + (returnSearch.startsWith('?') ? returnSearch : '?' + returnSearch));
+          } else if (returnPage && returnPage !== '1') {
+            navigate(`/?page=${returnPage}`);
+          } else {
+            navigate('/');
+          }
+        }} 
+        fallbackUrl="/" 
+      />
 
       <main className="flex-1 max-w-md mx-auto w-full px-5 py-8 flex flex-col items-center">
         {loading ? (

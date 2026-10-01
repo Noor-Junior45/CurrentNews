@@ -1,6 +1,8 @@
 package blog.currentnews.app
 
 import android.app.Activity
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.result.ActivityResult
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
@@ -14,6 +16,7 @@ import com.google.android.gms.auth.api.signin.GoogleSignInClient
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.common.api.CommonStatusCodes
+import java.security.MessageDigest
 
 /**
  * NativeGoogleAuthPlugin
@@ -32,6 +35,38 @@ class NativeGoogleAuthPlugin : Plugin() {
             .requestProfile()
             .build()
         return GoogleSignIn.getClient(activity, gso)
+    }
+
+    private fun getAppCertificateSha1(): String {
+        return try {
+            val context = activity.applicationContext
+            val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                context.packageManager.getPackageInfo(
+                    context.packageName,
+                    PackageManager.GET_SIGNING_CERTIFICATES
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                context.packageManager.getPackageInfo(
+                    context.packageName,
+                    PackageManager.GET_SIGNATURES
+                )
+            }
+
+            val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                packageInfo.signingInfo?.apkContentsSigners
+            } else {
+                @Suppress("DEPRECATION")
+                packageInfo.signatures
+            }
+
+            val cert = signatures?.firstOrNull()?.toByteArray() ?: return "Unknown"
+            val md = MessageDigest.getInstance("SHA-1")
+            val digest = md.digest(cert)
+            digest.joinToString(":") { String.format("%02X", it) }
+        } catch (e: Exception) {
+            "Unknown"
+        }
     }
 
     @PluginMethod
@@ -56,7 +91,7 @@ class NativeGoogleAuthPlugin : Plugin() {
     }
 
     @ActivityCallback
-    private fun handleSignInResult(call: PluginCall, result: ActivityResult) {
+    fun handleSignInResult(call: PluginCall, result: ActivityResult) {
         if (result.resultCode == Activity.RESULT_CANCELED) {
             val res = JSObject().apply {
                 put("cancelled", true)
@@ -70,7 +105,10 @@ class NativeGoogleAuthPlugin : Plugin() {
             val account: GoogleSignInAccount = task.getResult(ApiException::class.java)
             val idToken = account.idToken
             if (idToken.isNullOrEmpty()) {
-                call.reject("Google Sign-In succeeded but no ID token was returned. Please check SHA-1 fingerprint.")
+                val sha1 = getAppCertificateSha1()
+                val errorMsg = "Google Sign-In succeeded but no ID token was returned. Make sure the APK SHA-1 ($sha1) is registered in Firebase Console for package ${activity.packageName}."
+                android.util.Log.e("NativeGoogleAuth", errorMsg)
+                call.reject(errorMsg, "NO_ID_TOKEN")
                 return
             }
 
@@ -93,12 +131,29 @@ class NativeGoogleAuthPlugin : Plugin() {
                     put("cancelled", true)
                 }
                 call.resolve(res)
+            } else if (e.statusCode == CommonStatusCodes.DEVELOPER_ERROR || e.statusCode == 10) {
+                val sha1 = getAppCertificateSha1()
+                val errorMsg = "Google Sign-In Developer Error (Status 10): The APK SHA-1 fingerprint ($sha1) is not added in Firebase Console for package ${activity.packageName}. Please add this SHA-1 fingerprint under Firebase Console -> Project Settings -> Your Apps."
+                android.util.Log.e("NativeGoogleAuth", errorMsg)
+                call.reject(errorMsg, "DEVELOPER_ERROR_10")
             } else {
-                call.reject("Google Sign-In failed (status code ${e.statusCode}): ${e.message}", e)
+                val errorMsg = "Google Sign-In failed (status code ${e.statusCode}): ${e.message ?: "Unknown error"}"
+                android.util.Log.e("NativeGoogleAuth", errorMsg)
+                call.reject(errorMsg, "STATUS_${e.statusCode}")
             }
         } catch (e: Exception) {
             call.reject("Google authentication error: ${e.message}", e)
         }
+    }
+
+    @PluginMethod
+    fun getApkSha1(call: PluginCall) {
+        val sha1 = getAppCertificateSha1()
+        val res = JSObject().apply {
+            put("sha1", sha1)
+            put("packageName", activity.packageName)
+        }
+        call.resolve(res)
     }
 
     @PluginMethod

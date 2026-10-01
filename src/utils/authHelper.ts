@@ -18,6 +18,10 @@ interface NativeGoogleAuthPlugin {
     photoUrl?: string;
     id?: string;
   }>;
+  getApkSha1(): Promise<{
+    sha1: string;
+    packageName: string;
+  }>;
   signOut(): Promise<void>;
 }
 
@@ -71,13 +75,26 @@ export async function signInWithGoogleSafe(): Promise<AuthResult> {
           user: userCred.user
         };
       } catch (nativeErr: any) {
-        console.warn('[Auth] Native Google Auth failed or fallback required:', nativeErr);
-        // If native cancelled by user
+        console.warn('[Auth] Native Google Auth failed:', nativeErr);
         const msg = nativeErr?.message || String(nativeErr);
+
+        // If native cancelled by user
         if (msg.includes('cancelled') || msg.includes('Canceled') || msg.includes('12501')) {
           return { success: false, cancelled: true };
         }
-        // If native plugin failed with another error, fall through to web fallback
+
+        // On native Android, do NOT fall through to web signInWithPopup because popups don't work in WebViews!
+        // Return clear error message with exact diagnostic info so the user knows what happened.
+        let userFacingError = msg;
+        if (msg.includes('10') || msg.includes('DEVELOPER_ERROR') || msg.includes('SHA-1')) {
+          userFacingError = 'Google Sign-In Error (Code 10): This APK\'s SHA-1 fingerprint needs to be registered in your Firebase Console under Android app (blog.currentnews.app).';
+        }
+
+        return {
+          success: false,
+          cancelled: false,
+          error: userFacingError
+        };
       }
     }
 
@@ -113,7 +130,7 @@ export async function signInWithGoogleSafe(): Promise<AuthResult> {
       };
     }
 
-    console.error('[Auth Error]:', err);
+    console.warn('[Auth Warning]:', err);
     return {
       success: false,
       cancelled: false,
@@ -125,4 +142,15 @@ export async function signInWithGoogleSafe(): Promise<AuthResult> {
       isAuthPending = false;
     }, 500);
   }
+}
+
+export async function getApkSha1Safe(): Promise<{ sha1: string; packageName: string } | null> {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      return await NativeGoogleAuth.getApkSha1();
+    } catch (_) {
+      return null;
+    }
+  }
+  return null;
 }

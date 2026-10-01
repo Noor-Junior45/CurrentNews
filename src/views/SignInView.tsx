@@ -131,7 +131,7 @@ export default function SignInView(): React.JSX.Element {
       if (res.success) {
         navigate('/profile', { replace: true });
       } else if (!res.cancelled && res.error) {
-        setErrorMessage('Google Sign-In could not be completed. Please try again.');
+        setErrorMessage(res.error);
       }
     } catch (err: any) {
       console.warn('Google Sign-In notice:', err?.code || err?.message);

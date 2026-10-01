@@ -19,27 +19,11 @@ import { signOut } from 'firebase/auth';
 import { auth } from '../firebase';
 import { useAuthState } from '../hooks/useAuthState';
 import ProfilePageNavbar from '../components/ProfilePageNavbar';
-import { signInWithGoogleSafe } from '../utils/authHelper';
 
 export default function ProfileView(): React.JSX.Element {
   const { user, loading, isAdmin } = useAuthState();
   const navigate = useNavigate();
   const [authError, setAuthError] = React.useState<string | null>(null);
-  const [isSigningIn, setIsSigningIn] = React.useState(false);
-
-  const handleLogin = async () => {
-    if (isSigningIn) return;
-    setIsSigningIn(true);
-    setAuthError(null);
-    try {
-      const res = await signInWithGoogleSafe();
-      if (!res.success && !res.cancelled && res.error) {
-        setAuthError('Authentication could not be completed. Please check your network and try again.');
-      }
-    } finally {
-      setIsSigningIn(false);
-    }
-  };
 
   const handleLogout = async () => {
     try {
@@ -220,22 +204,12 @@ export default function ProfileView(): React.JSX.Element {
 
             <button 
               type="button"
-              onClick={handleLogin}
-              disabled={isSigningIn}
-              className="w-full flex items-center justify-center space-x-2 py-3 px-4 bg-slate-950 dark:bg-slate-900 text-white hover:bg-slate-800 dark:hover:bg-transparent dark:hover:border-indigo-500/60 dark:hover:text-white text-xs font-semibold rounded-full cursor-pointer transition-all border border-transparent dark:border-slate-700/80 shadow-xs mb-3 disabled:opacity-60"
+              onClick={() => navigate('/signin')}
+              className="w-full flex items-center justify-center space-x-2 py-3 px-4 bg-slate-950 dark:bg-slate-900 text-white hover:bg-slate-800 dark:hover:bg-transparent dark:hover:border-indigo-500/60 dark:hover:text-white text-xs font-semibold rounded-full cursor-pointer transition-all border border-transparent dark:border-slate-700/80 shadow-xs mb-3"
               id="profile-signin-button"
             >
-              {isSigningIn ? (
-                <>
-                  <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span className="font-bold text-white">Opening Google Sign-In...</span>
-                </>
-              ) : (
-                <>
-                  <LogIn className="h-3.5 w-3.5 text-white" />
-                  <span className="font-bold text-white">Sign In with Google</span>
-                </>
-              )}
+              <LogIn className="h-3.5 w-3.5 text-white" />
+              <span className="font-bold text-white">Sign In</span>
             </button>
 
             {authError && (

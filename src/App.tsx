@@ -18,6 +18,7 @@ import TermsView from './views/TermsView';
 import DeleteAccountView from './views/DeleteAccountView';
 import SettingsView from './views/SettingsView';
 import ProfileView from './views/ProfileView';
+import SignInView from './views/SignInView';
 import AboutView from './views/AboutView';
 import ContactView from './views/ContactView';
 import EditorialPolicyView from './views/EditorialPolicyView';
@@ -27,6 +28,8 @@ import { useLocation } from 'react-router-dom';
 
 const PROFILE_PAGES = [
   '/profile',
+  '/signin',
+  '/login',
   '/liked',
   '/admin',
   '/settings',
@@ -116,6 +119,8 @@ export default function App() {
 
             {/* 4. Profile Hub Page */}
             <Route path="/profile" element={<ProfileView />} />
+            <Route path="/signin" element={<SignInView />} />
+            <Route path="/login" element={<SignInView />} />
 
             {/* 5. Liked Dispatches Page */}
             <Route path="/liked" element={<LikedView />} />

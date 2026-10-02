@@ -22,15 +22,30 @@ const db = getFirestore(fbApp, firebaseConfig.firestoreDatabaseId);
 
 // VAPID credentials for Web Push protocol (RFC 8292 / RFC 8291 standard)
 // These allow waking up Android phones (via Google Play Services / FCM) and PCs without native app store builds.
-export const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || 'BI1Jk9kQVKUf-MeTttTgjrVCB0zJGKK9y6aB0UK45s1VdmwaoraZPZuBA2HxFzwrmmROuNcwJv4VY84TJZBqV9A';
-export const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || 'ZHX-ZSu1qCYG20ZkMfwB2VpjWLMRpYKhL06yIcoiOdQ';
+let resolvedPublicKey = process.env.VAPID_PUBLIC_KEY;
+let resolvedPrivateKey = process.env.VAPID_PRIVATE_KEY;
+
+if (!resolvedPublicKey || !resolvedPrivateKey) {
+  try {
+    const generated = webpush.generateVAPIDKeys();
+    resolvedPublicKey = resolvedPublicKey || generated.publicKey;
+    resolvedPrivateKey = resolvedPrivateKey || generated.privateKey;
+  } catch (genErr) {
+    console.warn('[Push Service] Could not generate dynamic VAPID keys:', genErr);
+  }
+}
+
+export const VAPID_PUBLIC_KEY = resolvedPublicKey || '';
+export const VAPID_PRIVATE_KEY = resolvedPrivateKey || '';
 export const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:alerts@currentnews.blog';
 
-try {
-  webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
-  console.log('[Push Service] VAPID details configured successfully.');
-} catch (vapidErr) {
-  console.error('[Push Service] VAPID initialization error:', vapidErr);
+if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+  try {
+    webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+    console.log('[Push Service] VAPID details configured successfully.');
+  } catch (vapidErr) {
+    console.error('[Push Service] VAPID initialization error:', vapidErr);
+  }
 }
 
 // Generate stable deterministic ID from endpoint URL

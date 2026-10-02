@@ -780,10 +780,19 @@ async function handleSocialPreview(req, res, next) {
     return next();
   }
   let html = import_fs2.default.readFileSync(indexPath, "utf-8");
+  let fbConfig = {};
+  try {
+    const configPath = import_path2.default.join(process.cwd(), "firebase-applet-config.json");
+    if (import_fs2.default.existsSync(configPath)) {
+      fbConfig = JSON.parse(import_fs2.default.readFileSync(configPath, "utf-8"));
+    }
+  } catch (e) {
+    console.error("[Social Preview] Failed to read firebase-applet-config.json:", e);
+  }
   const config = {
-    projectId: "gen-lang-client-0638643565",
-    firestoreDatabaseId: "ai-studio-6e2ba5e1-c245-4586-90fd-9ba4777b81c4",
-    apiKey: "AIzaSyAvFbWQ8kimAfhubQxNIQ0aow1ylZQ8evA"
+    projectId: process.env.VITE_FIREBASE_PROJECT_ID || fbConfig.projectId || "",
+    firestoreDatabaseId: process.env.VITE_FIREBASE_DATABASE_ID || fbConfig.firestoreDatabaseId || "(default)",
+    apiKey: process.env.VITE_FIREBASE_API_KEY || fbConfig.apiKey || ""
   };
   const postMatch = req.path.match(/^\/post\/([^/?#]+)/);
   if (postMatch) {
@@ -1101,14 +1110,27 @@ try {
 }
 var fbApp = (0, import_app.getApps)().length > 0 ? (0, import_app.getApp)() : (0, import_app.initializeApp)(firebaseConfig);
 var db = (0, import_firestore.getFirestore)(fbApp, firebaseConfig.firestoreDatabaseId);
-var VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || "BI1Jk9kQVKUf-MeTttTgjrVCB0zJGKK9y6aB0UK45s1VdmwaoraZPZuBA2HxFzwrmmROuNcwJv4VY84TJZBqV9A";
-var VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || "ZHX-ZSu1qCYG20ZkMfwB2VpjWLMRpYKhL06yIcoiOdQ";
+var resolvedPublicKey = process.env.VAPID_PUBLIC_KEY;
+var resolvedPrivateKey = process.env.VAPID_PRIVATE_KEY;
+if (!resolvedPublicKey || !resolvedPrivateKey) {
+  try {
+    const generated = import_web_push.default.generateVAPIDKeys();
+    resolvedPublicKey = resolvedPublicKey || generated.publicKey;
+    resolvedPrivateKey = resolvedPrivateKey || generated.privateKey;
+  } catch (genErr) {
+    console.warn("[Push Service] Could not generate dynamic VAPID keys:", genErr);
+  }
+}
+var VAPID_PUBLIC_KEY = resolvedPublicKey || "";
+var VAPID_PRIVATE_KEY = resolvedPrivateKey || "";
 var VAPID_SUBJECT = process.env.VAPID_SUBJECT || "mailto:alerts@currentnews.blog";
-try {
-  import_web_push.default.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
-  console.log("[Push Service] VAPID details configured successfully.");
-} catch (vapidErr) {
-  console.error("[Push Service] VAPID initialization error:", vapidErr);
+if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+  try {
+    import_web_push.default.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+    console.log("[Push Service] VAPID details configured successfully.");
+  } catch (vapidErr) {
+    console.error("[Push Service] VAPID initialization error:", vapidErr);
+  }
 }
 function getEndpointId(endpoint) {
   return import_crypto2.default.createHash("sha256").update(endpoint).digest("hex").substring(0, 32);

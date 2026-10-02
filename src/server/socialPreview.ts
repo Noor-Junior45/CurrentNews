@@ -37,10 +37,20 @@ export async function handleSocialPreview(req: Request, res: Response, next: Nex
 
   let html = fs.readFileSync(indexPath, 'utf-8');
 
+  let fbConfig: any = {};
+  try {
+    const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+    if (fs.existsSync(configPath)) {
+      fbConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    }
+  } catch (e) {
+    console.error('[Social Preview] Failed to read firebase-applet-config.json:', e);
+  }
+
   const config = {
-    projectId: "gen-lang-client-0638643565",
-    firestoreDatabaseId: "ai-studio-6e2ba5e1-c245-4586-90fd-9ba4777b81c4",
-    apiKey: "AIzaSyAvFbWQ8kimAfhubQxNIQ0aow1ylZQ8evA"
+    projectId: process.env.VITE_FIREBASE_PROJECT_ID || fbConfig.projectId || '',
+    firestoreDatabaseId: process.env.VITE_FIREBASE_DATABASE_ID || fbConfig.firestoreDatabaseId || '(default)',
+    apiKey: process.env.VITE_FIREBASE_API_KEY || fbConfig.apiKey || ''
   };
 
   // 1. Check for Article route: /post/:id or /post/:id/:slug

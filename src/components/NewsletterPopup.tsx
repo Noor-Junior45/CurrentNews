@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { X, Mail, Check, AlertCircle, Loader2, Send } from 'lucide-react';
+import { getCanonicalSiteOrigin } from '../utils/shareUrl';
 
 export default function NewsletterPopup() {
   const [isOpen, setIsOpen] = useState(false);
@@ -56,7 +57,7 @@ export default function NewsletterPopup() {
           body: JSON.stringify({
             email: subscriberEmail,
             title: "Welcome to Current News Alerts!",
-            link: window.location.origin
+            link: getCanonicalSiteOrigin()
           })
         });
       } catch (mailErr) {

@@ -3,8 +3,6 @@
  * Handles Web Push & Android Push subscriptions, syncing to backend server for automated dispatches.
  */
 
-const FALLBACK_VAPID_PUBLIC_KEY = 'BI1Jk9kQVKUf-MeTttTgjrVCB0zJGKK9y6aB0UK45s1VdmwaoraZPZuBA2HxFzwrmmROuNcwJv4VY84TJZBqV9A';
-
 export function isPushSupported(): boolean {
   return (
     typeof window !== 'undefined' &&
@@ -37,9 +35,9 @@ async function getVapidPublicKey(): Promise<string> {
       if (data.publicKey) return data.publicKey;
     }
   } catch (e) {
-    console.debug('[Push] Failed to fetch server VAPID key, using fallback:', e);
+    console.debug('[Push] Failed to fetch server VAPID key:', e);
   }
-  return FALLBACK_VAPID_PUBLIC_KEY;
+  return '';
 }
 
 /**
@@ -58,8 +56,12 @@ export async function subscribeUserToPush(): Promise<{ success: boolean; message
       return { success: false, message: 'Notification permission was denied or dismissed.' };
     }
 
-    const reg = await navigator.serviceWorker.ready;
     const publicKey = await getVapidPublicKey();
+    if (!publicKey) {
+      return { success: false, message: 'Push notification service key is currently unavailable.' };
+    }
+
+    const reg = await navigator.serviceWorker.ready;
     const convertedKey = urlBase64ToUint8Array(publicKey);
 
     // Get existing or create new subscription

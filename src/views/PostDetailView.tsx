@@ -11,6 +11,7 @@ import { Calendar, ChevronLeft, Award, Clock, Send, Copy, Check, Share2, ThumbsU
 import { saveReadingProgress, getReadingProgress, ReadingProgressRecord } from '../utils/readingProgress';
 import { signInWithGoogleSafe } from '../utils/authHelper';
 import { safeFormatDate, safeToIsoString } from '../utils/dateHelper';
+import { getCanonicalPostUrl } from '../utils/shareUrl';
 
 function getHtmlTextPreview(htmlString: string, maxLength: number = 160): string {
   if (!htmlString) return '';
@@ -240,11 +241,7 @@ export default function PostDetailView() {
     const publishedIso = safeToIsoString(post.createdAt);
     const modifiedIso = post.updatedAt ? safeToIsoString(post.updatedAt) : publishedIso;
 
-    const postSlug = slugify(post.title || '');
-    const baseOrigin = typeof window !== 'undefined' && window.location.origin && !window.location.origin.includes('localhost')
-      ? 'https://www.currentnews.blog'
-      : (typeof window !== 'undefined' ? window.location.origin : 'https://www.currentnews.blog');
-    const canonicalUrl = postSlug ? `${baseOrigin}/post/${post.id}/${postSlug}` : `${baseOrigin}/post/${post.id}`;
+    const canonicalUrl = getCanonicalPostUrl(post.id, post.title);
     const postKeywords = `current news, news, independent ledger, journalism, ${post.category || 'general'}, ${post.title.toLowerCase().split(' ').slice(0, 6).join(', ')}`;
     const siteLogo = 'https://i.imgur.com/gFgShoZ.jpeg';
     const mainImg = cleanImageUrl(post.imageUrl || siteLogo);
@@ -472,11 +469,7 @@ export default function PostDetailView() {
 
   const getCanonicalPostShareUrl = () => {
     if (!post) return 'https://www.currentnews.blog';
-    const postSlug = slugify(post.title || '');
-    const baseOrigin = typeof window !== 'undefined' && window.location.origin && !window.location.origin.includes('localhost')
-      ? 'https://www.currentnews.blog'
-      : (typeof window !== 'undefined' ? window.location.origin : 'https://www.currentnews.blog');
-    return postSlug ? `${baseOrigin}/post/${post.id}/${postSlug}` : `${baseOrigin}/post/${post.id}`;
+    return getCanonicalPostUrl(post.id, post.title);
   };
 
   const handleCopyLink = () => {
@@ -491,16 +484,20 @@ export default function PostDetailView() {
   const handleNativeShare = async () => {
     if (post) {
       const shareUrl = getCanonicalPostShareUrl();
+      const previewText = getHtmlTextPreview(post.content || '', 100);
+      const shareText = previewText 
+        ? `${post.title} — ${previewText}\n\n${shareUrl}`
+        : `${post.title}\n\n${shareUrl}`;
+
       if (typeof navigator !== 'undefined' && navigator.share) {
         try {
           await navigator.share({
             title: post.title,
-            text: getHtmlTextPreview(post.content || '', 120),
+            text: shareText,
             url: shareUrl,
           });
         } catch (err) {
-          console.error('Error sharing content:', err);
-          // Only fallback if not a user cancellation (AbortError)
+          // If not user cancellation, fallback to clipboard copy
           if (err instanceof Error && err.name !== 'AbortError') {
             handleCopyLink();
           }
@@ -1024,7 +1021,7 @@ export default function PostDetailView() {
             </a>
 
             <a
-              href={`https://api.whatsapp.com/send?text=${encodeURIComponent(post.title + ' ' + dynamicShareUrl)}`}
+              href={`https://api.whatsapp.com/send?text=${encodeURIComponent(`${post.title}\n\n${dynamicShareUrl}`)}`}
               target="_blank"
               rel="noopener noreferrer"
               className="p-1.5 text-[#25D366] hover:opacity-80 transition-opacity cursor-pointer flex items-center justify-center bg-transparent border-0"

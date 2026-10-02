@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Mail, Send, CheckCircle2, AlertCircle, Phone, MapPin, Clock, ShieldAlert } from 'lucide-react';
 import ProfilePageNavbar from '../components/ProfilePageNavbar';
+import { getCanonicalSiteOrigin } from '../utils/shareUrl';
 
 export default function ContactView() {
   const [formData, setFormData] = useState({
@@ -43,7 +44,7 @@ export default function ContactView() {
         body: JSON.stringify({
           email: formData.email,
           title: `Contact Submission: [${formData.subject.toUpperCase()}] from ${formData.name}`,
-          link: window.location.origin
+          link: getCanonicalSiteOrigin()
         })
       }).catch(() => {
         // Fallback gracefully if mail provider is unavailable

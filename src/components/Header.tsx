@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams, useLocation } from 'react-router-do
 import { db, auth } from '../firebase';
 import { collection, addDoc, query, where, getDocs, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { useAuthState } from '../hooks/useAuthState';
+import { getCanonicalSiteOrigin } from '../utils/shareUrl';
 import { 
   LogIn, 
   LogOut, 
@@ -356,7 +357,7 @@ export default function Header() {
             body: JSON.stringify({
               email: user.email,
               title: "Welcome to Current News Alerts!",
-              link: window.location.origin
+              link: getCanonicalSiteOrigin()
             })
           });
         } catch (err) {

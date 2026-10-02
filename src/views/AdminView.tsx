@@ -9,6 +9,7 @@ import PhotoAttachmentSection from '../components/PhotoAttachmentSection';
 import ProfilePageNavbar from '../components/ProfilePageNavbar';
 import EmbedHandler from '../components/EmbedHandler';
 import { safeParseDate, safeFormatDate } from '../utils/dateHelper';
+import { getCanonicalPostUrl, getCanonicalSiteOrigin } from '../utils/shareUrl';
 import { 
   collection, 
   getDocs, 
@@ -383,7 +384,7 @@ export default function AdminView() {
         body: JSON.stringify({
           email: testEmailAddress.trim(),
           title: 'Test Notification: Resend Email Dispatch Functional Alert Check',
-          link: window.location.origin
+          link: getCanonicalSiteOrigin()
         })
       });
 
@@ -523,7 +524,7 @@ export default function AdminView() {
             const emails = Array.from(emailsSet);
 
             if (emails.length > 0) {
-              const postLink = `${window.location.origin}/post/${editingPostId}/${slugify(title.trim())}`;
+              const postLink = getCanonicalPostUrl(editingPostId, title.trim());
               const emailPromises = emails.map(emailAddr => 
                 fetch('/api/mail/send-alert', {
                   method: 'POST',
@@ -567,7 +568,7 @@ export default function AdminView() {
             const emails = Array.from(emailsSet);
 
             if (emails.length > 0) {
-              const postLink = `${window.location.origin}/post/${newDocRef.id}/${slugify(title.trim())}`;
+              const postLink = getCanonicalPostUrl(newDocRef.id, title.trim());
               const emailPromises = emails.map(emailAddr => 
                 fetch('/api/mail/send-alert', {
                   method: 'POST',
@@ -590,7 +591,7 @@ export default function AdminView() {
       // Dispatch push notification broadcast so published articles wake up closed phones & devices
       if (targetStatus === 'published') {
         try {
-          const postLink = `${window.location.origin}/post/${publishedPostId}/${slugify(title.trim())}`;
+          const postLink = getCanonicalPostUrl(publishedPostId, title.trim());
           const notifTitle = `Breaking News: ${title.trim()}`;
           const cleanSnippet = content.replace(/<[^>]*>/g, ' ').replace(/\[fig\.\s*\d+\]/gi, ' ').replace(/\s+/g, ' ').trim();
           const notifBody = cleanSnippet.length > 120 ? cleanSnippet.substring(0, 117) + '...' : (cleanSnippet || 'A new article has just been published on Current News. Tap to read.');

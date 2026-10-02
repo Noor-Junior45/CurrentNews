@@ -55,8 +55,8 @@ function ConditionalHeader() {
 
 function ConditionalFooter() {
   const location = useLocation();
-  // Hide footer on profile page and all individual profile subpages
-  if (isProfileSection(location.pathname)) {
+  // Hide footer on profile page, all individual profile subpages, and article reading pages
+  if (isProfileSection(location.pathname) || location.pathname.startsWith('/post/')) {
     return null;
   }
   return <Footer />;

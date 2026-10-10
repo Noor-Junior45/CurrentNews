@@ -3,10 +3,16 @@ import { Link } from 'react-router-dom';
 import { ShieldCheck, Award, Users, BookOpen, Globe2, Compass, CheckCircle2, ChevronRight, Mail, Building, FileCheck } from 'lucide-react';
 import ProfilePageNavbar from '../components/ProfilePageNavbar';
 
+import { updateDocumentSEO } from '../utils/seo';
+
 export default function AboutView() {
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' });
-    document.title = 'About Us | Current News Live — Independent Ledger';
+    updateDocumentSEO({
+      title: 'About Us | Current News Live — Independent Ledger',
+      description: 'About Current News Live - Independent newsroom, autonomous press alliance, investigative journalism, and editorial standards.',
+      canonicalPath: '/about'
+    });
   }, []);
 
   return (

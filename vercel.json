@@ -4,6 +4,7 @@
     { "source": "/sitemap.xml", "destination": "/api/sitemap.xml" },
     { "source": "/rss.xml", "destination": "/api/rss.xml" },
     { "source": "/ads.txt", "destination": "/api/ads.txt" },
+    { "source": "/.well-known/assetlinks.json", "destination": "/api/assetlinks.json" },
     { "source": "/((?!api|assets|favicon|robots\\.txt|manifest\\.json|sw\\.js|.*\\.).*)", "destination": "/index.html" }
   ]
 }

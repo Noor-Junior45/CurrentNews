@@ -3,10 +3,16 @@ import { Link } from 'react-router-dom';
 import { FileCheck, ShieldCheck, CheckCircle2, AlertTriangle, RefreshCw, Scale, UserCheck, ChevronRight } from 'lucide-react';
 import ProfilePageNavbar from '../components/ProfilePageNavbar';
 
+import { updateDocumentSEO } from '../utils/seo';
+
 export default function EditorialPolicyView() {
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' });
-    document.title = 'Editorial Standards & Fact-Checking Policy | Current News Live';
+    updateDocumentSEO({
+      title: 'Editorial Standards & Fact-Checking Policy | Current News Live',
+      description: 'Fact-checking standards, two-source verification policy, editorial integrity, and transparent corrections guidelines of Current News Live.',
+      canonicalPath: '/editorial-policy'
+    });
   }, []);
 
   return (

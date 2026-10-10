@@ -1357,6 +1357,9 @@ async function startServer() {
   app.get("/robots.txt", (_req, res) => {
     res.type("text/plain; charset=utf-8").sendFile(import_path4.default.join(process.cwd(), "public", "robots.txt"));
   });
+  app.get(["/.well-known/assetlinks.json", "/.well-known/assetlinks"], (_req, res) => {
+    res.type("application/json").sendFile(import_path4.default.join(process.cwd(), "public", ".well-known", "assetlinks.json"));
+  });
   app.get("/api/push/public-key", handleGetVapidPublicKey);
   app.post("/api/push/subscribe", handleSubscribe);
   app.post("/api/push/unsubscribe", handleUnsubscribe);

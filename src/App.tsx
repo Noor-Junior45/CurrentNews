@@ -4,7 +4,6 @@ import { getDocFromServer, doc } from 'firebase/firestore';
 import { db } from './firebase';
 import Header from './components/Header';
 import Footer from './components/Footer';
-import NewsletterPopup from './components/NewsletterPopup';
 import ConsentBanner from './components/ConsentBanner';
 import NotificationBanner from './components/NotificationBanner';
 import AndroidBackGestureHandler from './components/AndroidBackGestureHandler';
@@ -145,9 +144,6 @@ export default function App() {
 
         {/* Persistent Dynamic Footer (Hidden in Admin Panel) */}
         <ConditionalFooter />
-
-        {/* Floating pop-up modal newsletter invite for first-time visitors */}
-        <NewsletterPopup />
 
         {/* Dynamic bottom GDPR/Google policy compliant consent banner */}
         <ConsentBanner />

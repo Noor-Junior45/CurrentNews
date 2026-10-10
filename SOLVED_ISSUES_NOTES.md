@@ -125,6 +125,15 @@ This file tracks all resolved issues, technical architectural decisions, and con
 
 ---
 
+### 8. Android App Links & Play Store Domain Association (Digital Asset Links JSON)
+* **Goal & Configuration:**
+  * Associated website domains (`www.currentnews.blog` and `currentnews.blog`) with the Android app (`blog.currentnews.app`) via Google Digital Asset Links specification.
+  * Added certificate fingerprint: `31:7B:5C:4E:4C:23:10:B2:AD:1C:5D:31:95:63:EF:C7:8A:9D:87:2C:35:67:DB:8D:5C:4D:41:4A:94:63:66:B0` with relation `["delegate_permission/common.handle_all_urls"]`.
+  * Created `public/.well-known/assetlinks.json`, `api/assetlinks.json.ts` for Vercel serverless, Express route `/.well-known/assetlinks.json` in `server.ts`, and rewrite rule in `vercel.json`.
+  * Works in tandem with `AndroidManifest.xml` (`android:autoVerify="true"` on `https://www.currentnews.blog`) to automatically route mobile web links directly into the native app.
+
+---
+
 ## 📌 How to Add This to Google AI Studio System Instructions
 
 To ensure Google AI Studio always checks and updates this notes file in future conversations, add the following snippet to your **System Instructions** in Google AI Studio:

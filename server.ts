@@ -106,6 +106,11 @@ async function startServer() {
     res.type('text/plain; charset=utf-8').sendFile(path.join(process.cwd(), 'public', 'robots.txt'));
   });
 
+  // Explicitly serve Android App Links Digital Asset Links JSON (.well-known/assetlinks.json)
+  app.get(['/.well-known/assetlinks.json', '/.well-known/assetlinks'], (_req, res) => {
+    res.type('application/json').sendFile(path.join(process.cwd(), 'public', '.well-known', 'assetlinks.json'));
+  });
+
   // Automated Push Notification API routes (100% background alerts to Android devices & browsers)
   app.get('/api/push/public-key', handleGetVapidPublicKey);
   app.post('/api/push/subscribe', handleSubscribe);

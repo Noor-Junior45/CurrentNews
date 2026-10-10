@@ -3,6 +3,8 @@ import { Mail, Send, CheckCircle2, AlertCircle, Phone, MapPin, Clock, ShieldAler
 import ProfilePageNavbar from '../components/ProfilePageNavbar';
 import { getCanonicalSiteOrigin } from '../utils/shareUrl';
 
+import { updateDocumentSEO } from '../utils/seo';
+
 export default function ContactView() {
   const [formData, setFormData] = useState({
     name: '',
@@ -15,7 +17,11 @@ export default function ContactView() {
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' });
-    document.title = 'Contact Newsroom & Editorial Desk | Current News Live';
+    updateDocumentSEO({
+      title: 'Contact Newsroom & Editorial Desk | Current News Live',
+      description: 'Contact Current News Live editorial staff, newsroom tip line, press inquiries, corrections desk, or legal and copyright representatives.',
+      canonicalPath: '/contact'
+    });
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {

@@ -163,12 +163,12 @@ export default function LikedView() {
                       onError={(e) => {
                         const target = e.currentTarget;
                         const fb = getFallbackImageUrl(post.imageUrl, post.imageUrlFallback);
-                        if (fb && target.src !== fb) {
+                        if (fb && target.src !== fb && !fb.startsWith('data:')) {
                           target.src = fb;
                         } else {
-                          const defaultEmblem = 'https://i.imgur.com/gFgShoZ.jpeg';
-                          if (target.src !== defaultEmblem) {
-                            target.src = defaultEmblem;
+                          const parent = target.parentElement;
+                          if (parent) {
+                            parent.style.display = 'none';
                           } else {
                             target.style.display = 'none';
                           }

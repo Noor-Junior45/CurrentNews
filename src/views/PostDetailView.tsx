@@ -337,9 +337,12 @@ export default function PostDetailView() {
     setJsonLd('post-jsonld-schema', jsonLdData);
 
     return () => {
-      // Restore default application title & canonical on unmount
+      // Revert base SEO tags if navigating away
       document.title = "Current News Live - Independent Ledger";
-      setLinkTag('canonical', 'https://www.currentnews.blog/');
+      const targetCanonical = window.location.pathname === '/' 
+        ? 'https://www.currentnews.blog/' 
+        : `https://www.currentnews.blog${window.location.pathname}`;
+      setLinkTag('canonical', targetCanonical);
 
       // Revert base SEO tags
       setMetaTag('name', 'description', 'Current News Live - The independent ledger delivering premium uncorrupted journalism, real-time investigative disclosures, opinion dispatches, and geopolitical analysis.');
@@ -538,10 +541,11 @@ export default function PostDetailView() {
           
           postData = sanitizePostImages(postData);
 
-          // If stored document had malformed URLs, auto-repair silently in Firestore
+          // If stored document had malformed URLs, auto-repair silently in Firestore (excluding data URLs)
           if (
-            (rawDoc.imageUrl && rawDoc.imageUrl !== postData.imageUrl) ||
-            (rawDoc.imageUrls && JSON.stringify(rawDoc.imageUrls) !== JSON.stringify(postData.imageUrls))
+            !rawDoc.imageUrl?.startsWith('data:') &&
+            ((rawDoc.imageUrl && rawDoc.imageUrl !== postData.imageUrl) ||
+             (rawDoc.imageUrls && JSON.stringify(rawDoc.imageUrls) !== JSON.stringify(postData.imageUrls)))
           ) {
             updateDoc(docRef, {
               imageUrl: postData.imageUrl || '',
@@ -771,14 +775,14 @@ export default function PostDetailView() {
             onError={(e) => {
               const target = e.currentTarget;
               const fb = resolvedFallback;
-              if (fb && target.src !== fb) {
+              if (fb && target.src !== fb && !fb.startsWith('data:')) {
                 target.src = fb;
               } else {
-                const defaultEmblem = 'https://i.imgur.com/gFgShoZ.jpeg';
-                if (target.src !== defaultEmblem) {
-                  target.src = defaultEmblem;
-                } else {
-                  target.style.display = 'none';
+                // Never substitute an editorial photograph with the application brand emblem/logo!
+                target.style.display = 'none';
+                const parent = target.closest('#featured-article-photo-container') as HTMLElement | null;
+                if (parent) {
+                  parent.style.display = 'none';
                 }
               }
             }}

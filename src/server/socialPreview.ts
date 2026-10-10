@@ -236,15 +236,20 @@ export async function handleSocialPreview(req: Request, res: Response, next: Nex
     }
   }
 
-  // 2. Editorial trust routes pre-rendering for crawlers: /about, /editorial-policy, /contact
-  if (reqPath === '/about' || reqPath === '/editorial-policy' || reqPath === '/contact') {
+  // 2. Editorial trust & legal routes pre-rendering for crawlers: /about, /editorial-policy, /contact, /privacy, /terms
+  if (reqPath === '/about' || reqPath === '/editorial-policy' || reqPath === '/contact' || reqPath === '/privacy' || reqPath === '/terms') {
     const pageTitles: Record<string, string> = {
       '/about': 'About Us | Current News Live — Independent Ledger',
       '/editorial-policy': 'Editorial & Fact-Checking Policy | Current News Live',
-      '/contact': 'Contact Newsroom & Editorial Desk | Current News Live'
+      '/contact': 'Contact Newsroom & Editorial Desk | Current News Live',
+      '/privacy': 'Global Privacy Policy & International Statutory Codex | Current News Live',
+      '/terms': 'Universal Terms of Service & International Legal Shield | Current News Live'
     };
 
+    const canonicalUrl = `https://www.currentnews.blog${reqPath}`;
     html = html.replace(/<title>.*?<\/title>/i, `<title>${pageTitles[reqPath]}</title>`);
+    html = html.replace(/<link rel="canonical"[^>]*>/gi, `<link rel="canonical" href="${canonicalUrl}" />`);
+    html = html.replace(/<meta property="og:url"[^>]*>/gi, `<meta property="og:url" content="${canonicalUrl}" />`);
 
     const trustPageHtml = `
     <header class="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
@@ -254,13 +259,16 @@ export async function handleSocialPreview(req: Request, res: Response, next: Nex
         <a href="/about">About</a>
         <a href="/editorial-policy">Editorial Policy</a>
         <a href="/contact">Contact</a>
+        <a href="/privacy">Privacy Policy</a>
+        <a href="/terms">Terms of Service</a>
       </nav>
     </header>
     <main class="max-w-4xl mx-auto px-4 sm:px-6 py-10">
       <h1 class="text-3xl font-black text-slate-900 mb-4">${escapeHtml(pageTitles[reqPath])}</h1>
       <div class="prose max-w-none text-slate-700 text-sm leading-relaxed space-y-4">
         <p><strong>Current News Live</strong> is an independent digital news ledger dedicated to transparent, verified, and uncorrupted reporting. Operating under strict journalistic independence, our newsroom provides breaking public interest journalism, geopolitical investigation, and technological insights.</p>
-        <p>Our editorial team adheres to a strict two-source verification policy, prompt transparent corrections, and an absolute firewall between commercial advertising and reporting.</p>
+        <p>Our editorial team adheres to a strict two-source verification policy, prompt transparent corrections, international copyright adherence under the Berne Convention and DMCA, worldwide privacy protections (GDPR, CCPA/CPRA, LGPD), and user data control rights.</p>
+        <p>Canonical Reference: <code>${canonicalUrl}</code></p>
       </div>
     </main>
     <footer class="bg-slate-900 text-slate-300 py-8 px-6 text-xs text-center border-t border-slate-800 mt-12">

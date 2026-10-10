@@ -114,8 +114,14 @@ export function sanitizeDomainName(domainStr?: string | null, defaultDomain = R2
  */
 export function cleanImageUrl(url?: string | null): string {
   if (!url || typeof url !== 'string') return '';
-  let cleaned = url.trim();
+  const cleaned = url.trim();
   if (!cleaned) return '';
+
+  // CRITICAL: If the URL is a data URL (base64 image) or blob URL, preserve it untouched!
+  // Any string replacement of // or slashes will corrupt the binary base64 data.
+  if (cleaned.startsWith('data:image/') || cleaned.startsWith('blob:')) {
+    return cleaned;
+  }
 
   // Filter out obvious non-image tool pages or invalid converter URLs
   if (!isLikelyImageUrl(cleaned)) {
@@ -123,24 +129,24 @@ export function cleanImageUrl(url?: string | null): string {
   }
 
   // 1. Fix duplicated, malformed, or missing-colon protocols (e.g. "https://https//", "https//", "http://https://", "https:")
-  cleaned = cleaned.replace(/^(?:https?[:/]*)+/i, 'https://');
+  let formatted = cleaned.replace(/^(?:https?[:/]*)+/i, 'https://');
 
   // 2. Fix accidental path insertions like "/uploads/photo.jpg/uploads/" or "/photo.jpg/uploads/"
   // e.g. "media.currentnews.blog/uploads/photo.jpg/uploads/2026/..." -> "media.currentnews.blog/uploads/2026/..."
-  cleaned = cleaned.replace(/\/uploads\/[^/]+\.(?:jpe?g|png|webp|gif|svg)\/uploads\//gi, '/uploads/');
-  cleaned = cleaned.replace(/\/uploads\/uploads\//gi, '/uploads/');
+  formatted = formatted.replace(/\/uploads\/[^/]+\.(?:jpe?g|png|webp|gif|svg)\/uploads\//gi, '/uploads/');
+  formatted = formatted.replace(/\/uploads\/uploads\//gi, '/uploads/');
 
   // 3. Fix double slashes inside the path (excluding https://)
-  cleaned = cleaned.replace(/(https?:\/\/)|(\/+)/g, (match, protocol) => {
+  formatted = formatted.replace(/(https?:\/\/)|(\/+)/g, (match, protocol) => {
     return protocol ? protocol : '/';
   });
 
   // 4. Imgur non-direct link normalization (e.g. imgur.com/abc -> i.imgur.com/abc.jpg)
-  if (cleaned.includes('imgur.com') && !/\.(png|jpg|jpeg|gif|webp)$/i.test(cleaned)) {
-    cleaned = cleaned.replace('imgur.com', 'i.imgur.com') + '.jpg';
+  if (formatted.includes('imgur.com') && !/\.(png|jpg|jpeg|gif|webp)$/i.test(formatted)) {
+    formatted = formatted.replace('imgur.com', 'i.imgur.com') + '.jpg';
   }
 
-  return cleaned;
+  return formatted;
 }
 
 /**
@@ -150,6 +156,10 @@ export function cleanImageUrl(url?: string | null): string {
  */
 export function getFallbackImageUrl(primaryUrl?: string | null, explicitFallback?: string | null): string {
   const cleanPrimary = cleanImageUrl(primaryUrl);
+  if (cleanPrimary.startsWith('data:image/') || cleanPrimary.startsWith('blob:')) {
+    return cleanPrimary;
+  }
+
   if (explicitFallback && typeof explicitFallback === 'string' && explicitFallback.trim().length > 0) {
     const cleanExplicit = cleanImageUrl(explicitFallback);
     if (cleanExplicit && cleanExplicit !== cleanPrimary) {

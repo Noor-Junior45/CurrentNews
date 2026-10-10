@@ -155,6 +155,7 @@ export default function PhotoAttachmentSection({
     }
 
     if (uploadedUrls.length > 0) {
+      setError(null);
       if (!primaryImageUrl) {
         // Set first as primary, remaining to gallery
         onPrimaryImageUrlChange(uploadedUrls[0]);

@@ -606,22 +606,25 @@ export default function AdminView() {
             createdAt: serverTimestamp()
           });
 
+          // Safe HTTP image URL for notification (Web Push payloads cannot exceed 4KB)
+          const safeNotifImage = (imageUrl && imageUrl.startsWith('http')) ? imageUrl : undefined;
+
           // 2. Trigger native device/browser notification on phone if permission is granted
           if ('Notification' in window && Notification.permission === 'granted') {
             if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
               navigator.serviceWorker.ready.then((reg) => {
                 reg.showNotification(notifTitle, {
                   body: notifBody,
-                  icon: imageUrl || 'https://i.imgur.com/gFgShoZ.jpeg',
+                  icon: safeNotifImage || 'https://i.imgur.com/gFgShoZ.jpeg',
                   badge: 'https://i.imgur.com/gFgShoZ.jpeg',
-                  image: imageUrl || undefined,
+                  image: safeNotifImage,
                   data: { url: postLink }
                 } as any);
               }).catch(() => {});
             } else {
               new Notification(notifTitle, {
                 body: notifBody,
-                icon: imageUrl || 'https://i.imgur.com/gFgShoZ.jpeg'
+                icon: safeNotifImage || 'https://i.imgur.com/gFgShoZ.jpeg'
               });
             }
           }
@@ -637,7 +640,7 @@ export default function AdminView() {
                 body: notifBody,
                 url: `/post/${publishedPostId}/${slugify(title.trim())}`,
                 postId: publishedPostId,
-                image: imageUrl || undefined,
+                image: safeNotifImage,
                 icon: 'https://i.imgur.com/gFgShoZ.jpeg'
               })
             }).then(res => res.json()).then(pushStats => {

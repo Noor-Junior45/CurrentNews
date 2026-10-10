@@ -8,6 +8,7 @@ import AdSpace from '../components/AdSpace';
 import { Newspaper, Search, RefreshCw, AlertTriangle, ChevronLeft, ChevronRight, ThumbsUp, WifiOff, Bookmark, ArrowRight } from 'lucide-react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { getRecentInProgressArticles, clearReadingProgress, ReadingProgressRecord } from '../utils/readingProgress';
+import { updateDocumentSEO } from '../utils/seo';
 
 function getHtmlTextPreview(htmlString: string, maxLength: number = 160): string {
   if (!htmlString) return '';
@@ -102,6 +103,15 @@ export default function HomeView() {
   useEffect(() => {
     sessionStorage.setItem('current_news_return_page', String(currentPage));
   }, [currentPage]);
+
+  // Keep canonical and SEO tags synchronized for the homepage
+  useEffect(() => {
+    updateDocumentSEO({
+      title: 'Current News Live — Independent Global Journalism & Live Ledger',
+      description: 'Comprehensive, verified global news coverage, breaking reports, finance, geopolitics, technology, and culture updated 24/7.',
+      canonicalPath: '/'
+    });
+  }, []);
 
   // Restore scroll position when returning from an article
   useEffect(() => {

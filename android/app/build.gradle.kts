@@ -121,6 +121,9 @@ dependencies {
     // Google Play Services Auth (Native device account picker & Google Sign-In)
     implementation("com.google.android.gms:play-services-auth:21.3.0")
 
+    // Google Mobile Ads (AdMob) SDK for Native Phone App Monetization
+    implementation("com.google.android.gms:play-services-ads:23.6.0")
+
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 

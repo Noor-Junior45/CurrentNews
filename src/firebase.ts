@@ -37,8 +37,13 @@ export interface FirestoreErrorInfo {
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  const isQuota = errorMessage.toLowerCase().includes('quota') || 
+                  errorMessage.toLowerCase().includes('resource-exhausted') ||
+                  (error as any)?.code === 'resource-exhausted';
+
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: errorMessage,
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
@@ -53,6 +58,14 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path
   };
+
+  // Quota exceeded is an infrastructure rate-limit, not a programming crash.
+  // Log gracefully to avoid throwing unhandled runtime exceptions.
+  if (isQuota) {
+    console.warn('Firestore daily read quota limit reached for project. Client falling back to local memory/cache gracefully.');
+    return;
+  }
+
   console.error('Firestore Error: ', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
 }

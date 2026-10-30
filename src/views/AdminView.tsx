@@ -10,6 +10,7 @@ import ProfilePageNavbar from '../components/ProfilePageNavbar';
 import EmbedHandler from '../components/EmbedHandler';
 import { safeParseDate, safeFormatDate } from '../utils/dateHelper';
 import { getCanonicalPostUrl, getCanonicalSiteOrigin } from '../utils/shareUrl';
+import { getAvailableWriters } from '../utils/writers';
 import { 
   collection, 
   getDocs, 
@@ -82,7 +83,9 @@ export default function AdminView() {
   const [customLinks, setCustomLinks] = useState<string[]>([]);
   const [hashtags, setHashtags] = useState<string[]>([]);
   const [hashtagInput, setHashtagInput] = useState('');
-  const [authorName, setAuthorName] = useState('');
+  const availableWriters = getAvailableWriters();
+  const [selectedWriter, setSelectedWriter] = useState<string>(availableWriters[0] || 'Current News Staff Report');
+  const [authorName, setAuthorName] = useState(availableWriters[0] || 'Current News Staff Report');
   const [category, setCategory] = useState('General');
   const [targetStatus, setTargetStatus] = useState<'published' | 'draft'>('published');
   const [sendEmailAlert, setSendEmailAlert] = useState(true);
@@ -427,7 +430,8 @@ export default function AdminView() {
     setCustomLinks([]);
     setHashtags([]);
     setHashtagInput('');
-    setAuthorName('');
+    setSelectedWriter(availableWriters[0] || 'Current News Staff Report');
+    setAuthorName(availableWriters[0] || 'Current News Staff Report');
     setCategory('General');
     setImageUrl('');
     setImageUrlFallback('');
@@ -471,6 +475,8 @@ export default function AdminView() {
       .filter(tag => tag.length > 0)
       .map(tag => tag.startsWith('#') ? tag : '#' + tag);
 
+    const resolvedAuthor = (selectedWriter === 'custom' ? authorName.trim() : selectedWriter) || globalPenName.trim() || 'Current News Staff Report';
+
     const postPayload: any = {
       title: title.trim(),
       content: content,
@@ -478,7 +484,7 @@ export default function AdminView() {
       facebookUrl: facebookUrl.trim(),
       customLinks: filteredCustomLinks,
       hashtags: filteredHashtags,
-      authorName: globalPenName.trim() || 'Current News Staff Report',
+      authorName: resolvedAuthor,
       authorEmail: user?.email || '',
       authorId: user?.uid || '',
       category: category,
@@ -679,7 +685,17 @@ export default function AdminView() {
     setFacebookUrl(post.facebookUrl || '');
     setCustomLinks(post.customLinks || []);
     setHashtags(post.hashtags || []);
-    setAuthorName(post.authorName || '');
+    const postAuthor = (post.authorName || '').trim();
+    if (availableWriters.includes(postAuthor)) {
+      setSelectedWriter(postAuthor);
+      setAuthorName(postAuthor);
+    } else if (postAuthor) {
+      setSelectedWriter('custom');
+      setAuthorName(postAuthor);
+    } else {
+      setSelectedWriter(availableWriters[0] || 'Current News Staff Report');
+      setAuthorName(availableWriters[0] || 'Current News Staff Report');
+    }
     setCategory(post.category || 'General');
     setTargetStatus(post.status || 'published');
     const sanitizedPost = sanitizePostImages(post);
@@ -1025,6 +1041,46 @@ export default function AdminView() {
                   <option value="Health">Health & Lifestyle</option>
                   <option value="World">World Dispatches</option>
                 </select>
+              </div>
+
+              {/* Writer / Byline selector dynamically populated from VITE_WRITERS env variable */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2 font-mono flex items-center justify-between" htmlFor="post-writer">
+                  <span>Editorial Byline / Writer *</span>
+                  <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-sans normal-case font-medium">
+                    (Configured via VITE_WRITERS)
+                  </span>
+                </label>
+                <select
+                  id="post-writer"
+                  value={selectedWriter}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setSelectedWriter(val);
+                    if (val !== 'custom') {
+                      setAuthorName(val);
+                    }
+                  }}
+                  className="w-full px-4 py-3 border border-slate-300 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 focus:outline-hidden focus:ring-1 focus:ring-slate-950 dark:focus:ring-indigo-500 block font-sans font-medium text-slate-800 dark:text-slate-200"
+                >
+                  {availableWriters.map((w) => (
+                    <option key={w} value={w}>
+                      {w}
+                    </option>
+                  ))}
+                  <option value="custom">+ Custom Write-In Reporter Name</option>
+                </select>
+
+                {selectedWriter === 'custom' && (
+                  <input
+                    type="text"
+                    placeholder="Enter custom reporter / author name..."
+                    value={authorName}
+                    onChange={(e) => setAuthorName(e.target.value)}
+                    className="w-full mt-2 px-4 py-2.5 border border-slate-300 dark:border-slate-700 rounded-lg text-xs bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-sans"
+                    required
+                  />
+                )}
               </div>
 
               {/* Redesigned Clean Photo Attachment Section */}

@@ -5,10 +5,12 @@ import { Post, slugify } from '../types';
 import { sanitizePostImages } from '../utils/imageUrl';
 import BlogPostCard from '../components/BlogPostCard';
 import AdSpace from '../components/AdSpace';
+import AdMobNativeAd from '../components/AdMobNativeAd';
 import { Newspaper, Search, RefreshCw, AlertTriangle, ChevronLeft, ChevronRight, ThumbsUp, WifiOff, Bookmark, ArrowRight } from 'lucide-react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { getRecentInProgressArticles, clearReadingProgress, ReadingProgressRecord } from '../utils/readingProgress';
 import { updateDocumentSEO } from '../utils/seo';
+import { getCompressedStories, saveCompressedStories } from '../utils/compressedStorage';
 
 function getHtmlTextPreview(htmlString: string, maxLength: number = 160): string {
   if (!htmlString) return '';
@@ -64,11 +66,20 @@ function BlogPostCardSkeleton() {
 }
 
 export default function HomeView() {
-  const [posts, setPosts] = useState<Post[]>([]);
+  const [posts, setPosts] = useState<Post[]>(() => {
+    const compressed = getCompressedStories();
+    return compressed && compressed.length > 0 ? compressed : [];
+  });
   const [globalPenName, setGlobalPenName] = useState<string>('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(() => {
+    const compressed = getCompressedStories();
+    return !(compressed && compressed.length > 0);
+  });
   const [error, setError] = useState<string | null>(null);
-  const [isOfflineCached, setIsOfflineCached] = useState(false);
+  const [isOfflineCached, setIsOfflineCached] = useState<boolean>(() => {
+    const compressed = getCompressedStories();
+    return Boolean(compressed && compressed.length > 0);
+  });
   const [searchTerm, setSearchTerm] = useState('');
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -179,23 +190,43 @@ export default function HomeView() {
   };
 
   const fetchPosts = async () => {
-    setLoading(true);
+    // Only show full loading spinner if no compressed stories exist in storage
+    if (posts.length === 0) {
+      setLoading(true);
+    }
     setError(null);
-    setIsOfflineCached(false);
     const path = 'posts';
     try {
-      // Recover dynamic editor pen name
+      // 1. Fast server-cached chunked API (<40ms, saves mobile phone data and quota)
       try {
-        const docSettings = await getDoc(doc(db, 'settings', 'editorProfile'));
-        if (docSettings.exists()) {
-          setGlobalPenName(docSettings.data().penName || '');
+        const params = new URLSearchParams();
+        if (selectedCategory && selectedCategory !== 'All') {
+          params.set('category', selectedCategory);
         }
-      } catch (settingsErr) {
-        console.warn('Failed to load global profile name', settingsErr);
+        if (searchTerm) {
+          params.set('search', searchTerm);
+        }
+        params.set('limit', '30');
+
+        const response = await fetch(`/api/posts?${params.toString()}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data && Array.isArray(data.posts) && data.posts.length > 0) {
+            const fetchedPosts = data.posts.map(sanitizePostImages);
+            setPosts(fetchedPosts);
+            setLoading(false);
+            setIsOfflineCached(false);
+            // Save in compressed user storage for instant subsequent loads
+            saveCompressedStories(fetchedPosts);
+            return;
+          }
+        }
+      } catch (apiErr) {
+        console.debug('Server API fetch deferred to direct SDK:', apiErr);
       }
 
-      // Variable pagination unbounded by arbitrary 100 limit - fetches all publications for infinite scalable pagination
-      const q = query(collection(db, path), orderBy('createdAt', 'desc'));
+      // 2. Direct Firestore fallback (used if offline or direct SDK required)
+      const q = query(collection(db, path), orderBy('createdAt', 'desc'), limit(30));
       const querySnapshot = await getDocs(q);
       const fetchedPosts: Post[] = [];
       querySnapshot.forEach((doc) => {
@@ -204,32 +235,30 @@ export default function HomeView() {
           ...doc.data()
         } as Post));
       });
-      setPosts(fetchedPosts);
-      
-      // Save to localStorage for robust offline capability
-      try {
-        localStorage.setItem('cached_posts', JSON.stringify(fetchedPosts));
-        // Pre-cache individual posts to support single article views offline
-        fetchedPosts.forEach((post) => {
-          localStorage.setItem('cached_post_' + post.id, JSON.stringify(post));
-        });
-      } catch (cacheErr) {
-        console.warn('Failed to save posts cache', cacheErr);
+      if (fetchedPosts.length > 0) {
+        setPosts(fetchedPosts);
+        setIsOfflineCached(false);
+        saveCompressedStories(fetchedPosts);
       }
-    } catch (err) {
-      console.error('Fetch posts failed, checking offline cache:', err);
+    } catch (err: any) {
+      console.warn('Fetch posts from network deferred, checking compressed storage:', err?.message || err);
       try {
-        const cached = localStorage.getItem('cached_posts');
-        if (cached) {
-          const cachedPosts = JSON.parse(cached);
-          setPosts(Array.isArray(cachedPosts) ? cachedPosts.map(sanitizePostImages) : []);
+        const compressedPosts = getCompressedStories();
+        if (compressedPosts && compressedPosts.length > 0) {
+          setPosts(compressedPosts.map(sanitizePostImages));
           setIsOfflineCached(true);
+          setError(null);
         } else {
-          setError('Could not retrieve publications. Please make sure the database is provisioned and active.');
+          const isQuota = String(err?.message || err).toLowerCase().includes('quota');
+          if (isQuota) {
+            setError('The free daily database read quota has been reached for today. Displaying cached dispatches while the daily quota resets.');
+          } else {
+            setError('Could not retrieve publications. Please make sure the database is provisioned and active.');
+          }
           try {
             handleFirestoreError(err, OperationType.GET, path);
           } catch (wrappedErr) {
-            // Suppress breaking exception to let state handle gracefully in the UI
+            // Graceful UI handling
           }
         }
       } catch (cacheReadErr) {
@@ -302,15 +331,15 @@ export default function HomeView() {
               <button
                 key={cat}
                 onClick={() => setSelectedCategory(cat)}
-                className={`min-h-[44px] py-2.5 px-3 sm:px-4 text-xs font-semibold tracking-wider uppercase transition-all duration-200 cursor-pointer whitespace-nowrap flex items-center gap-1.5 border-b-2 -mb-px hover:text-slate-900 dark:hover:text-slate-100 ${
+                className={`min-h-[44px] py-2.5 px-3 sm:px-4 text-xs font-bold tracking-wider uppercase transition-all duration-200 cursor-pointer whitespace-nowrap flex items-center gap-1.5 border-b-2 -mb-px hover:text-black dark:hover:text-white ${
                   isSelected 
-                    ? 'bg-amber-100/60 text-amber-950 border-amber-600/80 dark:bg-amber-950/40 dark:text-amber-200 dark:border-amber-500 rounded-t-lg' 
-                    : 'bg-transparent border-transparent text-slate-400 dark:text-slate-500 hover:border-slate-350'
+                    ? 'bg-amber-100/70 text-black border-amber-600/90 dark:bg-amber-950/40 dark:text-amber-200 dark:border-amber-500 rounded-t-lg' 
+                    : 'bg-transparent border-transparent text-black dark:text-slate-100 hover:border-black/30 dark:hover:border-white/30'
                 }`}
                 id={`cat-tab-${cat.toLowerCase()}`}
               >
-                <span>{cat === 'All' ? 'All' : cat}</span>
-                <span className={`text-[9px] font-mono font-bold px-1 py-0.5 rounded-full ${isSelected ? 'bg-amber-200 text-amber-950 dark:bg-amber-900/60 dark:text-amber-300' : 'bg-slate-200/60 dark:bg-slate-900 text-slate-500'}`}>
+                <span className="font-bold text-black dark:text-slate-100">{cat === 'All' ? 'All' : cat}</span>
+                <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-full ${isSelected ? 'bg-amber-200 text-black dark:bg-amber-900/60 dark:text-amber-300' : 'bg-stone-200/90 dark:bg-stone-800 text-black dark:text-slate-200'}`}>
                   {count}
                 </span>
               </button>
@@ -499,9 +528,9 @@ export default function HomeView() {
             {paginatedPosts.map((post, idx) => (
               <React.Fragment key={post.id}>
                 <BlogPostCard post={post} globalPenName={globalPenName} />
-                {idx === 5 && paginatedPosts.length > 6 && (
+                {(idx === 2 || idx === 5) && paginatedPosts.length > idx + 1 && (
                   <div className="col-span-1 sm:col-span-2 lg:col-span-3 px-4 sm:px-0">
-                    <AdSpace type="in-feed" />
+                    <AdMobNativeAd slotKey={`feed-card-${currentPage}-${idx}`} />
                   </div>
                 )}
               </React.Fragment>

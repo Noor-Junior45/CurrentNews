@@ -6,12 +6,14 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { Post, slugify } from '../types';
 import { cleanImageUrl, getFallbackImageUrl, sanitizePostImages } from '../utils/imageUrl';
 import AdSpace from '../components/AdSpace';
+import AdMobNativeAd from '../components/AdMobNativeAd';
 import EmbedHandler from '../components/EmbedHandler';
 import { Calendar, ChevronLeft, Award, Clock, Send, Copy, Check, Share2, ThumbsUp, ThumbsDown, ArrowRight, WifiOff, Eye, Hash, Bookmark, X } from 'lucide-react';
 import { saveReadingProgress, getReadingProgress, ReadingProgressRecord } from '../utils/readingProgress';
 import { signInWithGoogleSafe } from '../utils/authHelper';
 import { safeFormatDate, safeToIsoString } from '../utils/dateHelper';
 import { getCanonicalPostUrl } from '../utils/shareUrl';
+import { getCompressedStory, saveCompressedStory } from '../utils/compressedStorage';
 
 function getHtmlTextPreview(htmlString: string, maxLength: number = 160): string {
   if (!htmlString) return '';
@@ -28,11 +30,22 @@ function getHtmlTextPreview(htmlString: string, maxLength: number = 160): string
 export default function PostDetailView() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [post, setPost] = useState<Post | null>(null);
+  const [post, setPost] = useState<Post | null>(() => {
+    if (id) {
+      const cached = getCompressedStory(id);
+      if (cached) return sanitizePostImages(cached);
+    }
+    return null;
+  });
   const [globalPenName, setGlobalPenName] = useState<string>('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(() => {
+    if (id && getCompressedStory(id)) return false;
+    return true;
+  });
   const [error, setError] = useState<string | null>(null);
-  const [isOfflineCached, setIsOfflineCached] = useState(false);
+  const [isOfflineCached, setIsOfflineCached] = useState<boolean>(() => {
+    return Boolean(id && getCompressedStory(id));
+  });
   const [copied, setCopied] = useState(false);
   const [relatedPosts, setRelatedPosts] = useState<Post[]>([]);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
@@ -514,18 +527,27 @@ export default function PostDetailView() {
   useEffect(() => {
     const fetchPost = async () => {
       if (!id) return;
-      setLoading(true);
+      if (!post) {
+        setLoading(true);
+      }
       setError(null);
-      setIsOfflineCached(false);
 
-      // Load global pen name setting
+      // 1. Ultra-fast server-cached article API (loads in <30ms, minimizes mobile data)
       try {
-        const docSettings = await getDoc(doc(db, 'settings', 'editorProfile'));
-        if (docSettings.exists()) {
-          setGlobalPenName(docSettings.data().penName || '');
+        const resp = await fetch(`/api/posts/${id}`);
+        if (resp.ok) {
+          const json = await resp.json();
+          if (json && json.post) {
+            const sanitized = sanitizePostImages(json.post);
+            setPost(sanitized);
+            setLoading(false);
+            setIsOfflineCached(false);
+            saveCompressedStory(sanitized);
+            return;
+          }
         }
-      } catch (settingsErr) {
-        console.warn('Failed to load global profile settings', settingsErr);
+      } catch (apiErr) {
+        console.debug('Server API single post fetch deferred to direct SDK:', apiErr);
       }
 
       const docPath = `posts/${id}`;
@@ -569,27 +591,25 @@ export default function PostDetailView() {
           }
           
           setPost(postData);
-          try {
-            localStorage.setItem('cached_post_' + id, JSON.stringify(postData));
-          } catch (cacheErr) {
-            console.warn('Failed to save post cache', cacheErr);
-          }
+          saveCompressedStory(postData);
+          setIsOfflineCached(false);
         } else {
           setError('Article not found. The article could have been removed by an administrator or has an incorrect web link.');
         }
-      } catch (err) {
-        console.error('Fetch post failed, checking offline cache:', err);
+      } catch (err: any) {
+        console.warn('Network fetch deferred, checking compressed storage:', err?.message || err);
         try {
-          const cached = localStorage.getItem('cached_post_' + id);
-          if (cached) {
-            setPost(sanitizePostImages(JSON.parse(cached)));
+          const compressed = getCompressedStory(id);
+          if (compressed) {
+            setPost(sanitizePostImages(compressed));
             setIsOfflineCached(true);
+            setError(null);
           } else {
-            setError('Failed to fetch article details. There might be a temporary server disconnection.');
-            try {
-              handleFirestoreError(err, OperationType.GET, docPath);
-            } catch (wrappedErr) {
-              // Keep state running for client-side rendering
+            const isQuota = String(err?.message || err).toLowerCase().includes('quota');
+            if (isQuota) {
+              setError('The free daily database read quota has been reached for today. Cached stories remain available while the daily quota resets.');
+            } else {
+              setError('Failed to fetch article details. There might be a temporary server disconnection.');
             }
           }
         } catch (cacheReadErr) {
@@ -841,6 +861,7 @@ export default function PostDetailView() {
             {topPhotos}
             <div dangerouslySetInnerHTML={{ __html: firstHalf }} className="article-rich-text prose max-w-none break-word break-words mb-4" />
             {middlePhotos}
+            <AdMobNativeAd slotKey="article-middle" />
             <div dangerouslySetInnerHTML={{ __html: secondHalf }} className="article-rich-text prose max-w-none break-word break-words mt-4" id="article-content" />
             {bottomPhotos}
           </div>
@@ -861,7 +882,7 @@ export default function PostDetailView() {
             dangerouslySetInnerHTML={{ __html: firstChunk }}
           />
           {middlePhotos}
-          <AdSpace type="in-article" />
+          <AdMobNativeAd slotKey="article-middle" />
           <div 
             className="article-rich-text prose max-w-none break-word break-words mt-4"
             dangerouslySetInnerHTML={{ __html: secondChunk }}
@@ -889,146 +910,148 @@ export default function PostDetailView() {
   const dynamicShareUrl = getCanonicalPostShareUrl();
 
   return (
-    <div className="w-full min-h-screen bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100" id={`article-page-outer-container-${post.id}`}>
+    <div className="w-full min-h-screen bg-[#f7f4ed] dark:bg-[#161412] text-black dark:text-slate-100 transition-colors" id={`article-page-outer-container-${post.id}`}>
       <article className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8" id={`article-${post.id}`}>
         
         {/* Article Breadcrumbs Path */}
-        <nav className="flex items-center space-x-2 text-xs font-semibold uppercase tracking-wider text-slate-500 mb-6" id="breadcrumbs-header">
+        <nav className="flex items-center space-x-2 text-xs font-bold uppercase tracking-wider text-black dark:text-slate-200 mb-6" id="breadcrumbs-header">
           <button 
             type="button"
             onClick={handleReturnToFeed} 
-            className="hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer inline-flex items-center gap-1 font-bold"
+            className="hover:text-emerald-800 dark:hover:text-white text-black dark:text-slate-100 transition-colors cursor-pointer inline-flex items-center gap-1 font-extrabold"
           >
-            <ChevronLeft className="h-3.5 w-3.5 -ml-1 text-slate-400" />
+            <ChevronLeft className="h-3.5 w-3.5 -ml-1 text-black dark:text-slate-200" />
             <span>Home</span>
           </button>
-          <span className="text-slate-400 font-normal">/</span>
+          <span className="text-black/50 dark:text-slate-500 font-bold">/</span>
           <Link 
             to={`/?category=${encodeURIComponent(post.category || 'General')}`} 
-            className="hover:text-emerald-600 dark:hover:text-emerald-400 text-slate-600 dark:text-slate-400 transition-colors"
+            className="hover:text-emerald-700 dark:hover:text-emerald-400 text-black dark:text-slate-100 font-bold transition-colors"
           >
             {post.category || 'General'}
           </Link>
-          <span className="text-slate-400 font-normal">/</span>
-          <span className="text-slate-900 dark:text-white font-extrabold truncate max-w-[160px] xs:max-w-[220px] sm:max-w-xs md:max-w-md">
+          <span className="text-black/50 dark:text-slate-500 font-bold">/</span>
+          <span className="text-black dark:text-white font-black truncate max-w-[160px] xs:max-w-[220px] sm:max-w-xs md:max-w-md">
             Current dispatch
           </span>
         </nav>
 
         {isOfflineCached && (
-          <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-900/60 rounded-xl p-3 px-4 mb-6 flex items-center gap-2.5 text-amber-900 dark:text-amber-200 text-xs font-medium" id="offline-banner">
-            <WifiOff className="h-4 w-4 text-amber-500 shrink-0 animate-pulse" />
+          <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-900/60 rounded-xl p-3 px-4 mb-6 flex items-center gap-2.5 text-black dark:text-amber-200 text-xs font-bold" id="offline-banner">
+            <WifiOff className="h-4 w-4 text-amber-600 shrink-0 animate-pulse" />
             <span><strong>Offline Mode:</strong> Viewing a saved copy of this dispatch retrieved from local memory.</span>
           </div>
         )}
 
         {/* Article Heading */}
-        <h1 className="font-display font-black text-2xl sm:text-3xl md:text-4xl lg:text-5xl text-slate-900 dark:text-white tracking-tight leading-tight mb-4">
+        <h1 className="font-display font-black text-2xl sm:text-3xl md:text-4xl lg:text-5xl text-black dark:text-white tracking-tight leading-tight mb-4">
           {post.title}
         </h1>
 
         {/* Writer Name, Avatar, Tag, Date, Time Read (In single line) */}
-        <div className="flex items-center flex-wrap gap-x-3 gap-y-2 text-xs text-slate-600 dark:text-slate-400 font-sans mb-5" id="article-meta-line">
+        <div className="flex items-center flex-wrap gap-x-3 gap-y-2 text-xs text-black dark:text-slate-200 font-sans mb-5 font-semibold" id="article-meta-line">
           <div className="flex items-center space-x-2">
             <img 
               src="https://i.imgur.com/gq2X5nE.jpeg" 
               alt="Current News Avatar" 
-              className="h-7 w-7 sm:h-8 sm:w-8 rounded-full object-cover shrink-0"
+              className="h-7 w-7 sm:h-8 sm:w-8 rounded-full object-cover shrink-0 border border-stone-300 dark:border-stone-700"
               referrerPolicy="no-referrer"
             />
-            <span className="font-semibold text-slate-900 dark:text-slate-200">
+            <span className="font-bold text-black dark:text-white">
               {post.authorName || globalPenName || 'Chronicle Staff Report'}
             </span>
           </div>
 
-          <span className="text-slate-300 dark:text-slate-700 hidden xs:inline">•</span>
+          <span className="text-black/40 dark:text-slate-600 hidden xs:inline">•</span>
 
-          <span className="font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider text-[11px] sm:text-xs">
+          <span className="font-extrabold text-emerald-800 dark:text-emerald-400 uppercase tracking-wider text-[11px] sm:text-xs">
             {post.category || 'General'}
           </span>
 
-          <span className="text-slate-300 dark:text-slate-700">•</span>
+          <span className="text-black/40 dark:text-slate-600">•</span>
 
-          <span className="flex items-center space-x-1 text-slate-500 dark:text-slate-400">
-            <Calendar className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+          <span className="flex items-center space-x-1 text-black dark:text-slate-200 font-medium">
+            <Calendar className="h-3.5 w-3.5 text-black dark:text-slate-300 shrink-0" />
             <span>{publishDate}</span>
           </span>
 
-          <span className="text-slate-300 dark:text-slate-700">•</span>
+          <span className="text-black/40 dark:text-slate-600">•</span>
 
-          <span className="flex items-center space-x-1 text-slate-500 dark:text-slate-400">
-            <Clock className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+          <span className="flex items-center space-x-1 text-black dark:text-slate-200 font-medium">
+            <Clock className="h-3.5 w-3.5 text-black dark:text-slate-300 shrink-0" />
             <span>3 min read</span>
           </span>
         </div>
 
         {/* Reactions without background box, Views, Share (Twitter, WhatsApp) */}
-        <div className="flex flex-wrap items-center justify-between gap-4 py-2" id="article-actions-bar">
-          <div className="flex items-center gap-5 sm:gap-6 flex-wrap">
+        <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4 py-2" id="article-actions-bar">
+          <div className="flex items-center gap-4 sm:gap-6 flex-wrap">
             {/* Like Button without background box */}
             <button
               onClick={() => handleReaction('liked')}
-              className={`inline-flex items-center gap-1.5 text-xs font-semibold transition-colors cursor-pointer bg-transparent border-0 p-0 shadow-none ${
-                myReaction === 'liked' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              className={`inline-flex items-center gap-1.5 text-xs font-bold transition-colors cursor-pointer bg-transparent border-0 p-0 shadow-none ${
+                myReaction === 'liked' ? 'text-emerald-700 dark:text-emerald-400' : 'text-black dark:text-slate-100 hover:text-emerald-800 dark:hover:text-white'
               }`}
               title="Like this dispatch"
               id="article-like-btn"
             >
-              <ThumbsUp className={`h-4 w-4 ${myReaction === 'liked' ? 'fill-emerald-600 text-emerald-600 dark:fill-emerald-400 dark:text-emerald-400' : 'text-slate-500'}`} />
-              <span className="font-sans">{likes} Likes</span>
+              <ThumbsUp className={`h-4 w-4 ${myReaction === 'liked' ? 'fill-emerald-600 text-emerald-600 dark:fill-emerald-400 dark:text-emerald-400' : 'text-black dark:text-slate-200'}`} />
+              <span className="font-sans text-black dark:text-slate-100 font-bold">{likes} Likes</span>
             </button>
 
             {/* Dislike Button without background box */}
             <button
               onClick={() => handleReaction('disliked')}
-              className={`inline-flex items-center gap-1.5 text-xs font-semibold transition-colors cursor-pointer bg-transparent border-0 p-0 shadow-none ${
-                myReaction === 'disliked' ? 'text-rose-600 dark:text-rose-400' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              className={`inline-flex items-center gap-1.5 text-xs font-bold transition-colors cursor-pointer bg-transparent border-0 p-0 shadow-none ${
+                myReaction === 'disliked' ? 'text-rose-700 dark:text-rose-400' : 'text-black dark:text-slate-100 hover:text-rose-800 dark:hover:text-white'
               }`}
               title="Dislike this dispatch"
               id="article-dislike-btn"
             >
-              <ThumbsDown className={`h-4 w-4 ${myReaction === 'disliked' ? 'fill-rose-600 text-rose-600 dark:fill-rose-400 dark:text-rose-400' : 'text-slate-500'}`} />
-              <span className="font-sans">{dislikes} Dislikes</span>
+              <ThumbsDown className={`h-4 w-4 ${myReaction === 'disliked' ? 'fill-rose-600 text-rose-600 dark:fill-rose-400 dark:text-rose-400' : 'text-black dark:text-slate-200'}`} />
+              <span className="font-sans text-black dark:text-slate-100 font-bold">{dislikes} Dislikes</span>
             </button>
 
             {/* Views */}
-            <div className="inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400" title="Total article views" id="article-views-count">
-              <Eye className="h-4 w-4 text-slate-400 shrink-0" />
-              <span className="font-sans">{post.views || 0} Views</span>
+            <div className="inline-flex items-center gap-1.5 text-xs text-black dark:text-slate-100 font-bold" title="Total article views" id="article-views-count">
+              <Eye className="h-4 w-4 text-black dark:text-slate-300 shrink-0" />
+              <span className="font-sans text-black dark:text-slate-100 font-bold">{post.views || 0} Views</span>
             </div>
           </div>
 
-          {/* Social Share Buttons */}
-          <div className="flex items-center gap-3" id="article-share-buttons">
-            {typeof navigator !== 'undefined' && navigator.share && (
-              <button
-                onClick={handleNativeShare}
-                className="p-1.5 text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors cursor-pointer flex items-center justify-center bg-transparent border-0"
-                title="Share dispatch"
-                id="native-share-btn"
-              >
-                <Share2 className="h-4 w-4" />
-              </button>
-            )}
+          {/* Social Share Buttons (Guaranteed visible and touch-friendly on phone app & web) */}
+          <div className="flex items-center gap-2 xs:gap-2.5 sm:gap-3 shrink-0" id="article-share-buttons">
+            {/* Universal Native Share & Fallback Copy */}
+            <button
+              onClick={handleNativeShare}
+              className="min-h-[36px] px-2.5 py-1.5 rounded-lg border border-stone-300 dark:border-stone-700 bg-white/90 dark:bg-stone-900/90 text-black dark:text-white hover:bg-stone-100 dark:hover:bg-stone-800 active:scale-95 transition-all cursor-pointer flex items-center gap-1.5 text-xs font-extrabold shadow-3xs"
+              title="Share dispatch"
+              id="native-share-btn"
+            >
+              <Share2 className="h-3.5 w-3.5 text-black dark:text-white" />
+              <span className="text-[11px] font-black">{copied ? 'Copied!' : 'Share'}</span>
+            </button>
 
+            {/* X [Twitter] Share Button */}
             <a
               href={`https://x.com/intent/tweet?url=${encodeURIComponent(dynamicShareUrl)}&text=${encodeURIComponent(post.title)}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="p-1.5 text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors cursor-pointer flex items-center justify-center bg-transparent border-0"
-              title="Share on X"
+              className="min-h-[36px] min-w-[36px] px-2.5 py-1.5 rounded-lg border border-stone-300 dark:border-stone-700 bg-white/90 dark:bg-stone-900/90 text-black dark:text-white hover:bg-stone-100 dark:hover:bg-stone-800 active:scale-95 transition-all cursor-pointer flex items-center justify-center shadow-3xs"
+              title="Share on X (Twitter)"
               id="twitter-share-btn"
             >
-              <svg className="h-4 w-4 fill-current" viewBox="0 0 24 24" aria-hidden="true">
+              <svg className="h-3.5 w-3.5 fill-current" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
               </svg>
             </a>
 
+            {/* WhatsApp Share Button */}
             <a
               href={`https://api.whatsapp.com/send?text=${encodeURIComponent(`${post.title}\n\n${dynamicShareUrl}`)}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="p-1.5 text-[#25D366] hover:opacity-80 transition-opacity cursor-pointer flex items-center justify-center bg-transparent border-0"
+              className="min-h-[36px] min-w-[36px] px-2.5 py-1.5 rounded-lg border border-emerald-300 dark:border-emerald-800/70 bg-[#25D366]/10 dark:bg-emerald-950/40 text-[#25D366] hover:bg-[#25D366]/20 dark:hover:bg-emerald-900/60 active:scale-95 transition-all cursor-pointer flex items-center justify-center shadow-3xs"
               title="Share on WhatsApp"
               id="whatsapp-share-btn"
             >
@@ -1040,7 +1063,7 @@ export default function PostDetailView() {
         </div>
 
         {/* Horizontal Line Dividing Heading and Description */}
-        <hr className="my-6 border-0 h-px bg-slate-200 dark:bg-slate-700" />
+        <hr className="my-6 border-0 h-px bg-stone-300 dark:bg-stone-800" />
 
         {/* YouTube and Facebook Embeds: stacked on phone, side-by-side on large screen */}
         <EmbedHandler youtubeUrl={post.youtubeUrl} facebookUrl={post.facebookUrl} isHeader={true} />
@@ -1086,8 +1109,8 @@ export default function PostDetailView() {
           if (galleryGridPhotos.length === 0) return null;
 
           return (
-            <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-800" id="article-gallery-container">
-              <h4 className="text-xs font-mono font-bold text-slate-500 uppercase tracking-widest mb-4">
+            <div className="mt-8 pt-6 border-t border-stone-300 dark:border-stone-800" id="article-gallery-container">
+              <h4 className="text-xs font-mono font-black text-black dark:text-slate-200 uppercase tracking-widest mb-4">
                 Photo Evidence & Gallery ({galleryGridPhotos.length})
               </h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1097,7 +1120,7 @@ export default function PostDetailView() {
                   return (
                     <div 
                       key={idx} 
-                      className="group overflow-hidden rounded-xl bg-slate-100 dark:bg-slate-900 cursor-pointer"
+                      className="group overflow-hidden rounded-xl bg-stone-200/50 dark:bg-slate-900 cursor-pointer"
                       onClick={() => setLightboxImage(rSrc)}
                     >
                       <img 
@@ -1124,8 +1147,8 @@ export default function PostDetailView() {
 
         {/* Tags Section without pill shapes, with comma between tags */}
         {post.hashtags && post.hashtags.length > 0 && (
-          <div className="mt-8 pt-4 flex flex-wrap items-center gap-1 text-xs text-slate-600 dark:text-slate-400 font-medium" id="article-hashtags">
-            <span className="font-bold text-slate-900 dark:text-white mr-1">#tags:</span>
+          <div className="mt-8 pt-4 flex flex-wrap items-center gap-1 text-xs text-black dark:text-slate-200 font-bold" id="article-hashtags">
+            <span className="font-black text-black dark:text-white mr-1">#tags:</span>
             {post.hashtags.map((tag, idx) => {
               const cleanTag = tag.trim().replace(/^#/, '');
               const isLast = idx === post.hashtags.length - 1;
@@ -1133,20 +1156,20 @@ export default function PostDetailView() {
                 <span key={idx} className="inline-flex items-center">
                   <Link
                     to={`/?search=${encodeURIComponent(cleanTag)}`}
-                    className="text-slate-600 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:underline transition-colors"
+                    className="text-black dark:text-slate-100 hover:text-emerald-700 dark:hover:text-emerald-400 hover:underline transition-colors font-bold"
                   >
                     #{cleanTag}
                   </Link>
-                  {!isLast && <span className="text-slate-400 mr-1.5">,</span>}
+                  {!isLast && <span className="text-black/60 dark:text-slate-400 mr-1.5 font-bold">,</span>}
                 </span>
               );
             })}
           </div>
         )}
 
-        {/* AdSense Compliant In-Article Bottom Unit (displayed only when substantive content exists) */}
+        {/* AdMob Native Advanced In-Article Bottom Unit */}
         {post && post.content && post.content.length > 200 && (
-          <AdSpace type="article-bottom" className="my-8" />
+          <AdMobNativeAd slotKey="article-bottom" className="my-8" />
         )}
 
         {/* Bottom Reactions Section with message */}

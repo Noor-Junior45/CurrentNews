@@ -23,7 +23,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 
 // server.ts
 var import_express = __toESM(require("express"), 1);
-var import_path4 = __toESM(require("path"), 1);
+var import_path5 = __toESM(require("path"), 1);
 var import_vite = require("vite");
 var import_dotenv = __toESM(require("dotenv"), 1);
 var import_multer = __toESM(require("multer"), 1);
@@ -406,15 +406,33 @@ function handler4(req, res) {
   if (req.method !== "GET" && req.method !== "HEAD") {
     return res.status(405).send("Method Not Allowed");
   }
-  res.setHeader("Content-Type", "text/plain");
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+  res.setHeader("Cache-Control", "public, max-age=3600, s-maxage=86400");
   if (req.method === "HEAD") {
     return res.status(200).end();
   }
-  return res.status(200).send("google.com, pub-5865716270182311, DIRECT, f08c47fec0942fa0");
+  const pubId = "pub-5865716270182311";
+  return res.status(200).send(`google.com, ${pubId}, DIRECT, f08c47fec0942fa0
+`);
+}
+
+// api/app-ads.txt.ts
+function handler5(req, res) {
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    return res.status(405).send("Method Not Allowed");
+  }
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+  res.setHeader("Cache-Control", "public, max-age=3600, s-maxage=86400");
+  if (req.method === "HEAD") {
+    return res.status(200).end();
+  }
+  const pubId = "pub-5865716270182311";
+  return res.status(200).send(`google.com, ${pubId}, DIRECT, f08c47fec0942fa0
+`);
 }
 
 // api/sitemap.xml.ts
-async function handler5(req, res) {
+async function handler6(req, res) {
   if (req.method !== "GET" && req.method !== "HEAD") {
     return res.status(405).send("Method Not Allowed");
   }
@@ -672,11 +690,23 @@ async function handleR2Upload(req, res) {
       mimetype: file.mimetype
     });
   } catch (error) {
-    console.warn("Upload error:", error);
-    res.status(500).json({
+    console.warn("Upload fallback note:", error);
+    const file = req.file;
+    if (file && file.buffer) {
+      const mime = file.mimetype || "image/jpeg";
+      const fallbackDataUrl = `data:${mime};base64,${file.buffer.toString("base64")}`;
+      res.status(200).json({
+        success: true,
+        url: fallbackDataUrl,
+        fallbackUrl: fallbackDataUrl,
+        size: file.size,
+        mimetype: mime
+      });
+      return;
+    }
+    res.status(200).json({
       success: false,
-      error: "Failed to upload photo.",
-      details: error?.message || String(error)
+      error: "Failed to upload photo: " + (error?.message || "unknown error")
     });
   }
 }
@@ -686,6 +716,8 @@ var import_fs2 = __toESM(require("fs"), 1);
 var import_path2 = __toESM(require("path"), 1);
 
 // src/utils/imageUrl.ts
+var R2_CUSTOM_DOMAIN = "media.currentnews.blog";
+var R2_DEV_DOMAIN = "pub-03dd1274c4824531a1478f20e0485d75.r2.dev";
 var NON_IMAGE_HOSTS_AND_PATTERNS = [
   "freeconvert.com",
   "convertio.co",
@@ -746,21 +778,44 @@ function getYoutubeThumbnailUrl(youtubeUrl) {
 }
 function cleanImageUrl(url) {
   if (!url || typeof url !== "string") return "";
-  let cleaned = url.trim();
+  const cleaned = url.trim();
   if (!cleaned) return "";
+  if (cleaned.startsWith("data:image/") || cleaned.startsWith("blob:")) {
+    return cleaned;
+  }
   if (!isLikelyImageUrl(cleaned)) {
     return "";
   }
-  cleaned = cleaned.replace(/^(?:https?[:/]*)+/i, "https://");
-  cleaned = cleaned.replace(/\/uploads\/[^/]+\.(?:jpe?g|png|webp|gif|svg)\/uploads\//gi, "/uploads/");
-  cleaned = cleaned.replace(/\/uploads\/uploads\//gi, "/uploads/");
-  cleaned = cleaned.replace(/(https?:\/\/)|(\/+)/g, (match, protocol) => {
+  let formatted = cleaned.replace(/^(?:https?[:/]*)+/i, "https://");
+  formatted = formatted.replace(/\/uploads\/[^/]+\.(?:jpe?g|png|webp|gif|svg)\/uploads\//gi, "/uploads/");
+  formatted = formatted.replace(/\/uploads\/uploads\//gi, "/uploads/");
+  formatted = formatted.replace(/(https?:\/\/)|(\/+)/g, (match, protocol) => {
     return protocol ? protocol : "/";
   });
-  if (cleaned.includes("imgur.com") && !/\.(png|jpg|jpeg|gif|webp)$/i.test(cleaned)) {
-    cleaned = cleaned.replace("imgur.com", "i.imgur.com") + ".jpg";
+  if (formatted.includes("imgur.com") && !/\.(png|jpg|jpeg|gif|webp)$/i.test(formatted)) {
+    formatted = formatted.replace("imgur.com", "i.imgur.com") + ".jpg";
   }
-  return cleaned;
+  return formatted;
+}
+function getFallbackImageUrl(primaryUrl, explicitFallback) {
+  const cleanPrimary = cleanImageUrl(primaryUrl);
+  if (cleanPrimary.startsWith("data:image/") || cleanPrimary.startsWith("blob:")) {
+    return cleanPrimary;
+  }
+  if (explicitFallback && typeof explicitFallback === "string" && explicitFallback.trim().length > 0) {
+    const cleanExplicit = cleanImageUrl(explicitFallback);
+    if (cleanExplicit && cleanExplicit !== cleanPrimary) {
+      return cleanExplicit;
+    }
+  }
+  if (!cleanPrimary) return "";
+  if (cleanPrimary.includes(R2_CUSTOM_DOMAIN)) {
+    return cleanPrimary.replace(R2_CUSTOM_DOMAIN, R2_DEV_DOMAIN);
+  }
+  if (cleanPrimary.includes(R2_DEV_DOMAIN)) {
+    return cleanPrimary.replace(R2_DEV_DOMAIN, R2_CUSTOM_DOMAIN);
+  }
+  return cleanPrimary;
 }
 
 // src/server/socialPreview.ts
@@ -955,13 +1010,18 @@ async function handleSocialPreview(req, res, next) {
       return next();
     }
   }
-  if (reqPath === "/about" || reqPath === "/editorial-policy" || reqPath === "/contact") {
+  if (reqPath === "/about" || reqPath === "/editorial-policy" || reqPath === "/contact" || reqPath === "/privacy" || reqPath === "/terms") {
     const pageTitles = {
       "/about": "About Us | Current News Live \u2014 Independent Ledger",
       "/editorial-policy": "Editorial & Fact-Checking Policy | Current News Live",
-      "/contact": "Contact Newsroom & Editorial Desk | Current News Live"
+      "/contact": "Contact Newsroom & Editorial Desk | Current News Live",
+      "/privacy": "Global Privacy Policy & International Statutory Codex | Current News Live",
+      "/terms": "Universal Terms of Service & International Legal Shield | Current News Live"
     };
+    const canonicalUrl = `https://www.currentnews.blog${reqPath}`;
     html = html.replace(/<title>.*?<\/title>/i, `<title>${pageTitles[reqPath]}</title>`);
+    html = html.replace(/<link rel="canonical"[^>]*>/gi, `<link rel="canonical" href="${canonicalUrl}" />`);
+    html = html.replace(/<meta property="og:url"[^>]*>/gi, `<meta property="og:url" content="${canonicalUrl}" />`);
     const trustPageHtml = `
     <header class="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
       <a href="/" class="font-bold text-lg text-slate-900 tracking-tight uppercase">Current News Live</a>
@@ -970,13 +1030,16 @@ async function handleSocialPreview(req, res, next) {
         <a href="/about">About</a>
         <a href="/editorial-policy">Editorial Policy</a>
         <a href="/contact">Contact</a>
+        <a href="/privacy">Privacy Policy</a>
+        <a href="/terms">Terms of Service</a>
       </nav>
     </header>
     <main class="max-w-4xl mx-auto px-4 sm:px-6 py-10">
       <h1 class="text-3xl font-black text-slate-900 mb-4">${escapeHtml(pageTitles[reqPath])}</h1>
       <div class="prose max-w-none text-slate-700 text-sm leading-relaxed space-y-4">
         <p><strong>Current News Live</strong> is an independent digital news ledger dedicated to transparent, verified, and uncorrupted reporting. Operating under strict journalistic independence, our newsroom provides breaking public interest journalism, geopolitical investigation, and technological insights.</p>
-        <p>Our editorial team adheres to a strict two-source verification policy, prompt transparent corrections, and an absolute firewall between commercial advertising and reporting.</p>
+        <p>Our editorial team adheres to a strict two-source verification policy, prompt transparent corrections, international copyright adherence under the Berne Convention and DMCA, worldwide privacy protections (GDPR, CCPA/CPRA, LGPD), and user data control rights.</p>
+        <p>Canonical Reference: <code>${canonicalUrl}</code></p>
       </div>
     </main>
     <footer class="bg-slate-900 text-slate-300 py-8 px-6 text-xs text-center border-t border-slate-800 mt-12">
@@ -1301,14 +1364,229 @@ async function handleBroadcast(req, res) {
   }
 }
 
+// src/server/postsApi.ts
+var import_fs4 = __toESM(require("fs"), 1);
+var import_path4 = __toESM(require("path"), 1);
+var inMemoryPostsCache = [];
+var lastCacheTimestamp = 0;
+var CACHE_TTL_MS = 60 * 1e3;
+function getFirestoreConfig() {
+  let fbConfig = {};
+  try {
+    const configPath = import_path4.default.join(process.cwd(), "firebase-applet-config.json");
+    if (import_fs4.default.existsSync(configPath)) {
+      fbConfig = JSON.parse(import_fs4.default.readFileSync(configPath, "utf-8"));
+    }
+  } catch (e) {
+    console.warn("[Posts API] Failed to parse firebase-applet-config.json:", e);
+  }
+  return {
+    projectId: process.env.VITE_FIREBASE_PROJECT_ID || fbConfig.projectId || "gen-lang-client-0638643565",
+    firestoreDatabaseId: process.env.VITE_FIREBASE_DATABASE_ID || fbConfig.firestoreDatabaseId || "ai-studio-6e2ba5e1-c245-4586-90fd-9ba4777b81c4",
+    apiKey: process.env.VITE_FIREBASE_API_KEY || fbConfig.apiKey || ""
+  };
+}
+function parseFirestoreField(field) {
+  if (!field) return null;
+  if (field.stringValue !== void 0) return field.stringValue;
+  if (field.integerValue !== void 0) return parseInt(field.integerValue, 10);
+  if (field.doubleValue !== void 0) return parseFloat(field.doubleValue);
+  if (field.booleanValue !== void 0) return field.booleanValue;
+  if (field.timestampValue !== void 0) return field.timestampValue;
+  if (field.arrayValue !== void 0) {
+    return (field.arrayValue.values || []).map(parseFirestoreField);
+  }
+  if (field.mapValue !== void 0) {
+    const obj = {};
+    const fields = field.mapValue.fields || {};
+    for (const key of Object.keys(fields)) {
+      obj[key] = parseFirestoreField(fields[key]);
+    }
+    return obj;
+  }
+  return null;
+}
+function parseFirestoreDoc(doc2) {
+  if (!doc2 || !doc2.fields) return null;
+  const nameParts = (doc2.name || "").split("/");
+  const id = nameParts[nameParts.length - 1] || "";
+  if (!id) return null;
+  const fields = doc2.fields;
+  const post = {
+    id,
+    title: parseFirestoreField(fields.title) || "Untitled Dispatch",
+    content: parseFirestoreField(fields.content) || "",
+    category: parseFirestoreField(fields.category) || "General",
+    authorName: parseFirestoreField(fields.authorName) || "Current News Staff Report",
+    authorEmail: parseFirestoreField(fields.authorEmail) || "",
+    authorId: parseFirestoreField(fields.authorId) || "",
+    createdAt: parseFirestoreField(fields.createdAt) || (/* @__PURE__ */ new Date()).toISOString(),
+    updatedAt: parseFirestoreField(fields.updatedAt) || void 0,
+    imageUrl: parseFirestoreField(fields.imageUrl) || "",
+    imageUrlFallback: parseFirestoreField(fields.imageUrlFallback) || "",
+    imageUrls: parseFirestoreField(fields.imageUrls) || [],
+    imageUrlsFallback: parseFirestoreField(fields.imageUrlsFallback) || [],
+    imagePosition: parseFirestoreField(fields.imagePosition) || "top",
+    galleryPositions: parseFirestoreField(fields.galleryPositions) || [],
+    youtubeUrl: parseFirestoreField(fields.youtubeUrl) || "",
+    facebookUrl: parseFirestoreField(fields.facebookUrl) || "",
+    customLinks: parseFirestoreField(fields.customLinks) || [],
+    hashtags: parseFirestoreField(fields.hashtags) || [],
+    likes: parseFirestoreField(fields.likes) || 0,
+    dislikes: parseFirestoreField(fields.dislikes) || 0,
+    views: parseFirestoreField(fields.views) || 0,
+    status: parseFirestoreField(fields.status) || "published"
+  };
+  post.imageUrl = cleanImageUrl(post.imageUrl);
+  post.imageUrlFallback = getFallbackImageUrl(post.imageUrl, post.imageUrlFallback);
+  return post;
+}
+async function fetchAllPostsFromFirestore() {
+  const config = getFirestoreConfig();
+  const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/${config.firestoreDatabaseId}/documents:runQuery?key=${config.apiKey}`;
+  const queryBody = {
+    structuredQuery: {
+      from: [{ collectionId: "posts" }],
+      where: {
+        fieldFilter: {
+          field: { fieldPath: "status" },
+          op: "EQUAL",
+          value: { stringValue: "published" }
+        }
+      },
+      orderBy: [
+        {
+          field: { fieldPath: "createdAt" },
+          direction: "DESCENDING"
+        }
+      ],
+      limit: 100
+    }
+  };
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 6e3);
+  try {
+    const response = await fetch(firestoreUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(queryBody),
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+    if (!response.ok) {
+      const errText = await response.text();
+      console.warn("[Posts API] Firestore returned non-OK status:", response.status, errText);
+      return inMemoryPostsCache;
+    }
+    const data = await response.json();
+    const parsedPosts = [];
+    if (Array.isArray(data)) {
+      for (const item of data) {
+        if (item.document) {
+          const p = parseFirestoreDoc(item.document);
+          if (p) parsedPosts.push(p);
+        }
+      }
+    }
+    if (parsedPosts.length > 0) {
+      inMemoryPostsCache = parsedPosts;
+      lastCacheTimestamp = Date.now();
+    }
+    return inMemoryPostsCache;
+  } catch (err) {
+    clearTimeout(timeout);
+    console.warn("[Posts API] Network fetch error, serving memory cache:", err);
+    return inMemoryPostsCache;
+  }
+}
+async function handleGetPosts(req, res) {
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.setHeader("Cache-Control", "public, max-age=60, s-maxage=120, stale-while-revalidate=300");
+  const now = Date.now();
+  if (inMemoryPostsCache.length === 0 || now - lastCacheTimestamp > CACHE_TTL_MS) {
+    await fetchAllPostsFromFirestore();
+  }
+  let posts = [...inMemoryPostsCache];
+  const category = (req.query.category || "").trim().toLowerCase();
+  if (category && category !== "all") {
+    posts = posts.filter((p) => (p.category || "General").toLowerCase() === category);
+  }
+  const search = (req.query.search || "").trim().toLowerCase();
+  if (search) {
+    posts = posts.filter((p) => {
+      const titleMatch = (p.title || "").toLowerCase().includes(search);
+      const tagMatch = (p.hashtags || []).some((t) => t.toLowerCase().includes(search));
+      const contentMatch = (p.content || "").toLowerCase().includes(search);
+      return titleMatch || tagMatch || contentMatch;
+    });
+  }
+  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const limit = Math.max(1, Math.min(50, parseInt(req.query.limit, 10) || 10));
+  const offset = (page - 1) * limit;
+  const chunk = posts.slice(offset, offset + limit);
+  const hasMore = offset + limit < posts.length;
+  return res.status(200).json({
+    success: true,
+    posts: chunk,
+    total: posts.length,
+    page,
+    limit,
+    hasMore,
+    fromCache: now - lastCacheTimestamp < CACHE_TTL_MS
+  });
+}
+async function handleGetPostById(req, res) {
+  const id = req.params.id;
+  if (!id) {
+    return res.status(400).json({ error: "Post ID is required" });
+  }
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.setHeader("Cache-Control", "public, max-age=60, s-maxage=120, stale-while-revalidate=300");
+  let post = inMemoryPostsCache.find((p) => p.id === id);
+  if (!post) {
+    await fetchAllPostsFromFirestore();
+    post = inMemoryPostsCache.find((p) => p.id === id);
+  }
+  if (!post) {
+    return res.status(404).json({ error: "Article not found" });
+  }
+  return res.status(200).json({
+    success: true,
+    post
+  });
+}
+async function handleGetWriters(_req, res) {
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.setHeader("Cache-Control", "public, max-age=3600");
+  const envVal = process.env.VITE_WRITERS || process.env.WRITERS || "";
+  let writers = [];
+  if (envVal.trim().length > 0) {
+    writers = envVal.split(",").map((w) => w.trim()).filter((w) => w.length > 0);
+  }
+  if (writers.length === 0) {
+    writers = [
+      "Current News Staff Report",
+      "Investigative Editorial Bureau",
+      "Chief Political Correspondent",
+      "Technology & Science Desk",
+      "Global Affairs Dispatch",
+      "Chronicle Desk"
+    ];
+  }
+  return res.status(200).json({
+    success: true,
+    writers
+  });
+}
+
 // server.ts
 import_dotenv.default.config();
-var adaptVercelHandler = (handler6) => {
+var asyncHandler = (handler7) => {
   return async (req, res) => {
     try {
-      await handler6(req, res);
+      await handler7(req, res);
     } catch (error) {
-      console.error("Error in adapted Vercel handler:", error);
+      console.error("Error in route handler:", error);
       if (!res.headersSent) {
         res.status(500).send(error?.message || "Internal Server Error");
       }
@@ -1317,7 +1595,10 @@ var adaptVercelHandler = (handler6) => {
 };
 async function startServer() {
   const app = (0, import_express.default)();
-  const PORT = 3e3;
+  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3e3;
+  app.get("/healthz", (_req, res) => {
+    res.status(200).type("text/plain; charset=utf-8").send("OK");
+  });
   app.use(import_express.default.json());
   const upload = (0, import_multer.default)({
     storage: import_multer.default.memoryStorage(),
@@ -1349,16 +1630,20 @@ async function startServer() {
       handleR2Upload(req, res);
     });
   });
-  app.post("/api/mail/send-alert", adaptVercelHandler(handler));
-  app.all("/api/mail/inbound", adaptVercelHandler(handler2));
-  app.all("/sitemap.xml", adaptVercelHandler(handler5));
-  app.all("/rss.xml", adaptVercelHandler(handler3));
-  app.all("/ads.txt", adaptVercelHandler(handler4));
+  app.get("/api/posts", asyncHandler(handleGetPosts));
+  app.get("/api/posts/:id", asyncHandler(handleGetPostById));
+  app.get("/api/writers", asyncHandler(handleGetWriters));
+  app.post("/api/mail/send-alert", asyncHandler(handler));
+  app.all("/api/mail/inbound", asyncHandler(handler2));
+  app.all("/sitemap.xml", asyncHandler(handler6));
+  app.all("/rss.xml", asyncHandler(handler3));
+  app.all("/ads.txt", asyncHandler(handler4));
+  app.all("/app-ads.txt", asyncHandler(handler5));
   app.get("/robots.txt", (_req, res) => {
-    res.type("text/plain; charset=utf-8").sendFile(import_path4.default.join(process.cwd(), "public", "robots.txt"));
+    res.type("text/plain; charset=utf-8").sendFile(import_path5.default.join(process.cwd(), "public", "robots.txt"));
   });
   app.get(["/.well-known/assetlinks.json", "/.well-known/assetlinks"], (_req, res) => {
-    res.type("application/json").sendFile(import_path4.default.join(process.cwd(), "public", ".well-known", "assetlinks.json"));
+    res.type("application/json").sendFile(import_path5.default.join(process.cwd(), "public", ".well-known", "assetlinks.json"));
   });
   app.get("/api/push/public-key", handleGetVapidPublicKey);
   app.post("/api/push/subscribe", handleSubscribe);
@@ -1381,7 +1666,7 @@ async function startServer() {
     }
   });
   app.use(handleSocialPreview);
-  app.use("/uploads", import_express.default.static(import_path4.default.join(process.cwd(), "public", "uploads")));
+  app.use("/uploads", import_express.default.static(import_path5.default.join(process.cwd(), "public", "uploads")));
   if (process.env.NODE_ENV !== "production") {
     const vite = await (0, import_vite.createServer)({
       server: { middlewareMode: true },
@@ -1389,10 +1674,10 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = import_path4.default.join(process.cwd(), "dist");
+    const distPath = import_path5.default.join(process.cwd(), "dist");
     app.use(import_express.default.static(distPath));
     app.get("*", (req, res) => {
-      res.sendFile(import_path4.default.join(distPath, "index.html"));
+      res.sendFile(import_path5.default.join(distPath, "index.html"));
     });
   }
   app.listen(PORT, "0.0.0.0", () => {

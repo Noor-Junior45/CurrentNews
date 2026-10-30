@@ -1,14 +1,8 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import type { Request, Response } from 'express';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import crypto from 'crypto';
 
-export const config = {
-  api: {
-    bodyParser: false, // Let Busboy / multipart parser handle binary file stream in Vercel Serverless
-  },
-};
-
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: Request, res: Response) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed. Only POST is accepted.' });
   }

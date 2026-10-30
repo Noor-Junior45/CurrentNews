@@ -4,11 +4,12 @@ import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
 import multer from 'multer';
 
-// Import Vercel serverless handlers
+// Modular route handlers
 import sendAlertHandler from './api/mail/send-alert.js';
 import inboundHandler from './api/mail/inbound.js';
 import rssHandler from './api/rss.xml.js';
 import adsHandler from './api/ads.txt.js';
+import appAdsHandler from './api/app-ads.txt.js';
 import sitemapHandler from './api/sitemap.xml.js';
 import { handleR2Upload } from './src/server/r2Upload.js';
 import { handleSocialPreview } from './src/server/socialPreview.js';
@@ -19,18 +20,18 @@ import {
   handleBroadcast,
   handleGetSubscribersCount
 } from './src/server/pushNotifications.js';
+import { handleGetPosts, handleGetPostById, handleGetWriters } from './src/server/postsApi.js';
 
 // Load environment variables
 dotenv.config();
 
-// Helper to adapt Vercel serverless handler (req, res) to Express middleware (req, res)
-const adaptVercelHandler = (handler: any) => {
+// Helper to safely execute async route handlers with standard error catching
+const asyncHandler = (handler: any) => {
   return async (req: express.Request, res: express.Response) => {
     try {
-      // Vercel serverless request body is already parsed by express.json()
-      await handler(req as any, res as any);
+      await handler(req, res);
     } catch (error: any) {
-      console.error('Error in adapted Vercel handler:', error);
+      console.error('Error in route handler:', error);
       if (!res.headersSent) {
         res.status(500).send(error?.message || 'Internal Server Error');
       }
@@ -40,7 +41,12 @@ const adaptVercelHandler = (handler: any) => {
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+
+  // Health-check endpoint for Google Cloud Run / Container orchestrators
+  app.get('/healthz', (_req, res) => {
+    res.status(200).type('text/plain; charset=utf-8').send('OK');
+  });
 
   // Enable JSON request body parsing
   app.use(express.json());
@@ -86,20 +92,28 @@ async function startServer() {
     });
   });
 
-  // Backend mail endpoint for automated subscriber alerting adapted from the Vercel handler
-  app.post('/api/mail/send-alert', adaptVercelHandler(sendAlertHandler));
+  // High-performance server-cached articles API (fast chunked loading for mobile phones)
+  app.get('/api/posts', asyncHandler(handleGetPosts));
+  app.get('/api/posts/:id', asyncHandler(handleGetPostById));
+  app.get('/api/writers', asyncHandler(handleGetWriters));
+
+  // Backend mail endpoint for automated subscriber alerting
+  app.post('/api/mail/send-alert', asyncHandler(sendAlertHandler));
 
   // Inbound mail endpoint for webhook notifications and recipient autofill
-  app.all('/api/mail/inbound', adaptVercelHandler(inboundHandler));
+  app.all('/api/mail/inbound', asyncHandler(inboundHandler));
 
-  // Dynamically serve dynamic XML Sitemap endpoint adapted from the Vercel handler
-  app.all('/sitemap.xml', adaptVercelHandler(sitemapHandler));
+  // Dynamically serve dynamic XML Sitemap endpoint
+  app.all('/sitemap.xml', asyncHandler(sitemapHandler));
 
-  // Dynamically serve dynamic RSS Feed endpoint adapted from the Vercel handler
-  app.all('/rss.xml', adaptVercelHandler(rssHandler));
+  // Dynamically serve dynamic RSS Feed endpoint
+  app.all('/rss.xml', asyncHandler(rssHandler));
 
-  // Serve the ads.txt file adapted from the Vercel handler
-  app.all('/ads.txt', adaptVercelHandler(adsHandler));
+  // Serve the ads.txt file
+  app.all('/ads.txt', asyncHandler(adsHandler));
+
+  // Serve the app-ads.txt file for Google AdMob app verification
+  app.all('/app-ads.txt', asyncHandler(appAdsHandler));
 
   // Explicitly serve robots.txt with text/plain
   app.get('/robots.txt', (_req, res) => {

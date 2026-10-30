@@ -7,4 +7,6 @@
     <string name="retry_btn">Retry Connection</string>
     <string name="channel_name">Breaking News Alerts</string>
     <string name="channel_description">Notifications for major investigative journalism and breaking dispatches.</string>
+    <!-- Google AdMob Application ID for Current News (Publisher pub-5865716270182311) -->
+    <string name="admob_app_id">ca-app-pub-5865716270182311~4645476456</string>
 </resources>

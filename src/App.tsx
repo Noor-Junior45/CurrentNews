@@ -22,6 +22,7 @@ import AboutView from './views/AboutView';
 import ContactView from './views/ContactView';
 import EditorialPolicyView from './views/EditorialPolicyView';
 import { useAdSenseRouteGuard } from './hooks/useAdSenseRouteGuard';
+import { admobManager } from './utils/admob';
 
 import { useLocation } from 'react-router-dom';
 
@@ -92,6 +93,11 @@ export default function App() {
       }).catch((err) => {
         console.debug('Service Worker registration skipped:', err);
       });
+    }
+
+    // Initialize Google AdMob when running inside native phone app
+    if (admobManager.isNative()) {
+      admobManager.initialize();
     }
   }, []);
 

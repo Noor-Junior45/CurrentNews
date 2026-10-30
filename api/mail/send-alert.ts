@@ -1,4 +1,4 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import type { Request, Response } from 'express';
 
 async function sendResendEmail(toEmail: string, subject: string, htmlContent: string, textContent: string) {
   const apiKey = process.env.RESEND_API_KEY;
@@ -53,7 +53,7 @@ async function sendResendEmail(toEmail: string, subject: string, htmlContent: st
   return await response.json();
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: Request, res: Response) {
   // Support both POST (standard) and OPTIONS (for preflight if needed)
   if (req.method === 'OPTIONS') {
     return res.status(200).end();

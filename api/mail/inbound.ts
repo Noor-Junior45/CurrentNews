@@ -1,4 +1,4 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import type { Request, Response } from 'express';
 
 export const INBOUND_MAIL_CONFIG = {
   name: 'Current News',
@@ -12,7 +12,7 @@ export const INBOUND_MAIL_CONFIG = {
  * Serves canonical inbound mail configuration and processes inbound webhooks
  * for Current News <support@guashoomin.resend.app>.
  */
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: Request, res: Response) {
   // CORS & Preflight handling
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');

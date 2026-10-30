@@ -59,6 +59,11 @@
             </intent-filter>
         </service>
 
+        <!-- Google AdMob Mobile Ads SDK Application ID (Publisher pub-5865716270182311) -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="@string/admob_app_id" />
+
     </application>
 
 </manifest>

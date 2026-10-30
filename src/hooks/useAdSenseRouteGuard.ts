@@ -1,16 +1,21 @@
 import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { ADSENSE_CLIENT_ID } from '../components/AdSpace';
+import { admobManager } from '../utils/admob';
 
-// Non-content / utility screens where Google ads MUST NEVER run under AdSense Program Policies
+// Non-content / utility screens where ads MUST NEVER run
 const UTILITY_OR_NON_CONTENT_ROUTES = [
   '/admin',
   '/profile',
   '/settings',
+  '/signin',
+  '/login',
   '/liked',
   '/delete-account',
   '/privacy',
-  '/terms'
+  '/terms',
+  '/editorial-policy',
+  '/about',
+  '/contact'
 ];
 
 export function useAdSenseRouteGuard() {
@@ -21,7 +26,20 @@ export function useAdSenseRouteGuard() {
       (path) => location.pathname === path || location.pathname.startsWith(path + '/')
     );
 
-    // Update robots meta tag dynamically
+    // 1. Native Mobile App Handling (Google AdMob)
+    if (admobManager.isNative()) {
+      if (isUtilityRoute) {
+        // Hide banner on non-content/utility/auth screens so it never covers buttons
+        admobManager.hideBanner();
+      } else {
+        // Show native banner on public content feeds and articles
+        admobManager.showBanner();
+      }
+      return;
+    }
+
+    // 2. Web Browser Handling
+    // Google AdSense is hidden per user request. We only maintain robots meta tag for clean SEO.
     let robotsMeta = document.querySelector('meta[name="robots"]') as HTMLMetaElement | null;
     if (!robotsMeta) {
       robotsMeta = document.createElement('meta');
@@ -30,29 +48,11 @@ export function useAdSenseRouteGuard() {
     }
 
     if (isUtilityRoute) {
-      // 1. Mark utility routes as noindex, nofollow so search bots and ad reviewers do not evaluate them as thin screens
+      // Mark utility routes as noindex, nofollow so search bots do not evaluate them as thin screens
       robotsMeta.content = 'noindex, nofollow';
-
-      // 2. Hide any lingering Google Auto-Ad full screen vignettes or floating anchor ads
-      const floatingAds = document.querySelectorAll(
-        '.google-auto-placed, ins.adsbygoogle[data-anchor-status], .adsbygoogle-noablate-auto'
-      );
-      floatingAds.forEach((el) => {
-        (el as HTMLElement).style.display = 'none';
-      });
     } else {
-      // Allow indexing on legitimate publisher pages (Home, Article, About, Editorial Policy)
+      // Allow indexing on legitimate publisher pages (Home, Article, etc.)
       robotsMeta.content = 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1';
-
-      // Ensure AdSense script is present for public publisher views
-      const existingScript = document.querySelector('script[src*="adsbygoogle.js"]');
-      if (!existingScript) {
-        const script = document.createElement('script');
-        script.async = true;
-        script.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ADSENSE_CLIENT_ID}`;
-        script.crossOrigin = 'anonymous';
-        document.head.appendChild(script);
-      }
     }
   }, [location.pathname]);
 }

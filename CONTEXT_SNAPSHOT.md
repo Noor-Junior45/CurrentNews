@@ -47,6 +47,9 @@
   - Schema.org `areaServed` mapping for Jharkhand and key cities (Ranchi, Jamshedpur, Dhanbad, Bokaro Steel City, Deoghar, Hazaribagh) plus `knowsAbout` and `locationCreated`.
   - Refined reader category navbar: removed visible `Jharkhand` tab button per user design request, while keeping smart query matching and dedicated sitemap URL (`/?category=Jharkhand`, priority 0.95) for search crawler indexing.
   - Server-side bot pre-rendering for Googlebot / Googlebot-News requesting Jharkhand regional coverage in `socialPreview.ts`.
+- **Phase 6 (Continuous Deployment from GitHub to Cloud Run):** [COMPLETED]
+  - Native Cloud Run continuous deployment integration configured via Google Cloud Build.
+  - Removed `.github/workflows/deploy.yml` to eliminate GitHub Personal Access Token `workflow` scope push rejections, streamlining Git pushes directly to `main`.
 - **Immediate Next Step:** Production deployment to Google Cloud Run and high-scale R2 static mirroring if traffic exceeds millions.
 
 

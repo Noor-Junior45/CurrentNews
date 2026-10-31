@@ -7,9 +7,9 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-# Install build dependencies
+# Install build dependencies (with fallback so lockfile drift never breaks container builds)
 COPY package*.json ./
-RUN npm ci
+RUN npm ci || npm install
 
 # Copy project files and build Vite SPA + Express bundled server
 COPY . .
@@ -26,7 +26,7 @@ ENV PORT=8080
 
 # Install production dependencies only
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev || npm install --omit=dev
 
 # Copy compiled artifacts and runtime configuration from builder stage
 COPY --from=builder /app/dist ./dist

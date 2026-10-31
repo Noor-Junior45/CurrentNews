@@ -24,6 +24,7 @@ import {
 import { auth, db } from '../firebase';
 import { useAuthState } from '../hooks/useAuthState';
 import ProfilePageNavbar from '../components/ProfilePageNavbar';
+import { updateDocumentSEO } from '../utils/seo';
 
 export default function DeleteAccountView() {
   const { user, loading: authLoading } = useAuthState();
@@ -33,6 +34,15 @@ export default function DeleteAccountView() {
   const [confirmText, setConfirmText] = useState('');
   const [deletionSuccess, setDeletionSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useState(() => {
+    updateDocumentSEO({
+      title: 'Delete Account & Data Management — Current News Live',
+      description: 'Request complete deletion of your registered credentials, subscriptions, and associated data.',
+      canonicalPath: '/delete-account',
+      robots: 'noindex, nofollow'
+    });
+  });
 
   const supportEmail = 'Current News <support@guashoomin.resend.app>';
   const emailSubject = 'Account and Data Deletion Request - Current News';

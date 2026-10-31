@@ -344,6 +344,24 @@ export async function handleSocialPreview(req: Request, res: Response, next: Nex
         }
       }
 
+      const isJharkhandReq = String(req.query.category || '').toLowerCase() === 'jharkhand';
+      const pageTitle = isJharkhandReq 
+        ? 'Jharkhand News Live — Breaking Updates, Ranchi & Regional Reports | Current News'
+        : 'Current News Live — Independent Global Journalism & Live Ledger';
+      const pageDesc = isJharkhandReq
+        ? 'Read the latest verified breaking news near Jharkhand, Ranchi, Jamshedpur, Dhanbad, and all 24 districts. Live reporting on politics, schemes, crime, and community.'
+        : 'Comprehensive, verified global news coverage, breaking reports near Jharkhand, India, finance, geopolitics, and culture updated 24/7.';
+
+      html = html.replace(/<title>[\s\S]*?<\/title>/i, `<title>${escapeHtml(pageTitle)}</title>`);
+      html = html.replace(/<meta name="description" content="[\s\S]*?"\s*\/?>/i, `<meta name="description" content="${escapeHtml(pageDesc)}" />`);
+
+      const headlineText = isJharkhandReq
+        ? 'Jharkhand News & Regional Breaking Dispatches'
+        : 'Independent Journalism & Real-Time Dispatches';
+      const subText = isJharkhandReq
+        ? 'Real-time verified coverage near Jharkhand, Ranchi, Jamshedpur, Dhanbad, Bokaro, and all 24 districts.'
+        : 'Delivering verified geopolitical disclosures, investigative reporting, technological developments, and global affairs.';
+
       const homePreRenderHtml = `
       <header class="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
         <div>
@@ -351,6 +369,7 @@ export async function handleSocialPreview(req: Request, res: Response, next: Nex
           <p class="text-xs text-slate-500 font-mono">Independent Ledger &bull; Autonomous Press Alliance</p>
         </div>
         <nav class="flex items-center space-x-4 text-xs font-semibold text-slate-600">
+          <a href="/?category=Jharkhand" class="text-amber-600 font-bold">Jharkhand News</a>
           <a href="/about">About</a>
           <a href="/editorial-policy">Editorial Policy</a>
           <a href="/contact">Contact</a>
@@ -358,9 +377,9 @@ export async function handleSocialPreview(req: Request, res: Response, next: Nex
       </header>
       <main class="max-w-5xl mx-auto px-4 sm:px-6 py-8">
         <div class="mb-8 p-6 bg-slate-50 border border-slate-200 rounded-2xl">
-          <h1 class="text-2xl sm:text-3xl font-black text-slate-900 mb-2">Independent Journalism & Real-Time Dispatches</h1>
+          <h1 class="text-2xl sm:text-3xl font-black text-slate-900 mb-2">${escapeHtml(headlineText)}</h1>
           <p class="text-sm text-slate-600 max-w-2xl leading-relaxed">
-            Delivering verified geopolitical disclosures, investigative reporting, technological developments, and global affairs.
+            ${escapeHtml(subText)}
           </p>
         </div>
         <section>
@@ -373,6 +392,7 @@ export async function handleSocialPreview(req: Request, res: Response, next: Nex
       <footer class="bg-slate-900 text-slate-300 py-8 px-6 text-xs text-center border-t border-slate-800 mt-12">
         <p>&copy; ${new Date().getFullYear()} Current News Live — Independent Ledger. All rights reserved.</p>
         <p class="mt-2 text-slate-400">
+          <a href="/?category=Jharkhand" class="underline">Jharkhand Coverage</a> &bull;
           <a href="/about" class="underline">About Us</a> &bull;
           <a href="/editorial-policy" class="underline">Editorial Policy</a> &bull;
           <a href="/contact" class="underline">Contact</a> &bull;

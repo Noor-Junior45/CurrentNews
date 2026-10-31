@@ -4,9 +4,11 @@
 graph TD
     Client[Reader / Mobile App or Web Browser] --> EdgeRouter[Express server.ts / Vercel Edge / Cloud Run]
 
-    subgraph CrawlerVerification [Crawler & Store Verification]
+    subgraph CrawlerVerification [Search Engine, Newsroom & Store Verification]
         EdgeRouter -->|GET /app-ads.txt| AppAdsFile[app-ads.txt: pub-5865716270182311 DIRECT f08c47fec0942fa0]
         EdgeRouter -->|GET /ads.txt| AdsFile[ads.txt: pub-5865716270182311 DIRECT f08c47fec0942fa0]
+        EdgeRouter -->|GET /robots.txt| RobotsTxt[robots.txt: Googlebot & Googlebot-News Allow / Disallow Utility]
+        EdgeRouter -->|GET /sitemap.xml| SitemapXml[sitemap.xml.ts: Google News xmlns:news with news:news tags]
         EdgeRouter -->|GET /.well-known/assetlinks.json| AssetLinks[Android App Links Digital Asset Links]
         EdgeRouter -->|GET /healthz| HealthCheck[Cloud Run 200 OK Health Probe]
     end

@@ -88,3 +88,29 @@
 - **Headers:** `Content-Type: text/plain; charset=utf-8`
 - **Response (200 OK):** `OK`
 
+## 5. Search Engine Optimization & Google News Endpoints
+
+### `GET /sitemap.xml`
+- **Method:** `GET`, `HEAD`
+- **Headers:**
+  - `Content-Type: application/xml; charset=utf-8`
+  - `Cache-Control: public, s-maxage=3600, stale-while-revalidate=59`
+- **Namespaces:** `http://www.sitemaps.org/schemas/sitemap/0.9` and `http://www.google.com/schemas/sitemap-news/0.9`
+- **Response Shape (200 OK):**
+  - Static priority pages (`/`, `/?category=Jharkhand` [0.95 priority], `/about`, `/editorial-policy`, `/contact`, `/privacy`, `/terms`)
+  - Dynamic news stories with `<news:news>` schemas including `<news:publication>`, `<news:publication_date>`, `<news:title>`, and `<news:keywords>` (regional classification for Jharkhand/Ranchi queries)
+
+### `GET /robots.txt`
+- **Method:** `GET`
+- **Headers:** `Content-Type: text/plain; charset=utf-8`
+- **Directives:** Explicit `Googlebot`, `Googlebot-News`, `Mediapartners-Google`, and `*` agents with Disallow on `/admin`, `/profile`, `/settings`, `/liked`, `/delete-account`, `/api/` and link to `Sitemap: https://www.currentnews.blog/sitemap.xml`.
+
+### `GET /?category=Jharkhand`
+- **Method:** `GET`
+- **SEO Title:** `Jharkhand News Live — Breaking Updates, Ranchi & Regional Reports | Current News`
+- **Geo Tags:** `geo.region: IN-JH`, `geo.placename: Jharkhand, India`, `geo.position: 23.6102;85.2799`, `ICBM: 23.6102, 85.2799`
+- **Target Keywords:** `news near Jharkhand`, `Jharkhand news`, `Jharkhand breaking news`, `Ranchi news live`, `Dhanbad news`, `Jamshedpur news`
+- **JSON-LD Schema:** `CollectionPage` with `about: AdministrativeArea (Jharkhand, IN)`
+
+
+

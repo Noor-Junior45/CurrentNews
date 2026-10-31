@@ -9,6 +9,7 @@ import {
 } from 'firebase/auth';
 import { auth } from '../firebase';
 import { signInWithGoogleSafe } from '../utils/authHelper';
+import { updateDocumentSEO } from '../utils/seo';
 
 export default function SignInView(): React.JSX.Element {
   const navigate = useNavigate();
@@ -26,6 +27,15 @@ export default function SignInView(): React.JSX.Element {
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    updateDocumentSEO({
+      title: 'Sign In & Journalist Access — Current News Live',
+      description: 'Access your Current News reader profile, dispatch submissions, and customized news alerts.',
+      canonicalPath: '/signin',
+      robots: 'noindex, follow'
+    });
+  }, []);
 
   // If already authenticated, redirect to /profile
   useEffect(() => {

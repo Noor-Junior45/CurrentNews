@@ -19,11 +19,21 @@ import { signOut } from 'firebase/auth';
 import { auth } from '../firebase';
 import { useAuthState } from '../hooks/useAuthState';
 import ProfilePageNavbar from '../components/ProfilePageNavbar';
+import { updateDocumentSEO } from '../utils/seo';
 
 export default function ProfileView(): React.JSX.Element {
   const { user, loading, isAdmin } = useAuthState();
   const navigate = useNavigate();
   const [authError, setAuthError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    updateDocumentSEO({
+      title: 'Reader & Account Profile — Current News Live',
+      description: 'Manage your verified reader account, preferences, and editorial tools on Current News Live.',
+      canonicalPath: '/profile',
+      robots: 'noindex, follow'
+    });
+  }, []);
 
   const handleLogout = async () => {
     try {

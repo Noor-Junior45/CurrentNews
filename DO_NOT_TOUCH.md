@@ -27,3 +27,13 @@ The following files, components, and logic structures represent finalized UI and
 
 7. **`src/utils/admob.ts`**
    - Hardcoded AdMob App ID (`ca-app-pub-5865716270182311~4645476456`) and Banner ID (`ca-app-pub-5865716270182311/2031114923`).
+
+8. **`src/utils/seo.ts` & `public/robots.txt` & `api/sitemap.xml.ts`**
+   - Canonical URL construction (`https://www.currentnews.blog`).
+   - Dynamic OpenGraph, Twitter Cards, keywords, and Schema.org JSON-LD injection engine.
+   - Regional & Geolocation targeting for Jharkhand (`geo.region: IN-JH`, `geo.placename: Jharkhand, India`, `geo.position: 23.6102;85.2799`, `ICBM`, `coverage`, `target: Jharkhand`).
+   - Local Schema.org `areaServed` mapping for Jharkhand and key municipal districts (Ranchi, Jamshedpur, Dhanbad, Bokaro, Deoghar, Hazaribagh) plus `knowsAbout` topics.
+   - Googlebot & Googlebot-News discovery directives with security disallow on utility routes (`/admin`, `/profile`, `/settings`, `/liked`, `/delete-account`, `/api/`).
+   - Google News standard XML sitemap with `<news:news>` schemas, dedicated `/?category=Jharkhand` entry (priority 0.95), and `<news:keywords>` regional tags.
+
+

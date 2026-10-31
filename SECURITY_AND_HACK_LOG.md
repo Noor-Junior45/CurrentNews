@@ -26,3 +26,13 @@
    - **Exploit Vector:** A short `setInterval` timer (1,500ms) repeatedly issuing `getDocs` against the database per connected user, causing massive read amplification, high billing/quota consumption, and service outage.
    - **Defense:** Completely removed `setInterval` from `Header.tsx`. Replaced polling with event-driven synchronization (`settings-updated` and `storage` events) and added local storage caching (`cn_sub_${email}`), ensuring zero ongoing database reads while maintaining instant UI synchronization across views.
 
+7. **Vulnerability: Crawl Budget Exhaustion & Thin-Content Duplicate Indexing**
+   - **Exploit Vector:** Search crawlers getting trapped indexing arbitrary internal search strings (`/?search=...`) or private editorial/utility views (`/admin`, `/settings`, `/profile`, `/liked`, `/delete-account`), diluting Google PageRank and risking thin-content search penalties.
+   - **Defense:** Injected dynamic `noindex, follow` on internal search results and reader profile pages so discovered links are crawled without indexing thin parameter permutations. Injected `noindex, nofollow` on `/admin` to keep the editorial desk private. Configured explicit `robots.txt` disallows for `/admin`, `/profile`, `/settings`, `/liked`, `/delete-account`, and `/api/` while giving `Googlebot` and `Googlebot-News` unrestricted crawling on verified public news dispatches.
+
+8. **Vulnerability: Geolocation Spoofing & Local Search Intent Mismatch**
+   - **Exploit Vector:** Missing or conflicting local geographic metadata causing Google search algorithms to classify the domain as a generic global portal, losing top SERP rankings on high-volume regional queries like "news near Jharkhand", "Jharkhand news", or "Ranchi news live".
+   - **Defense:** Implemented authoritative W3C Geo & ICBM coordinates (`geo.region: IN-JH`, `geo.placename: Jharkhand, India`, `geo.position: 23.6102;85.2799`, `ICBM: 23.6102, 85.2799`, `coverage: Jharkhand, Ranchi, Jamshedpur, Dhanbad, Bokaro, India`) and Schema.org `areaServed` mapping for Jharkhand and major municipal districts. Also injected dedicated Google News keywords (`<news:keywords>`) inside `sitemap.xml` for all stories covering Jharkhand.
+
+
+

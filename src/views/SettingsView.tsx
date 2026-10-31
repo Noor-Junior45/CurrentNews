@@ -27,6 +27,7 @@ import GlassThemeToggle from '../components/ThemeToggle';
 import ToggleSwitch from '../components/ToggleSwitch';
 import { subscribeUserToPush, unsubscribeUserFromPush, isUserPushSubscribed } from '../utils/pushManager';
 import { signInWithGoogleSafe } from '../utils/authHelper';
+import { updateDocumentSEO } from '../utils/seo';
 
 export default function SettingsView() {
   const { user } = useAuthState();
@@ -40,6 +41,12 @@ export default function SettingsView() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   useEffect(() => {
+    updateDocumentSEO({
+      title: 'Preferences & Notification Settings — Current News Live',
+      description: 'Customize breaking alert dispatches, theme aesthetics, and privacy preferences on Current News Live.',
+      canonicalPath: '/settings',
+      robots: 'noindex, follow'
+    });
     window.scrollTo({ top: 0, behavior: 'instant' });
 
     // Handle PWA beforeinstallprompt event

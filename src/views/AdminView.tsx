@@ -50,10 +50,22 @@ import {
   BellRing
 } from 'lucide-react';
 
+import { updateDocumentSEO } from '../utils/seo';
+
 export default function AdminView() {
   const { user, loading, isAdmin } = useAuthState();
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Keep admin metadata private and noindexed
+  useEffect(() => {
+    updateDocumentSEO({
+      title: 'Editorial Bureau & Newsroom CMS — Current News Live',
+      description: 'Current News Live autonomous publishing desk and story manager.',
+      canonicalPath: '/admin',
+      robots: 'noindex, nofollow'
+    });
+  }, []);
 
   // Redirect unauthorized signed-in users
   useEffect(() => {
@@ -1033,6 +1045,7 @@ export default function AdminView() {
                   className="w-full px-4 py-3 border border-slate-300 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 focus:outline-hidden focus:ring-1 focus:ring-slate-950 dark:focus:ring-indigo-500 block font-sans font-medium text-slate-800 dark:text-slate-200"
                 >
                   <option value="General">General News</option>
+                  <option value="Jharkhand">Jharkhand & Regional News</option>
                   <option value="Politics">Politics & Government</option>
                   <option value="Tech">Technology & Science</option>
                   <option value="Sports">Sports</option>
@@ -1300,7 +1313,7 @@ export default function AdminView() {
                     Popular Suggestions
                   </span>
                   <div className="flex flex-wrap gap-1.5">
-                    {['#breaking', '#exclusive', '#politics', '#crime', '#investigation', '#localnews', '#community', '#sports'].map((sug) => {
+                    {['#jharkhand', '#ranchi', '#jharkhandnews', '#breaking', '#exclusive', '#politics', '#crime', '#investigation', '#localnews', '#community', '#sports'].map((sug) => {
                       const isAdded = hashtags.includes(sug);
                       return (
                         <button

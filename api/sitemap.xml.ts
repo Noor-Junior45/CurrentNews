@@ -102,12 +102,18 @@ export default async function handler(req: Request, res: Response) {
     const todayIso = new Date().toISOString().split('T')[0];
 
     let xml = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:news="http://www.google.com/schemas/sitemap-news/0.9">
   <url>
     <loc>${siteUrl}/</loc>
     <lastmod>${todayIso}</lastmod>
-    <changefreq>daily</changefreq>
+    <changefreq>always</changefreq>
     <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>${siteUrl}/?category=Jharkhand</loc>
+    <lastmod>${todayIso}</lastmod>
+    <changefreq>always</changefreq>
+    <priority>0.95</priority>
   </url>
   <url>
     <loc>${siteUrl}/about</loc>
@@ -145,22 +151,38 @@ export default async function handler(req: Request, res: Response) {
       const slug = slugify(post.title || '');
       const postUrl = slug ? `${siteUrl}/post/${post.id}/${slug}` : `${siteUrl}/post/${post.id}`;
       let lastmod = todayIso;
+      let pubDateIso = new Date().toISOString();
       if (post.updatedAt || post.createdAt) {
         try {
           const d = new Date(post.updatedAt || post.createdAt);
           if (!isNaN(d.getTime())) {
             lastmod = d.toISOString().split('T')[0];
+            pubDateIso = d.toISOString();
           }
         } catch {
-          // fallback to today
+          // fallback
         }
       }
+
+      const isJharkhand = /jharkhand|ranchi|dhanbad|jamshedpur|bokaro|deoghar/i.test(`${post.title} ${post.category || ''} ${post.content || ''}`);
+      const newsKeywords = isJharkhand
+        ? 'news near Jharkhand, Jharkhand news, Ranchi news, India news'
+        : 'breaking news, current news, live reporting';
 
       xml += `  <url>
     <loc>${escapeXml(postUrl)}</loc>
     <lastmod>${lastmod}</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+    <news:news>
+      <news:publication>
+        <news:name>Current News Live</news:name>
+        <news:language>en</news:language>
+      </news:publication>
+      <news:publication_date>${pubDateIso}</news:publication_date>
+      <news:title>${escapeXml(post.title || 'Breaking Dispatch')}</news:title>
+      <news:keywords>${escapeXml(newsKeywords)}</news:keywords>
+    </news:news>
   </url>
 `;
     }

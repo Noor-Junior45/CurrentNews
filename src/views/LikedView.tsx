@@ -8,6 +8,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { BookOpen, Clock } from 'lucide-react';
 import ProfilePageNavbar from '../components/ProfilePageNavbar';
 import { safeFormatDate } from '../utils/dateHelper';
+import { updateDocumentSEO } from '../utils/seo';
 
 export default function LikedView() {
   const navigate = useNavigate();
@@ -16,6 +17,12 @@ export default function LikedView() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    updateDocumentSEO({
+      title: 'Saved Stories & Bookmarks — Current News Live',
+      description: 'Review your bookmarked articles, saved reports, and favorited investigations on Current News Live.',
+      canonicalPath: '/liked',
+      robots: 'noindex, follow'
+    });
     // Scroll to top
     window.scrollTo({ top: 0, behavior: 'instant' });
 

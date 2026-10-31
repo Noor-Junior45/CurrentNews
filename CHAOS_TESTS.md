@@ -43,3 +43,27 @@ curl -sI http://localhost:3000/healthz
   - Open `/admin`, `/settings`, or `/signin`.
   - Verify `admobManager.hideBanner()` immediately dismisses native banner so it never covers form inputs or action buttons.
   - Return to Home or Article reading view; verify banner re-appears cleanly.
+
+## 3. SEO & Crawler Simulation cURL Suite
+
+```bash
+# 1. Test robots.txt contains Googlebot & Googlebot-News rules
+curl -s http://localhost:3000/robots.txt
+
+# 2. Test sitemap.xml returns application/xml with Google News schema
+curl -s http://localhost:3000/sitemap.xml | head -n 30
+
+# 3. Simulate Googlebot user-agent crawling an article
+curl -s -A "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)" http://localhost:3000/ | grep -i "Current News Live"
+
+# 4. Verify noindex header/meta on /admin route
+curl -s http://localhost:3000/admin | grep -i "noindex"
+
+# 5. Verify Jharkhand Regional Geo Meta Tags
+curl -s http://localhost:3000/ | grep -iE "geo.region|geo.placename|news near Jharkhand"
+
+# 6. Verify Googlebot pre-rendering on /?category=Jharkhand
+curl -s -A "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)" "http://localhost:3000/?category=Jharkhand" | grep -i "Jharkhand News"
+```
+
+

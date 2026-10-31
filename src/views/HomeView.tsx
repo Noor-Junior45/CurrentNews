@@ -115,14 +115,65 @@ export default function HomeView() {
     sessionStorage.setItem('current_news_return_page', String(currentPage));
   }, [currentPage]);
 
-  // Keep canonical and SEO tags synchronized for the homepage
+  // Keep canonical and SEO tags synchronized for the homepage, categories, and searches
   useEffect(() => {
-    updateDocumentSEO({
-      title: 'Current News Live — Independent Global Journalism & Live Ledger',
-      description: 'Comprehensive, verified global news coverage, breaking reports, finance, geopolitics, technology, and culture updated 24/7.',
-      canonicalPath: '/'
-    });
-  }, []);
+    if (searchTerm) {
+      updateDocumentSEO({
+        title: `Search: "${searchTerm}" — Current News Live`,
+        description: `Search results and live reporting for "${searchTerm}" on Current News Live.`,
+        canonicalPath: `/?search=${encodeURIComponent(searchTerm)}`,
+        robots: 'noindex, follow'
+      });
+    } else if (selectedCategory && selectedCategory.toLowerCase() === 'jharkhand') {
+      updateDocumentSEO({
+        title: 'Jharkhand News Live — Breaking Updates, Ranchi & Regional Reports | Current News',
+        description: 'Read the latest breaking news near Jharkhand, Ranchi, Jamshedpur, Dhanbad, and all 24 districts. Live updates, political developments, government schemes, and community reports.',
+        canonicalPath: '/?category=Jharkhand',
+        keywords: 'news near Jharkhand, Jharkhand news, Jharkhand breaking news, Ranchi news live, Dhanbad news, Jamshedpur news, Bokaro news, Jharkhand news today, Jharkhand news live, Current News Jharkhand',
+        newsKeywords: 'news near Jharkhand, Jharkhand news, Jharkhand breaking news, Ranchi, Dhanbad, Jamshedpur, Jharkhand live updates',
+        geoRegion: 'IN-JH',
+        geoPlacename: 'Jharkhand, India',
+        geoPosition: '23.6102;85.2799',
+        robots: 'index, follow',
+        jsonLd: {
+          '@context': 'https://schema.org',
+          '@type': 'CollectionPage',
+          'name': 'Jharkhand News & Regional Reports — Current News Live',
+          'description': 'Comprehensive news coverage near Jharkhand, Ranchi, Jamshedpur, and all districts.',
+          'url': 'https://www.currentnews.blog/?category=Jharkhand',
+          'about': {
+            '@type': 'AdministrativeArea',
+            'name': 'Jharkhand',
+            'identifier': 'IN-JH',
+            'containedInPlace': {
+              '@type': 'Country',
+              'name': 'India'
+            }
+          }
+        }
+      });
+    } else if (selectedCategory && selectedCategory !== 'All') {
+      updateDocumentSEO({
+        title: `${selectedCategory} News & Global Analysis — Current News Live`,
+        description: `Read the latest verified ${selectedCategory.toLowerCase()} news, deep dives, investigative reports, and breaking updates on Current News Live.`,
+        canonicalPath: `/?category=${encodeURIComponent(selectedCategory)}`,
+        keywords: `${selectedCategory}, ${selectedCategory.toLowerCase()} news, breaking news, world news, current affairs, journalism, latest updates`,
+        robots: 'index, follow'
+      });
+    } else {
+      updateDocumentSEO({
+        title: 'Current News Live — Independent Global Journalism & Live Ledger',
+        description: 'Comprehensive, verified global news coverage, breaking reports near Jharkhand, India, finance, geopolitics, and culture updated 24/7.',
+        canonicalPath: '/',
+        keywords: 'news near Jharkhand, Jharkhand news, Ranchi news, breaking news, world news, global reports, live journalism, politics, technology, business',
+        newsKeywords: 'news near Jharkhand, Jharkhand news, Ranchi news, India breaking news, world news',
+        geoRegion: 'IN-JH',
+        geoPlacename: 'Jharkhand, India',
+        geoPosition: '23.6102;85.2799',
+        robots: 'index, follow'
+      });
+    }
+  }, [selectedCategory, searchTerm]);
 
   // Restore scroll position when returning from an article
   useEffect(() => {
@@ -286,6 +337,20 @@ export default function HomeView() {
       return matchesSearch;
     }
     const postCategory = post.category || 'General';
+    if (selectedCategory.toLowerCase() === 'jharkhand') {
+      const isJharkhand = (
+        postCategory.toLowerCase() === 'jharkhand' ||
+        post.title.toLowerCase().includes('jharkhand') ||
+        post.content.toLowerCase().includes('jharkhand') ||
+        post.title.toLowerCase().includes('ranchi') ||
+        post.content.toLowerCase().includes('ranchi') ||
+        post.title.toLowerCase().includes('dhanbad') ||
+        post.title.toLowerCase().includes('jamshedpur') ||
+        post.title.toLowerCase().includes('bokaro') ||
+        (post.hashtags || []).some(h => /jharkhand|ranchi|dhanbad|jamshedpur/i.test(h))
+      );
+      return matchesSearch && isJharkhand;
+    }
     return matchesSearch && postCategory.toLowerCase() === selectedCategory.toLowerCase();
   });
 
@@ -320,8 +385,22 @@ export default function HomeView() {
         <div className="max-w-7xl mx-auto flex items-center space-x-1 sm:space-x-1.5 overflow-x-auto pb-0.5 scroll-smooth no-scrollbar [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]" id="category-filter-tabs">
           {['All', 'General', 'Politics', 'Tech', 'Sports', 'Opinion', 'Business', 'Health', 'World'].map((cat) => {
             const count = posts.filter(p => {
-              const postCategory = p.category || 'General';
+              if (p.status === 'draft') return false;
               if (cat === 'All') return true;
+              const postCategory = p.category || 'General';
+              if (cat === 'Jharkhand') {
+                return (
+                  postCategory.toLowerCase() === 'jharkhand' ||
+                  p.title.toLowerCase().includes('jharkhand') ||
+                  p.content.toLowerCase().includes('jharkhand') ||
+                  p.title.toLowerCase().includes('ranchi') ||
+                  p.content.toLowerCase().includes('ranchi') ||
+                  p.title.toLowerCase().includes('dhanbad') ||
+                  p.title.toLowerCase().includes('jamshedpur') ||
+                  p.title.toLowerCase().includes('bokaro') ||
+                  (p.hashtags || []).some(h => /jharkhand|ranchi|dhanbad|jamshedpur/i.test(h))
+                );
+              }
               return postCategory.toLowerCase() === cat.toLowerCase();
             }).length;
 

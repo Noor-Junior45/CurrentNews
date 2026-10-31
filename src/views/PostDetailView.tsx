@@ -255,7 +255,10 @@ export default function PostDetailView() {
     const modifiedIso = post.updatedAt ? safeToIsoString(post.updatedAt) : publishedIso;
 
     const canonicalUrl = getCanonicalPostUrl(post.id, post.title);
-    const postKeywords = `current news, news, independent ledger, journalism, ${post.category || 'general'}, ${post.title.toLowerCase().split(' ').slice(0, 6).join(', ')}`;
+    const isJharkhand = /jharkhand|ranchi|dhanbad|jamshedpur|bokaro|deoghar|hazaribagh/i.test(`${post.title} ${post.category || ''} ${post.content || ''}`);
+    const postKeywords = isJharkhand
+      ? `news near Jharkhand, Jharkhand news, Jharkhand breaking news, Ranchi news, ${post.category || 'Jharkhand'}, ${post.title.toLowerCase().split(' ').slice(0, 6).join(', ')}, Current News Jharkhand`
+      : `current news, news, independent ledger, journalism, ${post.category || 'general'}, ${post.title.toLowerCase().split(' ').slice(0, 6).join(', ')}, news near Jharkhand`;
     const siteLogo = 'https://i.imgur.com/gFgShoZ.jpeg';
     const mainImg = cleanImageUrl(post.imageUrl || siteLogo);
     const secureImg = mainImg.startsWith('http:') ? mainImg.replace('http:', 'https:') : mainImg;
@@ -268,8 +271,13 @@ export default function PostDetailView() {
     // 2. Base SEO Tags & Canonical Mappings
     setMetaTag('name', 'description', summary);
     setMetaTag('name', 'keywords', postKeywords);
+    setMetaTag('name', 'news_keywords', isJharkhand ? 'news near Jharkhand, Jharkhand news, Ranchi news, Jharkhand breaking news' : 'breaking news, current news, live reporting');
     setMetaTag('name', 'author', authorVal);
     setMetaTag('name', 'robots', 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1');
+    setMetaTag('name', 'geo.region', 'IN-JH');
+    setMetaTag('name', 'geo.placename', isJharkhand ? 'Jharkhand, India' : 'Jharkhand, India');
+    setMetaTag('name', 'geo.position', '23.6102;85.2799');
+    setMetaTag('name', 'ICBM', '23.6102, 85.2799');
     setLinkTag('canonical', canonicalUrl);
 
     // 3. OpenGraph Tags mapped specifically for individual article social sharing
@@ -318,34 +326,91 @@ export default function PostDetailView() {
     setMetaTag('name', 'twitter:image', mainImg);
     setMetaTag('name', 'twitter:image:alt', `Illustration for ${post.title}`);
 
-    // 5. Schema.org JSON-LD structured microdata NewsArticle
+    // 5. Schema.org JSON-LD structured microdata NewsArticle & BreadcrumbList for Google SERP
     const jsonLdData = {
       "@context": "https://schema.org",
-      "@type": "NewsArticle",
-      "mainEntityOfPage": {
-        "@type": "WebPage",
-        "@id": canonicalUrl
-      },
-      "headline": post.title,
-      "description": summary,
-      "image": [mainImg, ...(post.imageUrls ? post.imageUrls.map(cleanImageUrl) : [])],
-      "datePublished": publishedIso || new Date().toISOString(),
-      "dateModified": modifiedIso || new Date().toISOString(),
-      "articleSection": post.category || 'General',
-      "keywords": post.hashtags && post.hashtags.length ? post.hashtags.join(', ') : postKeywords,
-      "author": {
-        "@type": "Person",
-        "name": authorVal,
-        "jobTitle": "Journalist"
-      },
-      "publisher": {
-        "@type": "Organization",
-        "name": "Current News Live",
-        "logo": {
-          "@type": "ImageObject",
-          "url": siteLogo
+      "@graph": [
+        {
+          "@type": "NewsArticle",
+          "@id": `${canonicalUrl}#article`,
+          "isPartOf": {
+            "@type": "WebPage",
+            "@id": canonicalUrl
+          },
+          "headline": post.title,
+          "description": summary,
+          "image": [mainImg, ...(post.imageUrls ? post.imageUrls.map(cleanImageUrl) : [])],
+          "datePublished": publishedIso || new Date().toISOString(),
+          "dateModified": modifiedIso || new Date().toISOString(),
+          "mainEntityOfPage": {
+            "@type": "WebPage",
+            "@id": canonicalUrl
+          },
+          "articleSection": post.category || 'General',
+          "inLanguage": "en-US",
+          "isAccessibleForFree": true,
+          "keywords": post.hashtags && post.hashtags.length ? post.hashtags.join(', ') : postKeywords,
+          "author": [
+            {
+              "@type": "Person",
+              "name": authorVal,
+              "jobTitle": "Investigative Journalist",
+              "url": "https://www.currentnews.blog/about"
+            }
+          ],
+          "publisher": {
+            "@type": "NewsMediaOrganization",
+            "name": "Current News Live",
+            "url": "https://www.currentnews.blog",
+            "logo": {
+              "@type": "ImageObject",
+              "url": siteLogo,
+              "width": 512,
+              "height": 512
+            },
+            "publishingPrinciples": "https://www.currentnews.blog/editorial-policy"
+          },
+          ...(isJharkhand ? {
+            "spatialCoverage": {
+              "@type": "Place",
+              "name": "Jharkhand, India",
+              "geo": {
+                "@type": "GeoCoordinates",
+                "latitude": 23.6102,
+                "longitude": 85.2799
+              }
+            },
+            "contentLocation": {
+              "@type": "AdministrativeArea",
+              "name": "Jharkhand"
+            }
+          } : {})
+        },
+        {
+          "@type": "BreadcrumbList",
+          "@id": `${canonicalUrl}#breadcrumb`,
+          "itemListElement": [
+            {
+              "@type": "ListItem",
+              "position": 1,
+              "name": "Home",
+              "item": "https://www.currentnews.blog/"
+            },
+            {
+              "@type": "ListItem",
+              "position": 2,
+              "name": post.category || "General",
+              "item": `https://www.currentnews.blog/?category=${encodeURIComponent(post.category || "General")}`
+            },
+            {
+              "@type": "ListItem",
+              "position": 3,
+              "name": post.title,
+              "item": canonicalUrl
+            }
+          ]
         }
-      }
+      ]
     };
     setJsonLd('post-jsonld-schema', jsonLdData);
 

@@ -28,10 +28,11 @@ ENV PORT=8080
 COPY package*.json ./
 RUN npm ci --omit=dev
 
-# Copy compiled artifacts from builder stage
+# Copy compiled artifacts and runtime configuration from builder stage
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/api ./api
+COPY --from=builder /app/firebase-applet-config.json ./firebase-applet-config.json
 
 # Set permissions and health check port
 EXPOSE 8080

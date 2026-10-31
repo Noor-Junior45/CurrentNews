@@ -27,22 +27,27 @@ RUN npm ci --omit=dev
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/api ./api
+COPY --from=builder /app/firebase-applet-config.json ./firebase-applet-config.json
 EXPOSE 8080
 CMD ["node", "dist/server.cjs"]
 ```
 
 ## 3. Cloud Run Deploy Commands
 ```bash
-# 1. Build and push container to Google Artifact Registry
+# 1. Build and submit container via Google Cloud Build (or Artifact Registry)
 gcloud builds submit --tag gcr.io/PROJECT_ID/currentnews-app:latest
 
-# 2. Deploy to Cloud Run
+# 2. Deploy to Google Cloud Run
 gcloud run deploy currentnews-app \
   --image gcr.io/PROJECT_ID/currentnews-app:latest \
   --platform managed \
   --region asia-southeast1 \
   --allow-unauthenticated \
   --port 8080 \
+  --memory 512Mi \
+  --cpu 1 \
+  --min-instances 0 \
+  --max-instances 10 \
   --set-env-vars "NODE_ENV=production,PORT=8080"
 ```
 

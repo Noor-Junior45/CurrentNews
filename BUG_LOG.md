@@ -23,3 +23,13 @@
 - [x] **Bug ID & Summary:** BUG-006 — Firestore Free Daily Read Quota Exceeded (50,000 reads/day) throwing fatal exceptions.
   - **Root Cause:** Unbounded collection `getDocs` queries without pagination limits burned through the free tier daily 50,000 read units, throwing `FirebaseError: Quota limit exceeded`.
   - **Permanent Guardrail:** Added query `limit(30)` to post collection fetches, added deep local memory fallback (`cached_post_` and `cached_posts`), and updated `handleFirestoreError` in `firebase.ts` to intercept quota events as non-fatal rate-limits with seamless offline cache delivery instead of throwing breaking runtime exceptions.
+
+- [x] **Bug ID & Summary:** BUG-007 — Repeated `Error checking newsletter subscription FirebaseError: Quota limit exceeded` in Header.
+  - **Root Cause:** `src/components/Header.tsx` contained an aggressive `setInterval(handleSync, 1500)` that queried the Firestore `subscribers` collection every 1.5 seconds, generating 2,400+ reads per hour per client tab and rapidly exhausting the 50,000 daily read limit.
+  - **Permanent Guardrail:** Never use `setInterval` to poll Firestore. Synchronize settings purely via browser `window.addEventListener('settings-updated')` and `'storage'` events, cache subscription states in `localStorage` (`cn_sub_${email}`), enforce `limit(1)` on single-document lookups, and catch quota errors gracefully without unhandled console errors.
+
+- [x] **Bug ID & Summary:** BUG-008 — Firestore WebChannel 10s timeout and fatal `Please check your Firebase configuration` console error on boot.
+  - **Root Cause:** Default WebChannel streaming in web SDK hung for 10 seconds in proxy/iframe environments before timing out, and `App.tsx` caught the offline state by throwing `console.error("Please check your Firebase configuration.")`.
+  - **Permanent Guardrail:** Configured `initializeFirestore` with `experimentalAutoDetectLongPolling: true` to auto-detect iframe/proxy environments and seamlessly fall back to fast long-polling without hanging, and converted offline connection notifications in `App.tsx` to non-breaking `console.warn` ensuring 100% uninterrupted offline-first execution.
+
+

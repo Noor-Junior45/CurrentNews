@@ -77,7 +77,7 @@ export default function App() {
         console.log('Firestore connection verified successfully on application startup.');
       } catch (error) {
         if (error instanceof Error && error.message.includes('the client is offline')) {
-          console.error("Please check your Firebase configuration.");
+          console.warn("Firestore client operating in offline mode. Local cached stories are fully active.");
         } else {
           // Standard other errors are logged but shouldn't halt execution or crash client experience
           console.log('Firestore initialization complete.');

@@ -16,7 +16,8 @@ import {
   addDoc, 
   deleteDoc, 
   doc, 
-  serverTimestamp 
+  serverTimestamp,
+  limit
 } from 'firebase/firestore';
 import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { db, auth } from '../firebase';
@@ -71,23 +72,40 @@ export default function SettingsView() {
         setAdsConsent('granted');
       }
 
-      // Check newsletter status
+      // Check newsletter status using local cache first, then verify with quota safety
       if (user?.email) {
+        const emailLower = user.email.toLowerCase();
+        const cachedSub = localStorage.getItem('cn_sub_' + emailLower);
+        if (cachedSub) {
+          setIsSubscribed(true);
+          setSubDocId(cachedSub !== 'true' ? cachedSub : null);
+        }
+
         try {
           const q = query(
             collection(db, 'subscribers'), 
-            where('email', '==', user.email.toLowerCase())
+            where('email', '==', emailLower),
+            limit(1)
           );
           const snap = await getDocs(q);
           if (!snap.empty) {
+            const docId = snap.docs[0].id;
             setIsSubscribed(true);
-            setSubDocId(snap.docs[0].id);
+            setSubDocId(docId);
+            localStorage.setItem('cn_sub_' + emailLower, docId);
+            localStorage.setItem('newsletter_subscribed', 'true');
           } else {
             setIsSubscribed(false);
             setSubDocId(null);
+            localStorage.removeItem('cn_sub_' + emailLower);
           }
-        } catch (err) {
-          console.error("Failed to query newsletter status:", err);
+        } catch (err: any) {
+          const isQuota = String(err?.message || err).toLowerCase().includes('quota');
+          if (isQuota) {
+            console.warn("Newsletter query skipped: daily Firestore read quota reached. Falling back to local cache.");
+          } else {
+            console.debug("Failed to query newsletter status:", err);
+          }
         }
       } else {
         setIsSubscribed(localStorage.getItem('newsletter_subscribed') === 'true');
@@ -196,6 +214,9 @@ export default function SettingsView() {
         setIsSubscribed(false);
         setSubDocId(null);
         localStorage.removeItem('newsletter_subscribed');
+        if (user.email) {
+          localStorage.removeItem('cn_sub_' + user.email.toLowerCase());
+        }
         window.dispatchEvent(new Event('settings-updated'));
         showToast("Unsubscribed from newsletter alerts.");
       } else {
@@ -208,6 +229,9 @@ export default function SettingsView() {
         setIsSubscribed(true);
         setSubDocId(docRef.id);
         localStorage.setItem('newsletter_subscribed', 'true');
+        if (user.email) {
+          localStorage.setItem('cn_sub_' + user.email.toLowerCase(), docRef.id);
+        }
         window.dispatchEvent(new Event('settings-updated'));
         showToast("Subscribed to breaking news alerts!");
       }

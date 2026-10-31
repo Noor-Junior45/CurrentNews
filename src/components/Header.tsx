@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { db, auth } from '../firebase';
-import { collection, addDoc, query, where, getDocs, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, query, where, getDocs, deleteDoc, doc, serverTimestamp, limit } from 'firebase/firestore';
 import { useAuthState } from '../hooks/useAuthState';
 import { getCanonicalSiteOrigin } from '../utils/shareUrl';
 import { 
@@ -160,7 +160,7 @@ export default function Header() {
     };
   }, []);
 
-  // Sync newsletter state from Firestore subscribers database
+  // Sync newsletter state from Firestore subscribers database with local caching
   const checkSubscription = async () => {
     if (!user || !user.email) {
       setIsSubscribed(false);
@@ -168,51 +168,71 @@ export default function Header() {
       return;
     }
 
+    const emailKey = 'cn_sub_' + user.email.toLowerCase();
+    const cachedSub = localStorage.getItem(emailKey);
+    if (cachedSub) {
+      setIsSubscribed(true);
+      setSubDocId(cachedSub !== 'true' ? cachedSub : null);
+    }
+
     try {
       const q = query(
         collection(db, 'subscribers'),
-        where('email', '==', user.email.toLowerCase())
+        where('email', '==', user.email.toLowerCase()),
+        limit(1)
       );
       const querySnapshot = await getDocs(q);
       if (!querySnapshot.empty) {
+        const id = querySnapshot.docs[0].id;
         setIsSubscribed(true);
-        setSubDocId(querySnapshot.docs[0].id);
+        setSubDocId(id);
+        localStorage.setItem(emailKey, id);
       } else {
         setIsSubscribed(false);
         setSubDocId(null);
+        localStorage.removeItem(emailKey);
       }
-    } catch (err) {
-      console.error('Error checking newsletter subscription', err);
+    } catch (err: any) {
+      const isQuota = String(err?.message || err).toLowerCase().includes('quota');
+      if (isQuota) {
+        console.warn('Newsletter query skipped: daily Firestore read quota reached. Falling back to local cache.');
+      } else {
+        console.debug('Failed to check newsletter subscription from server:', err);
+      }
     }
   };
 
   useEffect(() => {
     checkSubscription();
-  }, [user]);
+  }, [user?.email]);
 
   // Synchronized storage change listener for instantly updating values between header & footer
   useEffect(() => {
     const handleSync = () => {
-      checkSubscription();
       const val = localStorage.getItem('google_ads_personalized_consent');
       setAdsConsent((val as 'granted' | 'denied') || 'pending');
       setNotificationsEnabled(
         localStorage.getItem('browser_notifications_enabled') === 'true' && 
         ('Notification' in window && Notification.permission === 'granted')
       );
+      if (user?.email) {
+        const cached = localStorage.getItem('cn_sub_' + user.email.toLowerCase());
+        if (cached) {
+          setIsSubscribed(true);
+          setSubDocId(cached !== 'true' ? cached : null);
+        }
+      }
     };
     
     handleSync();
     window.addEventListener('settings-updated', handleSync);
     window.addEventListener('storage', handleSync);
-    const interval = setInterval(handleSync, 1500);
 
     return () => {
       window.removeEventListener('settings-updated', handleSync);
       window.removeEventListener('storage', handleSync);
-      clearInterval(interval);
     };
-  }, [user]);
+  }, [user?.email]);
 
   // Lock body scroll on mobile when profile page dropdown is open
   useEffect(() => {
@@ -326,11 +346,14 @@ export default function Header() {
         }
         setIsSubscribed(false);
         setSubDocId(null);
+        localStorage.removeItem('cn_sub_' + user.email.toLowerCase());
+        localStorage.removeItem('newsletter_subscribed');
         window.dispatchEvent(new Event('settings-updated'));
       } else {
         const q = query(
           collection(db, 'subscribers'), 
-          where('email', '==', user.email.toLowerCase())
+          where('email', '==', user.email.toLowerCase()),
+          limit(1)
         );
         const snap = await getDocs(q);
         
@@ -347,6 +370,8 @@ export default function Header() {
         
         setIsSubscribed(true);
         setSubDocId(newDocId);
+        localStorage.setItem('cn_sub_' + user.email.toLowerCase(), newDocId || 'true');
+        localStorage.setItem('newsletter_subscribed', 'true');
         window.dispatchEvent(new Event('settings-updated'));
 
         // Send backend simulated welcome email

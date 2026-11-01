@@ -6,6 +6,7 @@ import Header from './components/Header';
 import Footer from './components/Footer';
 import ConsentBanner from './components/ConsentBanner';
 import NotificationBanner from './components/NotificationBanner';
+import AppUpdatePrompt from './components/AppUpdatePrompt';
 import AndroidBackGestureHandler from './components/AndroidBackGestureHandler';
 import { syncPushSubscriptionOnAppBoot } from './utils/pushManager';
 import HomeView from './views/HomeView';
@@ -156,6 +157,9 @@ export default function App() {
 
         {/* Automated Background Push Notification Subscription Prompt */}
         <NotificationBanner />
+
+        {/* Server-Driven Dynamic App Update Bottom Pop-up (Option B) */}
+        <AppUpdatePrompt />
 
         {/* Native Android Phone Edge-Swipe Back Gesture & Navigation Handler */}
         <AndroidBackGestureHandler />

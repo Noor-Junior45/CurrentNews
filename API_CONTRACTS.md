@@ -117,6 +117,41 @@
   }
   ```
 
+### `GET /api/app/version`
+- **Method:** `GET`
+- **Headers:** `Cache-Control: public, max-age=60, stale-while-revalidate=300`
+- **Response Shape (200 OK):**
+  ```json
+  {
+    "success": true,
+    "latestVersion": "1.0.1",
+    "latestVersionCode": 2,
+    "minSupportedVersion": "1.0.0",
+    "minSupportedVersionCode": 1,
+    "title": "New Live Edition Available",
+    "releaseNotes": [
+      "Ultra-fast article preview loading with zero layout shift.",
+      "Integrated multi-origin edge load balancing."
+    ],
+    "forceUpdate": false,
+    "playStoreUrl": "https://play.google.com/store/apps/details?id=blog.currentnews.app",
+    "directApkUrl": "https://media.currentnews.blog/app/currentnews-latest.apk",
+    "updatedAt": "2026-11-01T19:18:25.878Z"
+  }
+  ```
+
+### `POST /api/app/version`
+- **Method:** `POST`
+- **Body:** `{ "latestVersion": "1.0.2", "latestVersionCode": 3, "forceUpdate": false, "releaseNotes": [...] }`
+- **Response Shape (200 OK):**
+  ```json
+  {
+    "success": true,
+    "message": "App version configuration updated successfully",
+    "config": { ... }
+  }
+  ```
+
 ## 5. Search Engine Optimization & Google News Endpoints
 
 ### `GET /sitemap.xml`

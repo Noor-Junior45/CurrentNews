@@ -22,6 +22,7 @@ import {
 } from './src/server/pushNotifications.js';
 import { handleGetPosts, handleGetPostById, handleGetWriters } from './src/server/postsApi.js';
 import { handleSaveArticle, handleDeleteArticle, handleSyncArticles, ensureR2ArticlesWarmup } from './src/server/r2Articles.js';
+import { handleGetAppVersion, handleUpdateAppVersion } from './src/server/appVersionApi.js';
 
 // Load environment variables
 dotenv.config();
@@ -128,6 +129,10 @@ async function startServer() {
   app.delete('/api/articles/:id', asyncHandler(handleDeleteArticle));
   app.post('/api/articles/sync', asyncHandler(handleSyncArticles));
   app.get('/api/writers', asyncHandler(handleGetWriters));
+
+  // Server-driven App Update endpoints (Google Play Store / Cloud Run dynamic update triggers)
+  app.get('/api/app/version', asyncHandler(handleGetAppVersion));
+  app.post('/api/app/version', asyncHandler(handleUpdateAppVersion));
 
   // Backend mail endpoint for automated subscriber alerting
   app.post('/api/mail/send-alert', asyncHandler(sendAlertHandler));

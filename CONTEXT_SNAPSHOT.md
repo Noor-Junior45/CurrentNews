@@ -59,7 +59,10 @@
   - Aligned TCP keep-alive timeouts (`keepAliveTimeout = 650000ms`, `headersTimeout = 660000ms`) to eliminate 502 Bad Gateway race conditions with Google Front End (GFE) / Cloud Run.
   - Added container probes: `GET /healthz` (liveness), `GET /readyz` (readiness with RAM/CPU telemetry), and `GET /api/lb/status`.
   - Client-side smart load balancer (`src/utils/clientLoadBalancer.ts`): Dynamic multi-origin traffic distribution (Cloudflare Edge CDN <-> Cloud Run Origin API <-> R2 Mirror) with active latency scoring, circuit breaker (30s cooldown after 2 failures), and transparent fallback.
-  - Speculative prefetching: `BlogPostCard.tsx` prefetches full article JSON on card hover/touch, delivering 0ms reader opening.
+- **Phase 11 (Server-Driven In-App Update Engine — Option B):** [COMPLETED]
+  - Server endpoints: `GET /api/app/version` and `POST /api/app/version` managing `latestVersion`, `latestVersionCode`, `minSupportedVersionCode`, `releaseNotes`, and `forceUpdate` flag.
+  - Client controller (`src/utils/appVersionManager.ts`): Semantic version parser and build code checker via `@capacitor/app` (`App.getInfo()`) with 24-hour snooze cooldown.
+  - Bottom sheet update prompt (`src/components/AppUpdatePrompt.tsx`): Newspaper-themed slide-up card showing what's new, "Update on Google Play" button (`market://details?id=blog.currentnews.app`), and full-screen blocking support for mandatory security updates (`forceUpdate: true`).
 - **Immediate Next Step:** Production deployment to Google Cloud Run and Cloudflare CDN monitoring.
 
 

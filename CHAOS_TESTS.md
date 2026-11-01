@@ -105,5 +105,25 @@ curl -s http://localhost:3000/api/lb/status
 curl -s -H "X-Forwarded-For: 203.0.113.195" -H "X-Forwarded-Proto: https" http://localhost:3000/api/lb/status
 ```
 
+## 6. Server-Driven In-App Update Test Suite (Option B)
+
+```bash
+# 1. Fetch current required app version configuration
+curl -s http://localhost:3000/api/app/version | jq .
+# Expected: { "success": true, "latestVersion": "...", "latestVersionCode": ..., "forceUpdate": false }
+
+# 2. Test updating app version requirement via POST (Simulate publishing new release)
+curl -s -X POST http://localhost:3000/api/app/version \
+  -H "Content-Type: application/json" \
+  -d '{
+    "latestVersion": "1.0.2",
+    "latestVersionCode": 3,
+    "title": "New Live Edition Available",
+    "releaseNotes": ["Security upgrades and faster offline dispatches"],
+    "forceUpdate": false
+  }' | jq .
+# Expected: { "success": true, "message": "App version configuration updated successfully" }
+```
+
 
 

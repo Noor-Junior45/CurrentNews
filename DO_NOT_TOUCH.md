@@ -56,4 +56,10 @@ The following files, components, and logic structures represent finalized UI and
    - Automated circuit breaker (trips for 30s after 2 consecutive failures) and real-time latency probing.
    - Speculative pre-fetching for instant article transitions without user wait-time.
 
+12. **`src/components/AppUpdatePrompt.tsx` & `src/utils/appVersionManager.ts` (In-App Update Engine)**
+   - Server-driven version check (`/api/app/version`) via Option B.
+   - Native Capacitor `@capacitor/app` build comparison (`build` code & `versionName`).
+   - Non-intrusive floating bottom sheet with Google Play Store direct redirect (`market://details?id=blog.currentnews.app`).
+   - 24-hour snooze cooldown and mandatory security lock (`forceUpdate: true`).
+
 

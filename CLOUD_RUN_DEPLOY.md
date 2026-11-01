@@ -135,6 +135,70 @@ Google Cloud Run directly connects to your GitHub repository using Google Cloud 
 
 Every `git push origin main` will now trigger Cloud Build to run the multi-stage `Dockerfile`, execute the build, and deploy to Cloud Run automatically with zero authentication conflicts.
 
+## 6. Google Cloud Load Balancing (GCLB) & Global Edge Architecture
+
+For high-traffic production workloads, attach a Google Cloud Global External HTTP(S) Load Balancer in front of Cloud Run using Serverless NEGs (Network Endpoint Groups).
+
+### Step 1: Create a Serverless NEG for Cloud Run
+```bash
+gcloud compute network-endpoint-groups create currentnews-neg \
+  --region=asia-southeast1 \
+  --network-endpoint-type=serverless \
+  --cloud-run-service=currentnews-app
+```
+
+### Step 2: Create Backend Service with Cloud CDN Enabled
+```bash
+gcloud compute backend-services create currentnews-backend-service \
+  --global \
+  --enable-cdn \
+  --protocol=HTTP2 \
+  --connection-draining-timeout=60s
+```
+
+### Step 3: Attach Serverless NEG to the Backend Service
+```bash
+gcloud compute backend-services add-backend currentnews-backend-service \
+  --global \
+  --network-endpoint-group=currentnews-neg \
+  --network-endpoint-group-region=asia-southeast1
+```
+
+### Step 4: Create URL Map & Target HTTPS Proxy
+```bash
+# Create URL Map routing all traffic to backend service
+gcloud compute url-maps create currentnews-url-map \
+  --default-service=currentnews-backend-service
+
+# Create managed SSL certificate for custom domain
+gcloud compute ssl-certificates create currentnews-ssl-cert \
+  --domains=www.currentnews.blog,currentnews.blog
+
+# Create Target HTTPS Proxy
+gcloud compute target-https-proxies create currentnews-https-proxy \
+  --ssl-certificates=currentnews-ssl-cert \
+  --url-map=currentnews-url-map
+
+# Reserve Global Static IP
+gcloud compute addresses create currentnews-global-ip --global
+
+# Create Global Forwarding Rule
+gcloud compute forwarding-rules create currentnews-https-forwarding-rule \
+  --address=currentnews-global-ip \
+  --global \
+  --target-https-proxy=currentnews-https-proxy \
+  --ports=443
+```
+
+### Load Balancer Keep-Alive Alignment
+To eliminate `502 Bad Gateway` drops, the backend `server.keepAliveTimeout` in `server.ts` is configured to `650000ms` (650s), which exceeds GCLB's default 600s timeout.
+
+### Load Balancer Health Probe Endpoints:
+- `GET /healthz` — Container liveness probe (200 OK)
+- `GET /readyz` — Container readiness probe with CPU/RAM metrics
+- `GET /api/lb/status` — Multi-origin client balancer health report
+
+
 
 
 

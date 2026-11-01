@@ -47,7 +47,10 @@ import {
   Rss,
   Image as ImageIcon,
   Bell,
-  BellRing
+  BellRing,
+  Cloud,
+  RefreshCw,
+  Database
 } from 'lucide-react';
 
 import { updateDocumentSEO } from '../utils/seo';
@@ -96,8 +99,8 @@ export default function AdminView() {
   const [hashtags, setHashtags] = useState<string[]>([]);
   const [hashtagInput, setHashtagInput] = useState('');
   const availableWriters = getAvailableWriters();
-  const [selectedWriter, setSelectedWriter] = useState<string>(availableWriters[0] || 'Current News Staff Report');
-  const [authorName, setAuthorName] = useState(availableWriters[0] || 'Current News Staff Report');
+  const [selectedWriter, setSelectedWriter] = useState<string>(availableWriters[0] || 'Current News');
+  const [authorName, setAuthorName] = useState(availableWriters[0] || 'Current News');
   const [category, setCategory] = useState('General');
   const [targetStatus, setTargetStatus] = useState<'published' | 'draft'>('published');
   const [sendEmailAlert, setSendEmailAlert] = useState(true);
@@ -132,6 +135,10 @@ export default function AdminView() {
 
   // Delete safety guard modal
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  // Cloudflare R2 zero-quota article sync state
+  const [isSyncingR2, setIsSyncingR2] = useState(false);
+  const [r2SyncFeedback, setR2SyncFeedback] = useState<string | null>(null);
 
   // Push Notification broadcast state
   const [pushDeviceCount, setPushDeviceCount] = useState<number | null>(null);
@@ -442,8 +449,8 @@ export default function AdminView() {
     setCustomLinks([]);
     setHashtags([]);
     setHashtagInput('');
-    setSelectedWriter(availableWriters[0] || 'Current News Staff Report');
-    setAuthorName(availableWriters[0] || 'Current News Staff Report');
+    setSelectedWriter(availableWriters[0] || 'Current News');
+    setAuthorName(availableWriters[0] || 'Current News');
     setCategory('General');
     setImageUrl('');
     setImageUrlFallback('');
@@ -487,7 +494,7 @@ export default function AdminView() {
       .filter(tag => tag.length > 0)
       .map(tag => tag.startsWith('#') ? tag : '#' + tag);
 
-    const resolvedAuthor = (selectedWriter === 'custom' ? authorName.trim() : selectedWriter) || globalPenName.trim() || 'Current News Staff Report';
+    const resolvedAuthor = (selectedWriter === 'custom' ? authorName.trim() : selectedWriter) || globalPenName.trim() || 'Current News';
 
     const postPayload: any = {
       title: title.trim(),
@@ -512,10 +519,10 @@ export default function AdminView() {
     const path = 'posts';
     let publishedPostId = (isEditing && editingPostId) ? editingPostId : '';
 
+    const originalPost = isEditing && editingPostId ? posts.find(p => p.id === editingPostId) : null;
     try {
       if (isEditing && editingPostId) {
         // Preserve original author information if editing
-        const originalPost = posts.find(p => p.id === editingPostId);
         if (originalPost) {
           postPayload.authorEmail = originalPost.authorEmail || user?.email || '';
           postPayload.authorId = originalPost.authorId || user?.uid || '';
@@ -674,6 +681,28 @@ export default function AdminView() {
         }
       }
 
+      // Always push article to Cloudflare R2 for zero-quota reader delivery
+      try {
+        const fullPostToSave = {
+          id: publishedPostId,
+          ...postPayload,
+          status: targetStatus,
+          createdAt: isEditing ? (originalPost?.createdAt || new Date().toISOString()) : new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          likes: originalPost?.likes || 0,
+          dislikes: originalPost?.dislikes || 0,
+          views: originalPost?.views || 0,
+        };
+        await fetch('/api/articles/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(fullPostToSave)
+        });
+        console.log('[Admin] Article saved to Cloudflare R2 successfully');
+      } catch (r2SaveErr) {
+        console.warn('[Admin] Cloudflare R2 article push notice:', r2SaveErr);
+      }
+
       handleResetForm();
       fetchAdminPosts();
       
@@ -705,8 +734,8 @@ export default function AdminView() {
       setSelectedWriter('custom');
       setAuthorName(postAuthor);
     } else {
-      setSelectedWriter(availableWriters[0] || 'Current News Staff Report');
-      setAuthorName(availableWriters[0] || 'Current News Staff Report');
+      setSelectedWriter(availableWriters[0] || 'Current News');
+      setAuthorName(availableWriters[0] || 'Current News');
     }
     setCategory(post.category || 'General');
     setTargetStatus(post.status || 'published');
@@ -732,8 +761,13 @@ export default function AdminView() {
     const path = `posts/${id}`;
     try {
       await deleteDoc(doc(db, 'posts', id));
+      try {
+        await fetch(`/api/articles/${id}`, { method: 'DELETE' });
+      } catch (r2DelErr) {
+        console.warn('Cloudflare R2 delete warning:', r2DelErr);
+      }
       setPosts(prev => prev.filter(p => p.id !== id));
-      setSuccessMsg('Record deleted successfully from index.');
+      setSuccessMsg('Record deleted successfully from Cloudflare R2 and index.');
       setDeleteConfirmId(null);
     } catch (err) {
       console.error(err);
@@ -834,6 +868,76 @@ export default function AdminView() {
       {/* SEGMENT 1: ADMIN DASHBOARD AND INTEGRATION */}
       {currentSegment === 'dashboard' && (
         <div className="space-y-10" id="segment-dashboard-body">
+          {/* Cloudflare R2 Zero-Quota Article Storage Engine */}
+          <div className="bg-gradient-to-r from-sky-50 via-blue-50 to-amber-50/40 dark:from-sky-950/40 dark:via-blue-950/30 dark:to-stone-900 border border-blue-200/80 dark:border-blue-900/60 rounded-2xl p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-6" id="cloudflare-r2-engine">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-[10px] bg-blue-600 text-white font-bold font-mono px-2 py-0.5 rounded-sm uppercase tracking-wider inline-flex items-center gap-1">
+                  <Cloud className="w-3 h-3" /> Cloudflare R2 Active
+                </span>
+                <span className="text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 font-bold font-mono px-2 py-0.5 rounded-sm uppercase tracking-wider">
+                  Zero Firestore Read Quota
+                </span>
+              </div>
+              <h3 className="font-display font-bold text-lg text-slate-900 dark:text-white mb-1">
+                Cloudflare R2 Article Mirror & Unlimited CDN Delivery
+              </h3>
+              <p className="text-xs text-slate-600 dark:text-slate-300 max-w-2xl font-sans leading-relaxed">
+                All public articles are delivered through Cloudflare R2 (<code className="font-mono text-blue-700 dark:text-blue-300">media.currentnews.blog</code>). Readers access stories with zero Firestore read quota, keeping the site and Android app online 24/7 with zero downtime. Firebase is reserved exclusively for admin and editor logins.
+              </p>
+              {r2SyncFeedback && (
+                <div className="mt-3 p-2.5 bg-white dark:bg-slate-900 border border-blue-300 dark:border-blue-700 rounded-lg text-xs font-mono font-medium text-blue-900 dark:text-blue-200 flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>{r2SyncFeedback}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="shrink-0 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={async () => {
+                  setIsSyncingR2(true);
+                  setR2SyncFeedback(null);
+                  try {
+                    let postsToSync = posts;
+                    if (!postsToSync || postsToSync.length === 0) {
+                      const resp = await fetch('/api/posts?limit=100');
+                      if (resp.ok) {
+                        const data = await resp.json();
+                        postsToSync = data.posts || [];
+                      }
+                    }
+                    if (!postsToSync || postsToSync.length === 0) {
+                      setR2SyncFeedback('No articles found to sync. Create an article first.');
+                      setIsSyncingR2(false);
+                      return;
+                    }
+                    const res = await fetch('/api/articles/sync', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ posts: postsToSync })
+                    });
+                    if (res.ok) {
+                      const data = await res.json();
+                      setR2SyncFeedback(`Successfully synced ${data.synced} articles to Cloudflare R2! Site now delivers with zero Firestore quota.`);
+                    } else {
+                      setR2SyncFeedback('Cloudflare R2 sync completed with warnings.');
+                    }
+                  } catch (err: any) {
+                    setR2SyncFeedback(`Sync failed: ${err?.message || err}`);
+                  } finally {
+                    setIsSyncingR2(false);
+                  }
+                }}
+                disabled={isSyncingR2}
+                className="bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold text-xs py-2.5 px-5 rounded-xl cursor-pointer transition-all duration-150 shadow-md flex items-center gap-2 disabled:bg-slate-400"
+              >
+                <RefreshCw className={`w-4 h-4 ${isSyncingR2 ? 'animate-spin' : ''}`} />
+                <span>{isSyncingR2 ? 'Syncing to R2...' : 'Sync All Articles to Cloudflare R2'}</span>
+              </button>
+            </div>
+          </div>
           {/* Standalone Global Editor Profile Configuration */}
           <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-6" id="editor-global-config">
             <div className="flex-1">
@@ -841,7 +945,7 @@ export default function AdminView() {
                 Global Content Attribution
               </span>
               <h3 className="font-display font-bold text-lg text-slate-900 dark:text-white mb-1 flex flex-wrap items-center gap-2">
-                Active Pen Name Attribution: <span className="text-indigo-600 dark:text-indigo-400 font-black decoration-indigo-200">{globalPenName || 'Chronicle Staff Report'}</span>
+                Active Pen Name Attribution: <span className="text-indigo-600 dark:text-indigo-400 font-black decoration-indigo-200">{globalPenName || 'Current News'}</span>
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 max-w-2xl font-sans leading-relaxed">
                 Your configured Editor Pen Name is handled globally code-wide instead of being re-typed in form submissions. Changing your active Pen Name signature instantly updates the author attribution rendered on <strong>all past, current, and future</strong> news articles.

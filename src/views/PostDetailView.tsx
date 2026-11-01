@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { doc, getDoc, setDoc, deleteDoc, updateDoc, increment, collection, query, where, limit, getDocs } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -7,13 +7,15 @@ import { Post, slugify } from '../types';
 import { cleanImageUrl, getFallbackImageUrl, sanitizePostImages } from '../utils/imageUrl';
 import AdSpace from '../components/AdSpace';
 import AdMobNativeAd from '../components/AdMobNativeAd';
+import ProgressiveArticleBody from '../components/ProgressiveArticleBody';
 import EmbedHandler from '../components/EmbedHandler';
 import { Calendar, ChevronLeft, Award, Clock, Send, Copy, Check, Share2, ThumbsUp, ThumbsDown, ArrowRight, WifiOff, Eye, Hash, Bookmark, X } from 'lucide-react';
 import { saveReadingProgress, getReadingProgress, ReadingProgressRecord } from '../utils/readingProgress';
 import { signInWithGoogleSafe } from '../utils/authHelper';
 import { safeFormatDate, safeToIsoString } from '../utils/dateHelper';
 import { getCanonicalPostUrl } from '../utils/shareUrl';
-import { getCompressedStory, saveCompressedStory } from '../utils/compressedStorage';
+import { getCompressedStory, getCompressedStories, saveCompressedStory } from '../utils/compressedStorage';
+import { clientLoadBalancer } from '../utils/clientLoadBalancer';
 
 function getHtmlTextPreview(htmlString: string, maxLength: number = 160): string {
   if (!htmlString) return '';
@@ -30,21 +32,37 @@ function getHtmlTextPreview(htmlString: string, maxLength: number = 160): string
 export default function PostDetailView() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+
   const [post, setPost] = useState<Post | null>(() => {
+    // 1. Instant preview passed from previous card click (0ms render)
+    const preview = (location.state as any)?.previewPost;
+    if (preview && (!id || preview.id === id)) {
+      return sanitizePostImages(preview);
+    }
+    // 2. Instant cache lookup from user cache memory
     if (id) {
       const cached = getCompressedStory(id);
       if (cached) return sanitizePostImages(cached);
+      // 3. Fallback to stories in feed memory cache
+      const feed = getCompressedStories();
+      const inFeed = feed?.find(p => p.id === id);
+      if (inFeed) return sanitizePostImages(inFeed);
     }
     return null;
   });
+
   const [globalPenName, setGlobalPenName] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(() => {
+    const preview = (location.state as any)?.previewPost;
+    if (preview && (!id || preview.id === id)) return false;
     if (id && getCompressedStory(id)) return false;
+    if (id && getCompressedStories()?.some(p => p.id === id)) return false;
     return true;
   });
   const [error, setError] = useState<string | null>(null);
   const [isOfflineCached, setIsOfflineCached] = useState<boolean>(() => {
-    return Boolean(id && getCompressedStory(id));
+    return Boolean(id && (getCompressedStory(id) || getCompressedStories()?.some(p => p.id === id)));
   });
   const [copied, setCopied] = useState(false);
   const [relatedPosts, setRelatedPosts] = useState<Post[]>([]);
@@ -249,7 +267,7 @@ export default function PostDetailView() {
     // Calculate metadata values
     const rawExcerpt = getHtmlTextPreview(post.content || '', 160);
     const summary = rawExcerpt.replace(/\s+/g, ' ').trim();
-    const authorVal = post.authorName || globalPenName || 'Chronicle Staff Report';
+    const authorVal = post.authorName || globalPenName || 'Current News';
     
     const publishedIso = safeToIsoString(post.createdAt);
     const modifiedIso = post.updatedAt ? safeToIsoString(post.updatedAt) : publishedIso;
@@ -424,7 +442,7 @@ export default function PostDetailView() {
 
       // Revert base SEO tags
       setMetaTag('name', 'description', 'Current News Live - The independent ledger delivering premium uncorrupted journalism, real-time investigative disclosures, opinion dispatches, and geopolitical analysis.');
-      setMetaTag('name', 'author', 'Independent Chronicle Staff');
+      setMetaTag('name', 'author', 'Current News');
 
       // Revert OpenGraph tags back to default site metadata
       setMetaTag('property', 'og:site_name', 'Current News');
@@ -597,24 +615,32 @@ export default function PostDetailView() {
       }
       setError(null);
 
-      // 1. Ultra-fast server-cached article API (loads in <30ms, minimizes mobile data)
+      // 1. Multi-Origin Client Load Balancer (Cloudflare Edge CDN <-> Cloud Run Origin API <-> R2 Mirror)
       try {
-        const resp = await fetch(`/api/posts/${id}`);
-        if (resp.ok) {
-          const json = await resp.json();
-          if (json && json.post) {
-            const sanitized = sanitizePostImages(json.post);
-            setPost(sanitized);
-            setLoading(false);
-            setIsOfflineCached(false);
-            saveCompressedStory(sanitized);
-            return;
-          }
+        const { post: balancedPost } = await clientLoadBalancer.fetchArticleById(id);
+        if (balancedPost && balancedPost.title) {
+          setPost(balancedPost);
+          setLoading(false);
+          setIsOfflineCached(false);
+          return;
         }
-      } catch (apiErr) {
-        console.debug('Server API single post fetch deferred to direct SDK:', apiErr);
+      } catch (lbErr) {
+        console.debug('[ClientLB] Article fetch deferred to local cache:', lbErr);
       }
 
+      // 2. Local compressed story fallback (instant offline render)
+      try {
+        const compressed = getCompressedStory(id);
+        if (compressed) {
+          const sanitized = sanitizePostImages(compressed);
+          setPost(sanitized);
+          setLoading(false);
+          setIsOfflineCached(true);
+          return;
+        }
+      } catch (e) {}
+
+      // 4. Legacy Firestore fallback (only if article not found in R2 or local cache)
       const docPath = `posts/${id}`;
       try {
         const docRef = doc(db, 'posts', id);
@@ -705,7 +731,7 @@ export default function PostDetailView() {
             anyWindow.gtag('event', 'news_item_view', {
               article_id: post.id,
               article_title: post.title,
-              article_author: post.authorName || globalPenName || 'Chronicle Staff Report',
+              article_author: post.authorName || globalPenName || 'Current News',
               engagement_time_msec: Date.now()
             });
             console.log(`[Google Analytics] Dynamic view tracked for item: ${post.title}`);
@@ -717,11 +743,11 @@ export default function PostDetailView() {
     }
   }, [post, globalPenName]);
 
-  if (loading) {
+  if (loading && !post) {
     return (
       <div className="max-w-3xl mx-auto px-4 py-20 text-center" id="post-detail-loading">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900 dark:border-white mx-auto mb-4" />
-        <p className="text-slate-500 dark:text-slate-400 text-sm font-mono font-medium">Downloading full publication content...</p>
+        <p className="text-slate-500 dark:text-slate-400 text-sm font-mono font-medium">Opening independent publication...</p>
       </div>
     );
   }
@@ -915,62 +941,18 @@ export default function PostDetailView() {
       });
     }
 
-    if (middlePhotos.length > 0) {
-      const paragraphs = contentHtml.split('</p>');
-      if (paragraphs.length > 2) {
-        const middleIndex = Math.floor(paragraphs.length / 2);
-        const firstHalf = paragraphs.slice(0, middleIndex).join('</p>') + '</p>';
-        const secondHalf = paragraphs.slice(middleIndex).join('</p>');
-        return (
-          <div>
-            {topPhotos}
-            <div dangerouslySetInnerHTML={{ __html: firstHalf }} className="article-rich-text prose max-w-none break-word break-words mb-4" />
-            {middlePhotos}
-            <AdMobNativeAd slotKey="article-middle" />
-            <div dangerouslySetInnerHTML={{ __html: secondHalf }} className="article-rich-text prose max-w-none break-word break-words mt-4" id="article-content" />
-            {bottomPhotos}
-          </div>
-        );
-      }
-    }
-
-    const paragraphs = contentHtml.split('</p>');
-    if (paragraphs.length >= 4) {
-      const splitIndex = Math.min(3, Math.floor(paragraphs.length / 2));
-      const firstChunk = paragraphs.slice(0, splitIndex).join('</p>') + '</p>';
-      const secondChunk = paragraphs.slice(splitIndex).join('</p>');
-      return (
-        <div>
-          {topPhotos}
-          <div 
-            className="article-rich-text prose max-w-none break-word break-words"
-            dangerouslySetInnerHTML={{ __html: firstChunk }}
-          />
-          {middlePhotos}
-          <AdMobNativeAd slotKey="article-middle" />
-          <div 
-            className="article-rich-text prose max-w-none break-word break-words mt-4"
-            dangerouslySetInnerHTML={{ __html: secondChunk }}
-            id="article-content"
-          />
-          {bottomPhotos}
-        </div>
-      );
-    }
-
     return (
-      <div>
-        {topPhotos}
-        <div 
-          className="article-rich-text prose max-w-none break-word break-words"
-          dangerouslySetInnerHTML={{ __html: contentHtml }}
-          id="article-content"
-        />
-        {middlePhotos}
-        {bottomPhotos}
-      </div>
+      <ProgressiveArticleBody
+        contentHtml={contentHtml}
+        topPhotos={topPhotos.length > 0 ? <div className="space-y-4">{topPhotos}</div> : undefined}
+        middlePhotos={middlePhotos.length > 0 ? <div className="space-y-4">{middlePhotos}</div> : undefined}
+        bottomPhotos={bottomPhotos.length > 0 ? <div className="space-y-4">{bottomPhotos}</div> : undefined}
+        slotKey="article-middle"
+        loadingMore={loading && (!post.content || post.content.length <= 160)}
+      />
     );
   };
+
 
   const dynamicShareUrl = getCanonicalPostShareUrl();
 
@@ -1023,7 +1005,7 @@ export default function PostDetailView() {
               referrerPolicy="no-referrer"
             />
             <span className="font-bold text-black dark:text-white">
-              {post.authorName || globalPenName || 'Chronicle Staff Report'}
+              {post.authorName || globalPenName || 'Current News'}
             </span>
           </div>
 
@@ -1314,7 +1296,7 @@ export default function PostDetailView() {
                         {relatedPost.category || 'General'}
                       </span>
                       <span className="text-[11px] text-slate-400 font-mono">
-                        {relatedPost.authorName || globalPenName || 'Staff Report'}
+                        {relatedPost.authorName || globalPenName || 'Current News'}
                       </span>
                     </div>
                     <h4 className="font-display font-bold text-slate-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 text-base sm:text-lg leading-snug line-clamp-2 transition-colors duration-150 mb-2">

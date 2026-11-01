@@ -6,6 +6,8 @@ import { doc, getDoc, setDoc, deleteDoc, updateDoc, increment } from 'firebase/f
 import { auth, db } from '../firebase';
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged } from 'firebase/auth';
 import { safeFormatDate } from '../utils/dateHelper';
+import { saveCompressedStory } from '../utils/compressedStorage';
+import { clientLoadBalancer } from '../utils/clientLoadBalancer';
 
 interface BlogPostCardProps {
   post: Post;
@@ -31,7 +33,7 @@ export default function BlogPostCard({ post, globalPenName }: BlogPostCardProps)
   const navigate = useNavigate();
   const location = useLocation();
   const previewText = getHtmlTextPreview(post.content);
-  const displayedAuthor = post.authorName || globalPenName || 'Chronicle Staff Report';
+  const displayedAuthor = post.authorName || globalPenName || 'Current News';
   const postUrl = `/post/${post.id}/${slugify(post.title)}`;
 
   const handleOpenPost = (e?: React.MouseEvent) => {
@@ -42,10 +44,12 @@ export default function BlogPostCard({ post, globalPenName }: BlogPostCardProps)
       const currentSearch = location.search || '';
       sessionStorage.setItem('current_news_return_search', currentSearch);
       sessionStorage.setItem('current_news_return_scroll', String(window.scrollY));
+      // Save preview into user cache memory for instant 0ms reader opening
+      saveCompressedStory(post);
     } catch (err) {
       console.debug('Failed to cache return position', err);
     }
-    navigate(postUrl);
+    navigate(postUrl, { state: { previewPost: post } });
   };
   
   const [likes, setLikes] = useState(post.likes || 0);
@@ -203,6 +207,8 @@ export default function BlogPostCard({ post, globalPenName }: BlogPostCardProps)
   return (
     <article 
       onClick={() => handleOpenPost()}
+      onMouseEnter={() => clientLoadBalancer.prefetchArticle(post.id)}
+      onTouchStart={() => clientLoadBalancer.prefetchArticle(post.id)}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
@@ -305,8 +311,14 @@ export default function BlogPostCard({ post, globalPenName }: BlogPostCardProps)
           </div>
 
           <Link 
-            to={postUrl} 
-            onClick={(e) => e.stopPropagation()}
+            to={postUrl}
+            state={{ previewPost: post }}
+            onClick={(e) => {
+              e.stopPropagation();
+              try {
+                saveCompressedStory(post);
+              } catch (err) {}
+            }}
             className="read-full-article-link min-h-[44px] inline-flex items-center justify-center py-2 px-2 text-red-600 hover:text-red-700 dark:text-red-500 dark:hover:text-red-400 font-sans text-xs font-semibold transition-colors shrink-0 -mr-2"
             id={`read-article-link-${post.id}`}
           >

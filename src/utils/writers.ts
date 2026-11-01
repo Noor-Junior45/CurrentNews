@@ -6,6 +6,7 @@
  */
 
 export const DEFAULT_WRITERS = [
+  'Current News',
   'Current News Staff Report',
   'Investigative Editorial Bureau',
   'Chief Political Correspondent',

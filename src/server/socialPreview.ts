@@ -113,7 +113,7 @@ export async function handleSocialPreview(req: Request, res: Response, next: Nex
       const ytThumb = getYoutubeThumbnailUrl(youtubeUrl);
       const mainImg = cleanImageUrl(rawImage) || ytThumb || 'https://i.imgur.com/gFgShoZ.jpeg';
       const secureImg = mainImg.startsWith('http:') ? mainImg.replace('http:', 'https:') : mainImg;
-      const authorName = fields.authorName?.stringValue || 'Chronicle Staff Report';
+      const authorName = fields.authorName?.stringValue || 'Current News';
       const category = fields.category?.stringValue || 'General';
       const canonicalUrl = `https://www.currentnews.blog/post/${postId}`;
       const pubDate = fields.createdAt?.timestampValue || new Date().toISOString();
@@ -216,7 +216,7 @@ export async function handleSocialPreview(req: Request, res: Response, next: Nex
         </div>
       </main>
       <footer class="bg-slate-900 text-slate-300 py-8 px-6 text-xs text-center border-t border-slate-800 mt-12">
-        <p>&copy; ${new Date().getFullYear()} Current News Live — Independent Ledger. All rights reserved.</p>
+        <p>&copy; ${new Date().getFullYear()} Current News. All rights reserved.</p>
         <p class="mt-2 text-slate-400">
           <a href="/about" class="underline">About Us</a> &bull;
           <a href="/editorial-policy" class="underline">Editorial Policy</a> &bull;
@@ -272,7 +272,7 @@ export async function handleSocialPreview(req: Request, res: Response, next: Nex
       </div>
     </main>
     <footer class="bg-slate-900 text-slate-300 py-8 px-6 text-xs text-center border-t border-slate-800 mt-12">
-      <p>&copy; ${new Date().getFullYear()} Current News Live — Independent Ledger. All rights reserved.</p>
+      <p>&copy; ${new Date().getFullYear()} Current News. All rights reserved.</p>
       <p class="mt-2 text-slate-400">
         <a href="/about" class="underline">About Us</a> &bull;
         <a href="/editorial-policy" class="underline">Editorial Policy</a> &bull;
@@ -390,7 +390,7 @@ export async function handleSocialPreview(req: Request, res: Response, next: Nex
         </section>
       </main>
       <footer class="bg-slate-900 text-slate-300 py-8 px-6 text-xs text-center border-t border-slate-800 mt-12">
-        <p>&copy; ${new Date().getFullYear()} Current News Live — Independent Ledger. All rights reserved.</p>
+        <p>&copy; ${new Date().getFullYear()} Current News. All rights reserved.</p>
         <p class="mt-2 text-slate-400">
           <a href="/?category=Jharkhand" class="underline">Jharkhand Coverage</a> &bull;
           <a href="/about" class="underline">About Us</a> &bull;

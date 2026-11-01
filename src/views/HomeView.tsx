@@ -2,15 +2,29 @@ import React, { useEffect, useState } from 'react';
 import { collection, getDocs, query, orderBy, limit, doc, getDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { Post, slugify } from '../types';
-import { sanitizePostImages } from '../utils/imageUrl';
+import { sanitizePostImages, cleanImageUrl } from '../utils/imageUrl';
 import BlogPostCard from '../components/BlogPostCard';
 import AdSpace from '../components/AdSpace';
 import AdMobNativeAd from '../components/AdMobNativeAd';
-import { Newspaper, Search, RefreshCw, AlertTriangle, ChevronLeft, ChevronRight, ThumbsUp, WifiOff, Bookmark, ArrowRight } from 'lucide-react';
+import { 
+  Newspaper, 
+  Search, 
+  RefreshCw, 
+  AlertTriangle, 
+  ChevronLeft, 
+  ChevronRight, 
+  ThumbsUp, 
+  WifiOff, 
+  Bookmark, 
+  ArrowRight
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { getRecentInProgressArticles, clearReadingProgress, ReadingProgressRecord } from '../utils/readingProgress';
 import { updateDocumentSEO } from '../utils/seo';
 import { getCompressedStories, saveCompressedStories } from '../utils/compressedStorage';
+import { safeFormatDate } from '../utils/dateHelper';
+import { clientLoadBalancer } from '../utils/clientLoadBalancer';
 
 function getHtmlTextPreview(htmlString: string, maxLength: number = 160): string {
   if (!htmlString) return '';
@@ -248,48 +262,48 @@ export default function HomeView() {
     setError(null);
     const path = 'posts';
     try {
-      // 1. Fast server-cached chunked API (<40ms, saves mobile phone data and quota)
-      try {
-        const params = new URLSearchParams();
-        if (selectedCategory && selectedCategory !== 'All') {
-          params.set('category', selectedCategory);
-        }
-        if (searchTerm) {
-          params.set('search', searchTerm);
-        }
-        params.set('limit', '30');
+      // 1. Multi-Origin Client Load Balancer (Cloudflare Edge CDN <-> Cloud Run Origin API <-> R2 Mirror)
+      const { posts: balancedPosts } = await clientLoadBalancer.fetchArticlesFeed({
+        category: selectedCategory,
+        search: searchTerm,
+        limit: 30,
+      });
 
-        const response = await fetch(`/api/posts?${params.toString()}`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data && Array.isArray(data.posts) && data.posts.length > 0) {
-            const fetchedPosts = data.posts.map(sanitizePostImages);
-            setPosts(fetchedPosts);
-            setLoading(false);
-            setIsOfflineCached(false);
-            // Save in compressed user storage for instant subsequent loads
-            saveCompressedStories(fetchedPosts);
-            return;
-          }
-        }
-      } catch (apiErr) {
-        console.debug('Server API fetch deferred to direct SDK:', apiErr);
+      if (balancedPosts && balancedPosts.length > 0) {
+        setPosts(balancedPosts);
+        setLoading(false);
+        setIsOfflineCached(false);
+        return;
       }
 
-      // 2. Direct Firestore fallback (used if offline or direct SDK required)
-      const q = query(collection(db, path), orderBy('createdAt', 'desc'), limit(30));
-      const querySnapshot = await getDocs(q);
-      const fetchedPosts: Post[] = [];
-      querySnapshot.forEach((doc) => {
-        fetchedPosts.push(sanitizePostImages({
-          id: doc.id,
-          ...doc.data()
-        } as Post));
-      });
-      if (fetchedPosts.length > 0) {
-        setPosts(fetchedPosts);
-        setIsOfflineCached(false);
-        saveCompressedStories(fetchedPosts);
+      // 2. Local compressed storage fallback (instant offline render)
+      const compressedPosts = getCompressedStories();
+      if (compressedPosts && compressedPosts.length > 0) {
+        setPosts(compressedPosts.map(sanitizePostImages));
+        setLoading(false);
+        setIsOfflineCached(true);
+        return;
+      }
+
+      // 4. Legacy Firestore fallback (only if R2 and cache have 0 articles)
+      try {
+        const q = query(collection(db, path), orderBy('createdAt', 'desc'), limit(30));
+        const querySnapshot = await getDocs(q);
+        const fetchedPosts: Post[] = [];
+        querySnapshot.forEach((doc) => {
+          fetchedPosts.push(sanitizePostImages({
+            id: doc.id,
+            ...doc.data()
+          } as Post));
+        });
+        if (fetchedPosts.length > 0) {
+          setPosts(fetchedPosts);
+          setIsOfflineCached(false);
+          saveCompressedStories(fetchedPosts);
+          return;
+        }
+      } catch (firestoreErr) {
+        console.warn('Firestore fallback quota or connection limit reached:', firestoreErr);
       }
     } catch (err: any) {
       console.warn('Fetch posts from network deferred, checking compressed storage:', err?.message || err);
@@ -354,10 +368,29 @@ export default function HomeView() {
     return matchesSearch && postCategory.toLowerCase() === selectedCategory.toLowerCase();
   });
 
-  // Calculate dynamic trending posts: must have at least 100 likes and surpass others (sorted descending)
-  const trendingPosts = posts
-    .filter((p) => p.status !== 'draft' && (p.likes || 0) >= 100)
-    .sort((a, b) => (b.likes || 0) - (a.likes || 0));
+  // Resolve published posts
+  const publishedPosts = posts.filter((p) => p.status !== 'draft');
+
+  // Featured Story Posters for rotating hero showcase (prioritizes stories with image covers)
+  const postsWithImage = publishedPosts.filter((p) => p.imageUrl && p.imageUrl.trim().length > 0);
+  const posterPosts = (postsWithImage.length >= 3 
+    ? postsWithImage 
+    : [...postsWithImage, ...publishedPosts.filter(p => !p.imageUrl || !p.imageUrl.trim().length)]
+  ).slice(0, 6);
+
+  const [currentPosterIndex, setCurrentPosterIndex] = useState(0);
+  const [isPosterHovered, setIsPosterHovered] = useState(false);
+
+  // Auto-rotate poster every 6 seconds, pause on mouse hover
+  useEffect(() => {
+    if (posterPosts.length <= 1 || isPosterHovered) return;
+    const interval = setInterval(() => {
+      setCurrentPosterIndex((prev) => (prev + 1) % posterPosts.length);
+    }, 6000);
+    return () => clearInterval(interval);
+  }, [posterPosts.length, isPosterHovered]);
+
+  const activePoster = posterPosts.length > 0 ? posterPosts[currentPosterIndex % posterPosts.length] : null;
 
   const totalPages = Math.max(1, Math.ceil(filteredPosts.length / postsPerPage));
   const paginatedPosts = filteredPosts.slice((currentPage - 1) * postsPerPage, currentPage * postsPerPage);
@@ -427,19 +460,101 @@ export default function HomeView() {
         </div>
       </div>
       
-      {/* Editorial Headline Hero Banner */}
-      <div className="border-b-4 border-double border-slate-900 dark:border-slate-700 pb-10 mb-10 pt-6 sm:pt-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
-        <div>
-          <span className="text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest block mb-2">Today's Dispatch</span>
-          <h1 className="font-display font-extrabold text-4xl sm:text-5xl text-slate-950 dark:text-white tracking-tight leading-none flex items-center gap-3">
-            <Newspaper className="h-10 w-10 text-slate-900 dark:text-white shrink-0" />
-            <span>Current News</span>
-          </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-3 font-sans max-w-xl">
-            Read critical, up-to-date insights, independent coverages, and reports of global scale from our field editors.
-          </p>
+      {/* 🏛️ Professional Editorial Hero Section — Animated Multi-Poster Showcase (Beige, Blue & Brown Theme) */}
+      <section 
+        aria-label="Featured Story Poster Showcase" 
+        className="mb-10" 
+        id="editorial-hero-showcase"
+      >
+        <div 
+          className="relative w-full rounded-2xl sm:rounded-3xl overflow-hidden border border-[#E5DDD0] dark:border-[#38332B] bg-[#F4EFE6] dark:bg-[#1E1B18] shadow-md group"
+          id="hero-feature-poster-carousel"
+          onMouseEnter={() => setIsPosterHovered(true)}
+          onMouseLeave={() => setIsPosterHovered(false)}
+        >
+          {activePoster ? (
+            <div className="relative w-full aspect-[4/3] xs:aspect-[16/11] sm:aspect-[16/10] md:aspect-[1.618/1] min-h-[290px] sm:min-h-[380px] lg:min-h-[450px] max-h-[540px] flex flex-col justify-end overflow-hidden">
+              <AnimatePresence initial={false}>
+                <motion.div
+                  key={activePoster.id}
+                  initial={{ x: '100%' }}
+                  animate={{ x: 0 }}
+                  exit={{ x: '-100%' }}
+                  transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
+                  className="absolute inset-0 w-full h-full"
+                >
+                  <Link
+                    to={`/post/${activePoster.id}/${slugify(activePoster.title)}`}
+                    className="block w-full h-full cursor-pointer relative"
+                    id={`hero-poster-slide-${activePoster.id}`}
+                  >
+                    {/* Background Poster Image */}
+                    {activePoster.imageUrl ? (
+                      <img
+                        src={cleanImageUrl(activePoster.imageUrl)}
+                        alt={activePoster.title}
+                        referrerPolicy="no-referrer"
+                        className="absolute inset-0 w-full h-full object-cover transition-transform duration-1000 ease-out group-hover:scale-[1.03]"
+                      />
+                    ) : (
+                      <div className="absolute inset-0 bg-gradient-to-br from-[#2D1F13] via-[#1E293B] to-[#0F172A] flex items-center justify-center p-8">
+                        <Newspaper className="w-36 h-36 text-[#B5A490]/25" />
+                      </div>
+                    )}
+
+                    {/* Rich Multi-Layer Scrim: Guarantees 100% WCAG AA contrast across light, beige, dark, or photographic backgrounds */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#1F1914] via-[#1F1914]/70 via-40% to-black/25" />
+                    <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-transparent to-transparent hidden sm:block" />
+
+                    {/* Content Overlay */}
+                    <div className="relative z-10 p-4 sm:p-8 lg:p-12 flex flex-col justify-end h-full max-w-4xl">
+                      <div className="flex items-center gap-2 mb-2 sm:mb-3.5">
+                        <span className="bg-[#1E3A8A] text-white text-[10px] sm:text-[11px] font-bold uppercase tracking-wider px-2 sm:px-3 py-0.5 sm:py-1 rounded shadow-sm">
+                          {activePoster.category || 'Featured Lead'}
+                        </span>
+                        <span className="text-[10px] sm:text-xs font-mono text-[#E8DEC8] font-medium tracking-wide">
+                          Featured Dispatch
+                        </span>
+                      </div>
+
+                      <h1 className="font-display font-extrabold text-lg xs:text-xl sm:text-2xl md:text-3xl lg:text-5xl text-white group-hover:text-blue-100 transition-colors leading-[1.18] mb-2 sm:mb-4 line-clamp-2 sm:line-clamp-3 drop-shadow-sm">
+                        {activePoster.title}
+                      </h1>
+
+                      <p className="text-xs sm:text-sm lg:text-base text-[#F4EFE6]/90 line-clamp-1 sm:line-clamp-2 max-w-2xl mb-3 sm:mb-6 font-sans leading-relaxed drop-shadow-xs">
+                        {getHtmlTextPreview(activePoster.content, 180)}
+                      </p>
+
+                      <div className="pt-2.5 sm:pt-4 border-t border-white/20 flex flex-wrap items-center justify-between gap-2 sm:gap-4 text-xs text-[#E8DEC8]">
+                        <div className="flex items-center gap-2 font-mono text-[10px] sm:text-xs">
+                          <span className="text-white font-semibold">
+                            {activePoster.authorName || 'Current News'}
+                          </span>
+                          <span>•</span>
+                          <span>{safeFormatDate(activePoster.createdAt)}</span>
+                        </div>
+
+                        <span className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-1.5 sm:py-2.5 bg-white text-[#1E3A8A] font-bold text-[11px] sm:text-xs lg:text-sm rounded-lg sm:rounded-xl group-hover:bg-[#1E3A8A] group-hover:text-white transition-all shadow-md">
+                          <span>Read Full Report</span>
+                          <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                        </span>
+                      </div>
+                    </div>
+                  </Link>
+                </motion.div>
+              </AnimatePresence>
+            </div>
+          ) : (
+            /* Loading Skeleton for Poster */
+            <div className="w-full aspect-[4/3] xs:aspect-[16/11] sm:aspect-[16/10] md:aspect-[1.618/1] min-h-[290px] sm:min-h-[380px] lg:min-h-[450px] max-h-[540px] rounded-2xl sm:rounded-3xl bg-[#F4EFE6] dark:bg-[#1E1B18] border border-[#E5DDD0] dark:border-[#38332B] p-4 sm:p-8 lg:p-12 flex flex-col justify-end animate-pulse">
+              <div className="h-4 sm:h-5 w-24 sm:w-28 bg-[#E8DEC8] dark:bg-[#2E2820] rounded mb-3" />
+              <div className="h-7 sm:h-10 w-4/5 max-w-2xl bg-[#E8DEC8] dark:bg-[#2E2820] rounded mb-3 sm:mb-4" />
+              <div className="h-3.5 sm:h-4 w-3/5 max-w-xl bg-[#E8DEC8] dark:bg-[#2E2820] rounded mb-4 sm:mb-6" />
+              <div className="h-3 sm:h-4 w-1/3 bg-[#E8DEC8] dark:bg-[#2E2820] rounded" />
+            </div>
+          )}
         </div>
-      </div>
+      </section>
 
       {/* 🔖 Pick Up Where You Left Off (Saved In Cache Memory) */}
       {inProgressArticles.length > 0 && (
@@ -511,56 +626,6 @@ export default function HomeView() {
         </section>
       )}
 
-      {/* 🚀 Dynamic Trending Spotlight */}
-      {trendingPosts.length > 0 && (
-         <div className="mb-10 p-6 bg-amber-50/40 dark:bg-amber-950/20 border border-amber-200/50 dark:border-amber-900/30 rounded-2xl shadow-3xs" id="trending-spotlight-section">
-           <div className="flex items-center space-x-2 mb-4">
-             <span className="flex h-2.5 w-2.5 relative">
-               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
-             </span>
-             <h3 className="font-display font-extrabold text-sm text-slate-900 dark:text-white uppercase tracking-widest flex items-center gap-1.5">
-               <span>🔥 Trending Reader Favorites</span>
-             </h3>
-             <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono font-bold">(Articles with over hundreds of upvotes that surpass all others)</span>
-           </div>
-
-           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-             {trendingPosts.map((trendingPost, idx) => {
-               const preview = getHtmlTextPreview(trendingPost.content, 90);
-               return (
-                 <Link
-                   key={trendingPost.id}
-                   to={`/post/${trendingPost.id}/${slugify(trendingPost.title)}`}
-                   className="group bg-white dark:bg-slate-900 p-4 rounded-xl border border-amber-100 dark:border-amber-900/40 hover:border-amber-300 dark:hover:border-amber-700/60 hover:shadow-sm transition-all duration-300 flex flex-col justify-between cursor-pointer"
-                 >
-                   <div>
-                     <div className="flex items-center justify-between gap-1.5 mb-2.5">
-                       <span className="text-[9px] font-mono bg-amber-100 text-amber-900 dark:bg-amber-900/60 dark:text-amber-200 border border-amber-200/50 dark:border-amber-800/50 uppercase font-black px-1.5 py-0.5 rounded">
-                         #{idx + 1} HOT
-                       </span>
-                       <span className="text-[10px] text-slate-500 dark:text-slate-400 font-bold font-mono flex items-center gap-1">
-                         <ThumbsUp className="h-3 w-3 text-emerald-500 fill-emerald-100 dark:fill-emerald-950" /> {trendingPost.likes || 0}
-                       </span>
-                     </div>
-                     <h4 className="font-display font-bold text-xs sm:text-sm text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors line-clamp-2 leading-snug">
-                       {trendingPost.title}
-                     </h4>
-                     <p className="text-[11px] text-slate-400 dark:text-slate-400 mt-1.5 line-clamp-2 leading-relaxed">
-                       {preview}
-                     </p>
-                   </div>
-                   <div className="mt-3 pt-2.5 border-t border-slate-150 dark:border-slate-800 flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500 font-semibold font-mono">
-                     <span className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[8px] font-bold uppercase tracking-wider px-1 px-1.5 rounded">{trendingPost.category || 'General'}</span>
-                     <span className="text-indigo-600 dark:text-indigo-400 group-hover:underline flex items-center gap-0.5">Read article →</span>
-                   </div>
-                 </Link>
-               );
-             })}
-           </div>
-         </div>
-       )}
-
       {/* Main Content Area */}
       {loading ? (
         <div id="loading-skeletons" className="space-y-6">
@@ -606,9 +671,20 @@ export default function HomeView() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-0 sm:gap-8 -mx-4 sm:mx-0" id="posts-grid">
             {paginatedPosts.map((post, idx) => (
               <React.Fragment key={post.id}>
-                <BlogPostCard post={post} globalPenName={globalPenName} />
+                <motion.div
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{
+                    duration: 0.32,
+                    delay: Math.min(idx * 0.045, 0.45),
+                    ease: [0.22, 1, 0.36, 1]
+                  }}
+                  className="flex flex-col h-full"
+                >
+                  <BlogPostCard post={post} globalPenName={globalPenName} />
+                </motion.div>
                 {(idx === 2 || idx === 5) && paginatedPosts.length > idx + 1 && (
-                  <div className="col-span-1 sm:col-span-2 lg:col-span-3 px-4 sm:px-0">
+                  <div className="col-span-1 sm:col-span-2 lg:col-span-3 px-4 sm:px-0 my-2">
                     <AdMobNativeAd slotKey={`feed-card-${currentPage}-${idx}`} />
                   </div>
                 )}

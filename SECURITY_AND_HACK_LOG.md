@@ -34,5 +34,13 @@
    - **Exploit Vector:** Missing or conflicting local geographic metadata causing Google search algorithms to classify the domain as a generic global portal, losing top SERP rankings on high-volume regional queries like "news near Jharkhand", "Jharkhand news", or "Ranchi news live".
    - **Defense:** Implemented authoritative W3C Geo & ICBM coordinates (`geo.region: IN-JH`, `geo.placename: Jharkhand, India`, `geo.position: 23.6102;85.2799`, `ICBM: 23.6102, 85.2799`, `coverage: Jharkhand, Ranchi, Jamshedpur, Dhanbad, Bokaro, India`) and Schema.org `areaServed` mapping for Jharkhand and major municipal districts. Also injected dedicated Google News keywords (`<news:keywords>`) inside `sitemap.xml` for all stories covering Jharkhand.
 
+9. **Vulnerability: Public Reader Traffic Exhausting Firestore Free Quota (DoS)**
+   - **Exploit Vector:** Public readers querying Firestore collections directly on page loads easily exceed Google Cloud's 50,000 free daily read quota, causing total application downtime for readers and authors alike.
+   - **Defense:** Decoupled data architectures: Cloudflare R2 serves all public reads via global CDN edge caches (`media.currentnews.blog/articles/feed.json` and `${id}.json`) with 0 Firestore read consumption. Firebase Authentication and Firestore writes are isolated exclusively to authenticated admin/editor desks, guaranteeing 100% reader availability with zero risk of quota-induced blackouts.
+
+10. **Vulnerability: Ingress Proxy Spoofing & TCP Race-Condition Failures under Load Balancers**
+   - **Exploit Vector:** Attackers forging client IP headers (`X-Forwarded-For`, `CF-Connecting-IP`) to bypass security rate limits, or upstream load balancers (Google Cloud Load Balancer / Cloudflare) dropping requests with `502 Bad Gateway` when backend servers close idle TCP connections prematurely during traffic spikes.
+   - **Defense:** Configured `app.set('trust proxy', true)` in `server.ts` to allow verified upstream proxies to correctly populate client IPs and protocols. Aligned Node's TCP socket settings with `server.keepAliveTimeout = 650000ms` (650s) and `server.headersTimeout = 660000ms` (660s) to exceed GCLB's 600s timeout. Created frontend multi-origin load balancer (`clientLoadBalancer.ts`) with automated circuit breaking and failover to ensure readers never encounter dead ends or frozen screens.
+
 
 

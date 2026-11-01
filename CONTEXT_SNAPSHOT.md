@@ -47,10 +47,21 @@
   - Schema.org `areaServed` mapping for Jharkhand and key cities (Ranchi, Jamshedpur, Dhanbad, Bokaro Steel City, Deoghar, Hazaribagh) plus `knowsAbout` and `locationCreated`.
   - Refined reader category navbar: removed visible `Jharkhand` tab button per user design request, while keeping smart query matching and dedicated sitemap URL (`/?category=Jharkhand`, priority 0.95) for search crawler indexing.
   - Server-side bot pre-rendering for Googlebot / Googlebot-News requesting Jharkhand regional coverage in `socialPreview.ts`.
-- **Phase 6 (Continuous Deployment from GitHub to Cloud Run):** [COMPLETED]
-  - Native Cloud Run continuous deployment integration configured via Google Cloud Build.
-  - Removed `.github/workflows/deploy.yml` to eliminate GitHub Personal Access Token `workflow` scope push rejections, streamlining Git pushes directly to `main`.
-- **Immediate Next Step:** Production deployment to Google Cloud Run and high-scale R2 static mirroring if traffic exceeds millions.
+- **Phase 9 (Google News Progressive Loading & Staggered Scroll Stream):** [COMPLETED]
+  - All 41 historical articles verified moved to Cloudflare R2 object storage (`articles/${id}.json`) and indexed in `articles/feed.json`.
+  - Staggered progressive feed hydration in `HomeView.tsx`: 1st article reveals immediately (0ms delay), followed by 2nd, 3rd, 4th, ... nth cards cascading smoothly with 45ms stagger timing.
+  - Preview Box First: Home feed cards load only preview metadata (title, byline, date, image, excerpt, reactions), preventing heavy HTML downloads on the homepage.
+  - Instant Article Opening (0ms): `PostDetailView.tsx` renders the preview box (headline, author "Current News", timestamp, reading time, hero photo, lead excerpt) instantly from user cache memory or navigation state with zero blank screen.
+  - Progressive Paragraph Reveal on Scroll (`ProgressiveArticleBody.tsx`): Lead paragraphs appear immediately, while subsequent paragraphs, media, and native AdMob ads stream in progressively via an IntersectionObserver as the reader scrolls down the page.
+  - Client Cache Memory: All opened articles and feed records are compressed with LZW in `compressedStorage` (`localStorage`), allowing offline reading and instant re-opening with zero network latency.
+- **Phase 10 (Multi-Origin Load Balancing & GCLB Production Architecture):** [COMPLETED]
+  - Server-side load balancing: Added `app.set('trust proxy', true)` for Google Cloud Load Balancer (GCLB) and Cloudflare proxy support.
+  - Aligned TCP keep-alive timeouts (`keepAliveTimeout = 650000ms`, `headersTimeout = 660000ms`) to eliminate 502 Bad Gateway race conditions with Google Front End (GFE) / Cloud Run.
+  - Added container probes: `GET /healthz` (liveness), `GET /readyz` (readiness with RAM/CPU telemetry), and `GET /api/lb/status`.
+  - Client-side smart load balancer (`src/utils/clientLoadBalancer.ts`): Dynamic multi-origin traffic distribution (Cloudflare Edge CDN <-> Cloud Run Origin API <-> R2 Mirror) with active latency scoring, circuit breaker (30s cooldown after 2 failures), and transparent fallback.
+  - Speculative prefetching: `BlogPostCard.tsx` prefetches full article JSON on card hover/touch, delivering 0ms reader opening.
+- **Immediate Next Step:** Production deployment to Google Cloud Run and Cloudflare CDN monitoring.
+
 
 
 

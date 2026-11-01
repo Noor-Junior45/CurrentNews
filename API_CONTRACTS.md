@@ -88,6 +88,35 @@
 - **Headers:** `Content-Type: text/plain; charset=utf-8`
 - **Response (200 OK):** `OK`
 
+### `GET /readyz`
+- **Method:** `GET`
+- **Headers:** `Content-Type: application/json; charset=utf-8`
+- **Response Shape (200 OK):**
+  ```json
+  {
+    "status": "ready",
+    "uptimeSec": 120,
+    "timestamp": "2026-11-01T17:15:00.000Z",
+    "heapUsedMb": 89.5,
+    "service": "currentnews-web-applet",
+    "platform": "google-cloud-run"
+  }
+  ```
+
+### `GET /api/lb/status`
+- **Method:** `GET`
+- **Headers:** `Content-Type: application/json; charset=utf-8`
+- **Response Shape (200 OK):**
+  ```json
+  {
+    "status": "healthy",
+    "node": "gcp-cloud-run-primary",
+    "region": "gcp-serverless",
+    "uptime": 120.5,
+    "timestamp": 1793553230363
+  }
+  ```
+
 ## 5. Search Engine Optimization & Google News Endpoints
 
 ### `GET /sitemap.xml`
@@ -111,6 +140,42 @@
 - **Geo Tags:** `geo.region: IN-JH`, `geo.placename: Jharkhand, India`, `geo.position: 23.6102;85.2799`, `ICBM: 23.6102, 85.2799`
 - **Target Keywords:** `news near Jharkhand`, `Jharkhand news`, `Jharkhand breaking news`, `Ranchi news live`, `Dhanbad news`, `Jamshedpur news`
 - **JSON-LD Schema:** `CollectionPage` with `about: AdministrativeArea (Jharkhand, IN)`
+
+## 6. Cloudflare R2 Article & Zero-Quota Storage Endpoints
+
+### `POST /api/articles/save`
+- **Method:** `POST`
+- **Headers:** `Content-Type: application/json`
+- **Body:** `{ "post": { "id": "...", "title": "...", "content": "...", "status": "published", ... } }`
+- **Action:** Writes document to `articles/${post.id}.json` in Cloudflare R2 bucket `currentnews-media`, mirrors to local disk `data/articles/${post.id}.json`, and rebuilds `articles/feed.json`.
+- **Response Shape (200 OK):**
+  ```json
+  { "success": true, "message": "Article saved and feed updated successfully" }
+  ```
+
+### `DELETE /api/articles/:id`
+- **Method:** `DELETE`
+- **Params:** `id` (string document ID)
+- **Action:** Removes `articles/${id}.json` from Cloudflare R2 and removes article from `articles/feed.json`.
+- **Response Shape (200 OK):**
+  ```json
+  { "success": true, "message": "Article deleted and feed updated" }
+  ```
+
+### `POST /api/articles/sync`
+- **Method:** `POST`
+- **Headers:** `Content-Type: application/json` (supported up to 25MB payload)
+- **Body:** `{ "posts": [ /* Array of Post objects */ ] }`
+- **Action:** Bulk uploads all published articles to Cloudflare R2 and compiles unified `articles/feed.json`.
+- **Response Shape (200 OK):**
+  ```json
+  { "success": true, "message": "Successfully synced 41 of 41 articles to Cloudflare R2", "synced": 41, "total": 41 }
+  ```
+
+### Direct CDN URL Contracts:
+- **Feed CDN:** `https://media.currentnews.blog/articles/feed.json`
+- **Individual Story CDN:** `https://media.currentnews.blog/articles/${id}.json`
+- **Cache-Control:** `public, max-age=60, s-maxage=300`
 
 
 

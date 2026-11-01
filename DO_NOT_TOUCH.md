@@ -3,7 +3,9 @@
 The following files, components, and logic structures represent finalized UI and core infrastructure. They MUST NOT be rewritten, restyled, deleted, or altered unless explicitly ordered by the user:
 
 1. **`src/views/HomeView.tsx`**
-   - Public reader feed grid layout, responsive typography, filter category tabs, and trending spotlight.
+   - Editorial Hero Showcase (`#editorial-hero-showcase`): Panoramic animated multi-poster showcase (`#hero-feature-poster-carousel`) using Golden Ratio scaling (`aspect-[4/3]` to `md:aspect-[1.618/1]`) and Right-to-Left swipe animations without overlay numbers, dots, or arrow clutter.
+   - Default author byline unified to "Current News".
+   - Public reader feed grid layout, responsive typography, filter category tabs, and pick-up reading progress card.
    - Dynamic page-by-page navigator and pagination scroll preservation.
 
 2. **`src/views/PostDetailView.tsx`**
@@ -18,6 +20,7 @@ The following files, components, and logic structures represent finalized UI and
 
 4. **`src/components/Header.tsx` & `src/components/Footer.tsx`**
    - Navigation header and footer with conditional display per `PROFILE_PAGES`.
+   - Footer copyright typography: `© 2026 Current News. All rights reserved.` with all "Live (Independent Ledger)" suffixes removed.
 
 5. **`src/components/AndroidBackGestureHandler.tsx` & `android/app/src/main/java/blog/currentnews/app/MainActivity.kt`**
    - Predictive Android back gesture and hardware back button delegation logic to prevent app close during article reading.
@@ -35,5 +38,22 @@ The following files, components, and logic structures represent finalized UI and
    - Local Schema.org `areaServed` mapping for Jharkhand and key municipal districts (Ranchi, Jamshedpur, Dhanbad, Bokaro, Deoghar, Hazaribagh) plus `knowsAbout` topics.
    - Googlebot & Googlebot-News discovery directives with security disallow on utility routes (`/admin`, `/profile`, `/settings`, `/liked`, `/delete-account`, `/api/`).
    - Google News standard XML sitemap with `<news:news>` schemas, dedicated `/?category=Jharkhand` entry (priority 0.95), and `<news:keywords>` regional tags.
+
+9. **`src/server/r2Articles.ts` & Cloudflare R2 Feed Pipeline**
+   - Direct S3-compatible integration with bucket `currentnews-media` and public CDN domain `media.currentnews.blog`.
+   - Aggregated public articles feed (`articles/feed.json`) and individual article store (`articles/${id}.json`).
+   - Fast fallback to local server disk (`data/articles/feed.json` and `data/articles/${id}.json`).
+   - Endpoints: `POST /api/articles/save`, `DELETE /api/articles/:id`, `POST /api/articles/sync`.
+   - Strict zero-quota architecture: Firebase Firestore reads are bypassed on public feed views, preserving Firestore for admin writes and Google Authentication.
+
+10. **`src/components/ProgressiveArticleBody.tsx` (Google News Reading Engine)**
+   - Progressive scroll-reading architecture: lead paragraph renders immediately (0ms), while subsequent paragraphs and media stream in smoothly on scroll.
+   - Preserves all inline photography, gallery positions, captions, and AdMob Native Advanced monetization slots (`article-middle`).
+   - Zero layout shift (CLS = 0) with graceful fallback for legacy browsers and search engine crawlers.
+
+11. **`src/utils/clientLoadBalancer.ts` (Resilient Multi-Origin Load Balancer)**
+   - Multi-origin routing (Cloudflare Edge CDN, Cloud Run Origin API, R2 Mirror).
+   - Automated circuit breaker (trips for 30s after 2 consecutive failures) and real-time latency probing.
+   - Speculative pre-fetching for instant article transitions without user wait-time.
 
 

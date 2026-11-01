@@ -21,6 +21,7 @@ import {
   handleGetSubscribersCount
 } from './src/server/pushNotifications.js';
 import { handleGetPosts, handleGetPostById, handleGetWriters } from './src/server/postsApi.js';
+import { handleSaveArticle, handleDeleteArticle, handleSyncArticles, ensureR2ArticlesWarmup } from './src/server/r2Articles.js';
 
 // Load environment variables
 dotenv.config();
@@ -43,13 +44,41 @@ async function startServer() {
   const app = express();
   const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
-  // Health-check endpoint for Google Cloud Run / Container orchestrators
+  // Trust proxy headers for Google Cloud Load Balancer (GCLB) and Cloudflare Anycast CDN
+  app.set('trust proxy', true);
+
+  // Health-check (liveness) endpoint for Google Cloud Run / Container orchestrators
   app.get('/healthz', (_req, res) => {
     res.status(200).type('text/plain; charset=utf-8').send('OK');
   });
 
-  // Enable JSON request body parsing
-  app.use(express.json());
+  // Readiness probe endpoint for Google Cloud Load Balancer (GCLB) backend health checks
+  app.get('/readyz', (_req, res) => {
+    const memory = process.memoryUsage();
+    res.status(200).json({
+      status: 'ready',
+      uptimeSec: Math.floor(process.uptime()),
+      timestamp: new Date().toISOString(),
+      heapUsedMb: Math.round((memory.heapUsed / 1024 / 1024) * 100) / 100,
+      service: 'currentnews-web-applet',
+      platform: 'google-cloud-run',
+    });
+  });
+
+  // Client load balancer telemetry status endpoint
+  app.get('/api/lb/status', (_req, res) => {
+    res.status(200).json({
+      status: 'healthy',
+      node: 'gcp-cloud-run-primary',
+      region: process.env.K_REVISION ? 'gcp-serverless' : 'local-node',
+      uptime: process.uptime(),
+      timestamp: Date.now(),
+    });
+  });
+
+  // Enable JSON and URL-encoded request body parsing (up to 25MB for bulk article sync)
+  app.use(express.json({ limit: '25mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
   // Configure Multer for Cloudflare R2 image upload (20MB max, flexible image types and extensions)
   const upload = multer({
@@ -92,9 +121,12 @@ async function startServer() {
     });
   });
 
-  // High-performance server-cached articles API (fast chunked loading for mobile phones)
+  // High-performance Cloudflare R2 articles endpoints (zero Firestore read quota consumption)
   app.get('/api/posts', asyncHandler(handleGetPosts));
   app.get('/api/posts/:id', asyncHandler(handleGetPostById));
+  app.post('/api/articles/save', asyncHandler(handleSaveArticle));
+  app.delete('/api/articles/:id', asyncHandler(handleDeleteArticle));
+  app.post('/api/articles/sync', asyncHandler(handleSyncArticles));
   app.get('/api/writers', asyncHandler(handleGetWriters));
 
   // Backend mail endpoint for automated subscriber alerting
@@ -172,9 +204,33 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server successfully started. Running on http://localhost:${PORT}`);
+    // Non-blocking warmup check to guarantee Cloudflare R2 articles feed is primed
+    ensureR2ArticlesWarmup().catch(err => console.debug('[R2 Warmup Background]:', err));
   });
+
+  // Google Cloud Load Balancer (GCLB) keep-alive alignment to prevent 502 Bad Gateway race conditions
+  // GFE timeout is 600s; backend must exceed this (650s / 660s)
+  server.keepAliveTimeout = 650000;
+  server.headersTimeout = 660000;
+
+  // Graceful shutdown handling for Cloud Run container lifecycle (SIGTERM/SIGINT)
+  const shutdown = (signal: string) => {
+    console.log(`[Lifecycle] Received ${signal}. Draining connections and shutting down gracefully...`);
+    server.close(() => {
+      console.log('[Lifecycle] HTTP server successfully closed.');
+      process.exit(0);
+    });
+    // Force close after 10 seconds if connections are hanging
+    setTimeout(() => {
+      console.error('[Lifecycle] Forcefully terminating after timeout.');
+      process.exit(1);
+    }, 10000);
+  };
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
 startServer();

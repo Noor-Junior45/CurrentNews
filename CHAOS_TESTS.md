@@ -66,4 +66,44 @@ curl -s http://localhost:3000/ | grep -iE "geo.region|geo.placename|news near Jh
 curl -s -A "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)" "http://localhost:3000/?category=Jharkhand" | grep -i "Jharkhand News"
 ```
 
+## 4. Cloudflare R2 & Zero-Quota Article cURL Suite
+
+```bash
+# 1. Fetch public articles feed backed by R2
+curl -s http://localhost:3000/api/posts?limit=3 | jq '{ total: .total, postsCount: (.posts | length), fromCache: .fromCache }'
+
+# 2. Fetch single article directly via API
+curl -s http://localhost:3000/api/posts/Mb0SKs2bF11I7JvCu2HJ | jq '{ id: .post.id, title: .post.title }'
+
+# 3. Verify Cloudflare R2 direct public CDN access
+curl -sI https://media.currentnews.blog/articles/feed.json
+# Expected: HTTP/2 200 OK, Content-Type: application/json
+
+# 4. Verify R2 article sync endpoint (dry test)
+curl -s -X POST http://localhost:3000/api/articles/sync \
+  -H "Content-Type: application/json" \
+  -d '{"posts":[]}' | jq .
+# Expected: { "success": true, "synced": 0, "total": 0 }
+```
+
+## 5. Load Balancer, Ingress & Health Probe Test Suite
+
+```bash
+# 1. Test Cloud Run liveness probe
+curl -sI http://localhost:3000/healthz
+# Expected: HTTP/1.1 200 OK, Content-Type: text/plain
+
+# 2. Test Google Cloud Load Balancer readiness probe (RAM & Uptime telemetry)
+curl -s http://localhost:3000/readyz
+# Expected: { "status": "ready", "uptimeSec": ..., "heapUsedMb": ..., "platform": "google-cloud-run" }
+
+# 3. Test multi-origin cluster health probe
+curl -s http://localhost:3000/api/lb/status
+# Expected: { "status": "healthy", "node": "gcp-cloud-run-primary", ... }
+
+# 4. Test proxy header preservation (X-Forwarded-For & X-Forwarded-Proto)
+curl -s -H "X-Forwarded-For: 203.0.113.195" -H "X-Forwarded-Proto: https" http://localhost:3000/api/lb/status
+```
+
+
 

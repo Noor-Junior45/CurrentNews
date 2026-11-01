@@ -40,6 +40,22 @@
   - **Root Cause:** Committing `.github/workflows/deploy.yml` triggered GitHub's security check, which rejects pushes from standard Personal Access Tokens that don't have the explicit `workflow` OAuth scope checked. Since Google Cloud Run Continuous Deployment already connects directly to GitHub via Google Cloud Build webhooks, the workflow file was unnecessary.
   - **Permanent Guardrail:** Completely deleted `.github/workflows/deploy.yml` and the `.github` directory, relying exclusively on Cloud Run's native GitHub repository integration so `git push` succeeds with any standard GitHub token or SSH key.
 
+- [x] **Bug ID & Summary:** BUG-011 — Bulk article migration throwing HTTP 413 `request entity too large`.
+  - **Root Cause:** Express default `express.json()` parser limit is 100KB. Posting 40+ full HTML articles with rich images exceeded 100KB and caused Express to return 413 Payload Too Large.
+  - **Permanent Guardrail:** Configured `app.use(express.json({ limit: '25mb' }))` and `app.use(express.urlencoded({ extended: true, limit: '25mb' }))` in `server.ts` to accommodate batch migrations and high-resolution articles.
+
+- [x] **Bug ID & Summary:** BUG-012 — Free Firestore read quota (50k reads/day) exhausted from public readers, taking site down.
+  - **Root Cause:** Thousands of daily readers caused direct or indirect Firestore `getDocs` collection scans, which hit the Google Cloud Free Tier limit and broke article reading.
+  - **Permanent Guardrail:** Offloaded 100% of public article reading to Cloudflare R2 object storage (`media.currentnews.blog/articles/feed.json` and `${id}.json`) with zero Firestore reads for readers, reserving Firebase Auth exclusively for editor/admin sign-in.
+
+- [x] **Bug ID & Summary:** BUG-013 — Full-screen spinner blocking reading on slow mobile connections when opening articles.
+  - **Root Cause:** `PostDetailView` checked `if (loading)` before rendering, presenting a full-page loading spinner even when preview data (title, hero photo, author, excerpt) was already known from the feed card.
+  - **Permanent Guardrail:** Seeded `post` state from router navigation state (`location.state.previewPost`), user cache memory (`getCompressedStory`), or feed memory (`getCompressedStories`). Conditioned full-page loading check to `if (loading && !post)`, ensuring the article preview box renders at **0ms** while full text sections stream in progressively on scroll via `ProgressiveArticleBody`.
+
+- [x] **Bug ID & Summary:** BUG-014 — Potential HTTP 502 Bad Gateway race conditions under Google Cloud Load Balancer (GCLB) and Cloud Run.
+  - **Root Cause:** Node.js HTTP server default `keepAliveTimeout` is 5 seconds. Google Front End (GFE) and GCLB default idle connection timeout is 600 seconds. If Node closes an idle TCP connection at the exact moment GCLB routes a reader request onto it, GCLB receives a TCP RST/FIN and returns a 502 Bad Gateway error to the reader.
+  - **Permanent Guardrail:** Explicitly configured `server.keepAliveTimeout = 650000;` (650s) and `server.headersTimeout = 660000;` (660s) on the Express server instance in `server.ts`. Configured `app.set('trust proxy', true)` so client IP and protocol headers are preserved, and provided `/readyz` probe endpoint for zero-downtime load balancer health checks.
+
 
 
 

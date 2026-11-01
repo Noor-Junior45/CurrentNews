@@ -5,7 +5,7 @@ export default function Footer() {
       id="main-footer"
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <p className="select-none">© 2026 Current News Live (Independent Ledger). All rights reserved.</p>
+        <p className="select-none">© 2026 Current News. All rights reserved.</p>
       </div>
     </footer>
   );

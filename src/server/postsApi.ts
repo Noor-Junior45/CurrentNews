@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import type { Request, Response } from 'express';
 import { cleanImageUrl, getFallbackImageUrl } from '../utils/imageUrl.js';
+import { getFeedFromR2, getArticleFromR2 } from './r2Articles.js';
 
 interface CachedPost {
   id: string;
@@ -85,7 +86,7 @@ function parseFirestoreDoc(doc: any): CachedPost | null {
     title: parseFirestoreField(fields.title) || 'Untitled Dispatch',
     content: parseFirestoreField(fields.content) || '',
     category: parseFirestoreField(fields.category) || 'General',
-    authorName: parseFirestoreField(fields.authorName) || 'Current News Staff Report',
+    authorName: parseFirestoreField(fields.authorName) || 'Current News',
     authorEmail: parseFirestoreField(fields.authorEmail) || '',
     authorId: parseFirestoreField(fields.authorId) || '',
     createdAt: parseFirestoreField(fields.createdAt) || new Date().toISOString(),
@@ -193,10 +194,22 @@ export async function handleGetPosts(req: Request, res: Response) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
 
-  // Check if cache needs refreshing
+  // Check if cache needs refreshing from Cloudflare R2 first
   const now = Date.now();
-  if (inMemoryPostsCache.length === 0 || now - lastCacheTimestamp > CACHE_TTL_MS) {
-    await fetchAllPostsFromFirestore();
+  try {
+    const r2Posts = await getFeedFromR2();
+    if (r2Posts && Array.isArray(r2Posts) && r2Posts.length > 0) {
+      inMemoryPostsCache = r2Posts;
+      lastCacheTimestamp = now;
+    } else if (inMemoryPostsCache.length === 0 || now - lastCacheTimestamp > CACHE_TTL_MS) {
+      // Fallback to Firestore only if R2 is completely empty
+      await fetchAllPostsFromFirestore();
+    }
+  } catch (r2Err) {
+    console.debug('[Posts API] R2 read deferred:', r2Err);
+    if (inMemoryPostsCache.length === 0 || now - lastCacheTimestamp > CACHE_TTL_MS) {
+      await fetchAllPostsFromFirestore();
+    }
   }
 
   let posts = [...inMemoryPostsCache];
@@ -239,7 +252,7 @@ export async function handleGetPosts(req: Request, res: Response) {
 
 /**
  * GET /api/posts/:id
- * Fast single article endpoint with in-memory caching.
+ * Fast single article endpoint with Cloudflare R2 and in-memory caching.
  */
 export async function handleGetPostById(req: Request, res: Response) {
   const id = req.params.id;
@@ -250,8 +263,17 @@ export async function handleGetPostById(req: Request, res: Response) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
 
-  // Check cache first
+  // 1. Check in-memory cache first
   let post = inMemoryPostsCache.find(p => p.id === id);
+
+  // 2. Check Cloudflare R2
+  if (!post) {
+    try {
+      post = await getArticleFromR2(id);
+    } catch (e) {}
+  }
+
+  // 3. Fallback to Firestore only if missing from R2
   if (!post) {
     await fetchAllPostsFromFirestore();
     post = inMemoryPostsCache.find(p => p.id === id);
@@ -287,6 +309,7 @@ export async function handleGetWriters(_req: Request, res: Response) {
 
   if (writers.length === 0) {
     writers = [
+      'Current News',
       'Current News Staff Report',
       'Investigative Editorial Bureau',
       'Chief Political Correspondent',

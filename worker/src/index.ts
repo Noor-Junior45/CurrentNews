@@ -1,8 +1,4 @@
-/**
- * Cloudflare Worker for Current News Live
- * Route: api.currentnews.blog/*
- * Edge D1 Database Integration for all Reader-Side Data
- */
+import { DurableObject } from 'cloudflare:workers';
 
 // Cloudflare Worker & D1 runtime declarations
 export interface D1PreparedStatement {
@@ -25,8 +21,133 @@ export interface ExecutionContext {
 
 export interface Env {
   DB: D1Database;
+  AGG: DurableObjectNamespace;
   ADMIN_EMAILS?: string;
   FIREBASE_PROJECT_ID?: string;
+}
+
+/**
+ * Singleton Durable Object for coalescing stats updates (likes, dislikes, views)
+ * into high-performance periodic D1 batch writes every 30 seconds.
+ */
+export class StatsAggregator extends DurableObject {
+  private deltas: Map<string, { likes: number; dislikes: number; views: number }> = new Map();
+  private env: Env;
+
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+    this.env = env;
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    if (request.method === 'POST' && url.pathname === '/add') {
+      let body: any = {};
+      try {
+        body = await request.json();
+      } catch (e) {}
+
+      const { postId, likes = 0, dislikes = 0, views = 0 } = body;
+      if (!postId) {
+        return new Response('Missing postId', { status: 400 });
+      }
+
+      const current = this.deltas.get(postId) || { likes: 0, dislikes: 0, views: 0 };
+      current.likes += Number(likes) || 0;
+      current.dislikes += Number(dislikes) || 0;
+      current.views += Number(views) || 0;
+      this.deltas.set(postId, current);
+
+      // On the first add, call this.ctx.storage.setAlarm(Date.now() + 30000) only if no alarm is set
+      const currentAlarm = await this.ctx.storage.getAlarm();
+      if (currentAlarm === null) {
+        await this.ctx.storage.setAlarm(Date.now() + 30000);
+      }
+
+      return new Response(JSON.stringify({ success: true, pending: this.deltas.size }), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    return new Response('Not found', { status: 404 });
+  }
+
+  async alarm(): Promise<void> {
+    if (this.deltas.size === 0) return;
+
+    // Snapshot deltas to flush
+    const snapshot = new Map(this.deltas);
+    const statements: D1PreparedStatement[] = [];
+
+    for (const [postId, delta] of snapshot.entries()) {
+      if (delta.likes === 0 && delta.dislikes === 0 && delta.views === 0) continue;
+      statements.push(
+        this.env.DB.prepare(
+          `INSERT INTO posts_stats(post_id, likes, dislikes, views) VALUES(?, ?, ?, ?)
+           ON CONFLICT(post_id) DO UPDATE SET
+             likes = MAX(0, likes + excluded.likes),
+             dislikes = MAX(0, dislikes + excluded.dislikes),
+             views = views + excluded.views`
+        ).bind(postId, delta.likes, delta.dislikes, delta.views)
+      );
+    }
+
+    if (statements.length === 0) {
+      this.deltas.clear();
+      return;
+    }
+
+    try {
+      // Execute in D1 batch in chunks
+      const chunkSize = 50;
+      for (let i = 0; i < statements.length; i += chunkSize) {
+        await this.env.DB.batch(statements.slice(i, i + chunkSize));
+      }
+
+      // Clear the flushed deltas only after the batch succeeds
+      for (const [postId, delta] of snapshot.entries()) {
+        const remaining = this.deltas.get(postId);
+        if (remaining) {
+          remaining.likes -= delta.likes;
+          remaining.dislikes -= delta.dislikes;
+          remaining.views -= delta.views;
+          if (remaining.likes === 0 && remaining.dislikes === 0 && remaining.views === 0) {
+            this.deltas.delete(postId);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[StatsAggregator] D1 batch failed, re-arming alarm:', err);
+      // Keep deltas and re-arm alarm
+      await this.ctx.storage.setAlarm(Date.now() + 15000);
+    }
+  }
+}
+
+/**
+ * Dispatch stats delta to the singleton StatsAggregator Durable Object
+ */
+async function sendDeltaToAggregator(
+  env: Env,
+  postId: string,
+  delta: { likes?: number; dislikes?: number; views?: number }
+): Promise<void> {
+  if (env.AGG) {
+    const id = env.AGG.idFromName('global');
+    const stub = env.AGG.get(id);
+    const res = await stub.fetch(
+      new Request('http://agg/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ postId, ...delta }),
+      })
+    );
+    if (!res.ok) {
+      throw new Error(`StatsAggregator returned HTTP ${res.status}`);
+    }
+    return;
+  }
+  throw new Error('AGG binding not configured');
 }
 
 interface JWKKey {
@@ -324,7 +445,8 @@ export default {
 
         return jsonResponse({ stats: statsMap }, 200, {
           ...corsHeaders,
-          'Cache-Control': 'public, s-maxage=30',
+          'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+          'Vary': 'Origin',
         });
       }
 
@@ -354,13 +476,18 @@ export default {
         });
         ctx.waitUntil(cache.put(cacheKey, dedupeResponse));
 
-        // Increment in D1 atomically
-        await env.DB.prepare(
-          `INSERT INTO posts_stats (post_id, views) VALUES (?, 1)
-           ON CONFLICT(post_id) DO UPDATE SET views = views + 1`
-        )
-          .bind(postId)
-          .run();
+        // Send { views: 1 } to Durable Object, with fallback to direct D1
+        ctx.waitUntil((async () => {
+          try {
+            await sendDeltaToAggregator(env, postId, { views: 1 });
+          } catch (err) {
+            console.warn('[Worker] AGG failed for view, falling back to direct D1 update:', err);
+            await env.DB.prepare(
+              `INSERT INTO posts_stats (post_id, views) VALUES (?, 1)
+               ON CONFLICT(post_id) DO UPDATE SET views = views + 1`
+            ).bind(postId).run();
+          }
+        })());
 
         return jsonResponse({ success: true, viewsIncremented: true }, 200, corsHeaders);
       }
@@ -397,7 +524,8 @@ export default {
 
       // -------------------------------------------------------------
       // 4. POST /reaction/:postId { type } (requires auth)
-      // Set/change/remove reaction & update posts_stats in a SINGLE D1 batch
+      // Writes user's reaction row immediately (source of truth) and
+      // coalesces posts_stats delta via Durable Object (with D1 fallback)
       // -------------------------------------------------------------
       if (method === 'POST' && path.startsWith('/reaction/')) {
         const postId = path.replace('/reaction/', '').trim();
@@ -432,73 +560,58 @@ export default {
           return jsonResponse({ success: true, type: targetType }, 200, corsHeaders);
         }
 
-        const statements: D1PreparedStatement[] = [];
-
-        // Ensure post_id exists in posts_stats
-        statements.push(
-          env.DB.prepare(
-            `INSERT INTO posts_stats (post_id, likes, dislikes, views)
-             VALUES (?, 0, 0, 0)
-             ON CONFLICT(post_id) DO NOTHING`
-          ).bind(postId)
-        );
-
+        // 2. Write user's row in reactions table immediately (source of truth)
         if (targetType === null) {
-          // Remove reaction
-          statements.push(
-            env.DB.prepare('DELETE FROM reactions WHERE user_id = ? AND post_id = ?').bind(user.uid, postId)
-          );
-          if (prevType === 'like') {
-            statements.push(
-              env.DB.prepare('UPDATE posts_stats SET likes = MAX(0, likes - 1) WHERE post_id = ?').bind(postId)
-            );
-          } else if (prevType === 'dislike') {
-            statements.push(
-              env.DB.prepare('UPDATE posts_stats SET dislikes = MAX(0, dislikes - 1) WHERE post_id = ?').bind(postId)
-            );
-          }
-        } else if (prevType === null) {
-          // New reaction
-          statements.push(
-            env.DB.prepare(
-              `INSERT INTO reactions (user_id, post_id, type, updated_at)
-               VALUES (?, ?, ?, ?)
-               ON CONFLICT(user_id, post_id) DO UPDATE SET type = excluded.type, updated_at = excluded.updated_at`
-            ).bind(user.uid, postId, targetType, nowMs)
-          );
-          if (targetType === 'like') {
-            statements.push(
-              env.DB.prepare('UPDATE posts_stats SET likes = likes + 1 WHERE post_id = ?').bind(postId)
-            );
-          } else {
-            statements.push(
-              env.DB.prepare('UPDATE posts_stats SET dislikes = dislikes + 1 WHERE post_id = ?').bind(postId)
-            );
-          }
+          await env.DB.prepare('DELETE FROM reactions WHERE user_id = ? AND post_id = ?')
+            .bind(user.uid, postId)
+            .run();
         } else {
-          // Switching reaction ('like' -> 'dislike' or 'dislike' -> 'like')
-          statements.push(
-            env.DB.prepare(
-              `UPDATE reactions SET type = ?, updated_at = ? WHERE user_id = ? AND post_id = ?`
-            ).bind(targetType, nowMs, user.uid, postId)
-          );
-          if (targetType === 'like' && prevType === 'dislike') {
-            statements.push(
-              env.DB.prepare(
-                'UPDATE posts_stats SET likes = likes + 1, dislikes = MAX(0, dislikes - 1) WHERE post_id = ?'
-              ).bind(postId)
-            );
-          } else if (targetType === 'dislike' && prevType === 'like') {
-            statements.push(
-              env.DB.prepare(
-                'UPDATE posts_stats SET dislikes = dislikes + 1, likes = MAX(0, likes - 1) WHERE post_id = ?'
-              ).bind(postId)
-            );
-          }
+          await env.DB.prepare(
+            `INSERT INTO reactions (user_id, post_id, type, updated_at)
+             VALUES (?, ?, ?, ?)
+             ON CONFLICT(user_id, post_id) DO UPDATE SET type = excluded.type, updated_at = excluded.updated_at`
+          )
+            .bind(user.uid, postId, targetType, nowMs)
+            .run();
         }
 
-        // Execute batch transaction in D1
-        await env.DB.batch(statements);
+        // 3. Compute delta (prev -> target)
+        let deltaLikes = 0;
+        let deltaDislikes = 0;
+
+        if (prevType === 'like') {
+          deltaLikes -= 1;
+        } else if (prevType === 'dislike') {
+          deltaDislikes -= 1;
+        }
+
+        if (targetType === 'like') {
+          deltaLikes += 1;
+        } else if (targetType === 'dislike') {
+          deltaDislikes += 1;
+        }
+
+        // 4. Send delta to Durable Object with ctx.waitUntil, with direct D1 fallback
+        ctx.waitUntil((async () => {
+          try {
+            await sendDeltaToAggregator(env, postId, { likes: deltaLikes, dislikes: deltaDislikes });
+          } catch (aggErr) {
+            console.warn('[Worker] AGG failed for reaction, falling back to direct D1:', aggErr);
+            await env.DB.prepare(
+              `INSERT INTO posts_stats (post_id, likes, dislikes, views)
+               VALUES (?, MAX(0, ?), MAX(0, ?), 0)
+               ON CONFLICT(post_id) DO UPDATE SET
+                 likes = MAX(0, likes + ?),
+                 dislikes = MAX(0, dislikes + ?)`
+            ).bind(
+              postId,
+              Math.max(0, deltaLikes),
+              Math.max(0, deltaDislikes),
+              deltaLikes,
+              deltaDislikes
+            ).run();
+          }
+        })());
 
         return jsonResponse({ success: true, type: targetType }, 200, corsHeaders);
       }
@@ -863,6 +976,40 @@ export default {
             success: true,
             message: 'Firestore export imported into Cloudflare D1 successfully',
             imported: counts,
+          },
+          200,
+          corsHeaders
+        );
+      }
+
+      // -------------------------------------------------------------
+      // 12. POST /admin/recount (requires admin auth)
+      // Rebuilds posts_stats likes/dislikes from reactions table in ONE GROUP BY query
+      // -------------------------------------------------------------
+      if (method === 'POST' && path === '/admin/recount') {
+        const user = await authenticateRequest(request, env);
+        if (!user || !isUserAdmin(user.email, env)) {
+          return jsonResponse({ error: 'Forbidden: Admin access required' }, 403, corsHeaders);
+        }
+
+        await env.DB.exec(`
+          INSERT INTO posts_stats (post_id, likes, dislikes, views)
+          SELECT
+            post_id,
+            SUM(CASE WHEN type = 'like' THEN 1 ELSE 0 END) AS likes,
+            SUM(CASE WHEN type = 'dislike' THEN 1 ELSE 0 END) AS dislikes,
+            0 AS views
+          FROM reactions
+          GROUP BY post_id
+          ON CONFLICT(post_id) DO UPDATE SET
+            likes = excluded.likes,
+            dislikes = excluded.dislikes;
+        `);
+
+        return jsonResponse(
+          {
+            success: true,
+            message: 'Posts stats successfully recounted from reactions table',
           },
           200,
           corsHeaders

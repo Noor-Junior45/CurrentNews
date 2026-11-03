@@ -8,6 +8,7 @@ import { safeFormatDate } from '../utils/dateHelper';
 import { saveCompressedStory } from '../utils/compressedStorage';
 import { clientLoadBalancer } from '../utils/clientLoadBalancer';
 import { api, PostStats } from '../utils/api';
+import { reactionStore } from '../utils/reactionStore';
 
 interface BlogPostCardProps {
   post: Post;
@@ -54,28 +55,40 @@ export default function BlogPostCard({ post, globalPenName, cardStats, isLikedBy
     navigate(postUrl, { state: { previewPost: post } });
   };
   
-  const [likes, setLikes] = useState(cardStats?.likes ?? post.likes ?? 0);
-  const [dislikes, setDislikes] = useState(cardStats?.dislikes ?? post.dislikes ?? 0);
-  const [myReaction, setMyReaction] = useState<'liked' | 'disliked' | null>(() => {
-    if (isLikedByUser) return 'liked';
-    return (localStorage.getItem(`react_${post.id}`) as 'liked' | 'disliked' | null) || null;
-  });
+  const [baseLikes, setBaseLikes] = useState(cardStats?.likes ?? post.likes ?? 0);
+  const [baseDislikes, setBaseDislikes] = useState(cardStats?.dislikes ?? post.dislikes ?? 0);
+  const [isHeartPopping, setIsHeartPopping] = useState(false);
+  const [, setTick] = useState(0);
+
+  // Subscribe to reactionStore for instant updates across the app
+  useEffect(() => {
+    return reactionStore.subscribe(() => {
+      setTick((t) => t + 1);
+    });
+  }, []);
 
   useEffect(() => {
     if (isLikedByUser !== undefined) {
-      setMyReaction(isLikedByUser ? 'liked' : (localStorage.getItem(`react_${post.id}`) as any) || null);
+      reactionStore.registerServerState(post.id, isLikedByUser ? 'like' : null);
     }
   }, [isLikedByUser, post.id]);
 
   useEffect(() => {
-    if (cardStats) {
-      setLikes(cardStats.likes);
-      setDislikes(cardStats.dislikes);
-    } else {
-      setLikes(post.likes || 0);
-      setDislikes(post.dislikes || 0);
+    // Never overwrite with a stale server count if there is a pending or recent reaction change
+    if (reactionStore.hasPendingOrRecentChange(post.id)) {
+      return;
     }
-  }, [cardStats, post.likes, post.dislikes]);
+    if (cardStats) {
+      setBaseLikes(cardStats.likes);
+      setBaseDislikes(cardStats.dislikes);
+    } else {
+      setBaseLikes(post.likes || 0);
+      setBaseDislikes(post.dislikes || 0);
+    }
+  }, [cardStats, post.likes, post.dislikes, post.id]);
+
+  const { likes: displayedLikes, dislikes: displayedDislikes, myReaction: currentReaction } =
+    reactionStore.getCalculatedCounts(post.id, baseLikes, baseDislikes);
 
   const handleReaction = async (type: 'liked' | 'disliked', e: React.MouseEvent) => {
     e.stopPropagation();
@@ -83,7 +96,9 @@ export default function BlogPostCard({ post, globalPenName, cardStats, isLikedBy
 
     const user = auth.currentUser;
     if (!user) {
-      const confirmSignIn = window.confirm("To like or dislike this dispatch, you must be logged in. Would you like to sign in with your Google account now?");
+      const confirmSignIn = window.confirm(
+        "To like or dislike this dispatch, you must be logged in. Would you like to sign in with your Google account now?"
+      );
       if (confirmSignIn) {
         try {
           const provider = new GoogleAuthProvider();
@@ -96,55 +111,17 @@ export default function BlogPostCard({ post, globalPenName, cardStats, isLikedBy
       return;
     }
 
-    let newLikes = likes;
-    let newDislikes = dislikes;
-    let nextReaction: 'liked' | 'disliked' | null = null;
+    const targetType: 'like' | 'dislike' | null =
+      type === 'liked'
+        ? (currentReaction === 'like' ? null : 'like')
+        : (currentReaction === 'dislike' ? null : 'dislike');
 
-    if (myReaction === type) {
-      // Undo reaction
-      if (type === 'liked') {
-        newLikes = Math.max(0, likes - 1);
-      } else {
-        newDislikes = Math.max(0, dislikes - 1);
-      }
-      localStorage.removeItem(`react_${post.id}`);
-      nextReaction = null;
-    } else {
-      // Apply new reaction
-      if (type === 'liked') {
-        newLikes = likes + 1;
-        if (myReaction === 'disliked') {
-          newDislikes = Math.max(0, dislikes - 1);
-        }
-      } else {
-        newDislikes = dislikes + 1;
-        if (myReaction === 'liked') {
-          newLikes = Math.max(0, likes - 1);
-        }
-      }
-      localStorage.setItem(`react_${post.id}`, type);
-      nextReaction = type;
+    if (targetType === 'like') {
+      setIsHeartPopping(true);
+      setTimeout(() => setIsHeartPopping(false), 150);
     }
 
-    setLikes(newLikes);
-    setDislikes(newDislikes);
-    setMyReaction(nextReaction);
-
-    try {
-      const apiType = nextReaction === 'liked' ? 'like' : nextReaction === 'disliked' ? 'dislike' : null;
-      await api.setUserReaction(post.id, apiType);
-    } catch (err) {
-      console.error('Failed to update reaction in Worker D1', err);
-      // Rollback on failure
-      setLikes(likes);
-      setDislikes(dislikes);
-      setMyReaction(myReaction);
-      if (myReaction === null) {
-        localStorage.removeItem(`react_${post.id}`);
-      } else {
-        localStorage.setItem(`react_${post.id}`, myReaction);
-      }
-    }
+    reactionStore.setReaction(post.id, targetType);
   };
 
   // Format creation date elegantly

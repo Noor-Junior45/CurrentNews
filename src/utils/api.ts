@@ -111,27 +111,31 @@ export const api = {
   },
 
   /**
-   * Set, toggle, or remove user reaction and update counts in a single D1 batch
+   * Set or remove user reaction idempotently.
+   * Throws on non-OK response or network error so callers can retry or handle auth errors.
    */
   async setUserReaction(
     postId: string,
-    type: 'like' | 'dislike' | null
+    type: 'like' | 'dislike' | null,
+    options: { keepalive?: boolean } = {}
   ): Promise<{ success: boolean; type: 'like' | 'dislike' | null }> {
-    if (!postId) return { success: false, type: null };
-    const { data, error } = await apiFetch<{ success: boolean; type: 'like' | 'dislike' | null }>(
+    if (!postId) throw new Error('Post ID is required');
+    const { data, error, status } = await apiFetch<{ success: boolean; type: 'like' | 'dislike' | null }>(
       `/reaction/${encodeURIComponent(postId)}`,
       {
         method: 'POST',
         body: JSON.stringify({ type }),
+        keepalive: options.keepalive,
       }
     );
 
-    if (error) {
-      console.warn('[Worker API] Failed to update reaction:', error);
-      return { success: false, type: null };
+    if (error || !data?.success) {
+      const err: any = new Error(error || 'Failed to update reaction in Worker D1');
+      err.status = status;
+      throw err;
     }
 
-    return { success: Boolean(data?.success), type: data?.type ?? null };
+    return { success: true, type: data?.type ?? null };
   },
 
   /**

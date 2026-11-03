@@ -39,11 +39,13 @@ if (fs.existsSync(envPath)) {
 }
 
 const isDryRun = process.argv.includes('--dry-run');
+const isFixUrls = process.argv.includes('--fix-urls');
 
 // Parse arguments
 console.log('='.repeat(65));
-console.log(' CURRENT NEWS - Cloudflare R2 Article & Image Migration');
-console.log(' Mode:', isDryRun ? 'DRY-RUN (No writes will be made)' : 'LIVE EXECUTION');
+console.log(' CURRENT NEWS - Cloudflare R2 Article & Image Migration Tool');
+console.log(' Mode:       ', isDryRun ? 'DRY-RUN (No writes will be made)' : 'LIVE EXECUTION');
+console.log(' Fix URLs:   ', isFixUrls ? 'ENABLED (Repairs /uploads/photo.jpg/img/ & HEAD checks)' : 'Standard');
 console.log('='.repeat(65));
 
 // 1. Validate R2 credentials
@@ -189,6 +191,66 @@ async function uploadAndVerifyImage(key, base64DataUrl) {
   return publicUrl;
 }
 
+let totalUrlsFixed = 0;
+const missingImages = [];
+
+/**
+ * Checks if a URL is malformed with /uploads/.../img/ and repairs it to /img/
+ */
+function repairCorruptedPath(url) {
+  if (!url || typeof url !== 'string') return { url, fixed: false };
+  if (url.startsWith('data:image/') || url.startsWith('blob:')) return { url, fixed: false };
+
+  let fixed = false;
+  let nextUrl = url;
+
+  if (nextUrl.includes('/uploads/') && nextUrl.includes('/img/')) {
+    nextUrl = nextUrl.replace(/\/uploads\/photo\.jpg\/img\//g, '/img/');
+    nextUrl = nextUrl.replace(/\/uploads\/[^/]+\.(?:jpe?g|png|webp|gif|svg)\/img\//gi, '/img/');
+    nextUrl = cleanImageUrl(nextUrl);
+    if (nextUrl !== url) {
+      fixed = true;
+    }
+  }
+
+  return { url: nextUrl, fixed };
+}
+
+/**
+ * Sends a HEAD request to verify that the image exists and returns HTTP 200
+ */
+async function headCheckImageUrl(rawUrl, postId, fieldName) {
+  const url = cleanImageUrl(rawUrl);
+  if (!url || typeof url !== 'string' || !url.startsWith('http')) return true;
+  try {
+    const res = await fetch(url, {
+      method: 'HEAD',
+      signal: AbortSignal.timeout(6000),
+    });
+    if (res.status === 200) {
+      return true;
+    } else {
+      missingImages.push({
+        postId,
+        field: fieldName,
+        url,
+        status: res.status,
+        statusText: res.statusText || 'Not Found',
+      });
+      return false;
+    }
+  } catch (err) {
+    missingImages.push({
+      postId,
+      field: fieldName,
+      url,
+      status: 0,
+      statusText: err?.message || 'Network/Timeout error',
+    });
+    return false;
+  }
+}
+
 /**
  * Scan all article fields for base64 images, decode and upload each, repair corrupted URLs
  */
@@ -198,47 +260,74 @@ async function processArticleImages(post) {
   let counter = 1;
   let modified = false;
 
-  // Repair corrupted /uploads/.../img/ paths in post fields
-  if (typeof post.imageUrl === 'string' && post.imageUrl.includes('/uploads/') && post.imageUrl.includes('/img/')) {
-    post.imageUrl = cleanImageUrl(post.imageUrl);
-    modified = true;
-  }
-  if (typeof post.imageUrlFallback === 'string' && post.imageUrlFallback.includes('/uploads/') && post.imageUrlFallback.includes('/img/')) {
-    post.imageUrlFallback = cleanImageUrl(post.imageUrlFallback);
-    modified = true;
-  }
-
-  // 1. Scan imageUrl
-  if (typeof post.imageUrl === 'string' && post.imageUrl.includes('data:image/')) {
-    const match = post.imageUrl.match(/data:image\/[a-zA-Z0-9+.-]+;base64,[^"'\s]+/);
-    if (match) {
-      const key = `img/${postId}-${counter++}.webp`;
-      post.imageUrl = await uploadAndVerifyImage(key, match[0]);
-      migratedCount++;
+  // 1. Scan and repair imageUrl
+  if (typeof post.imageUrl === 'string') {
+    const rep = repairCorruptedPath(post.imageUrl);
+    if (rep.fixed) {
+      post.imageUrl = rep.url;
+      totalUrlsFixed++;
       modified = true;
+      if (isFixUrls) {
+        await headCheckImageUrl(post.imageUrl, postId, 'imageUrl');
+      }
+    } else if (isFixUrls && post.imageUrl.includes('/img/')) {
+      await headCheckImageUrl(post.imageUrl, postId, 'imageUrl');
+    }
+
+    if (post.imageUrl.includes('data:image/')) {
+      const match = post.imageUrl.match(/data:image\/[a-zA-Z0-9+.-]+;base64,[^"'\s]+/);
+      if (match) {
+        const key = `img/${postId}-${counter++}.webp`;
+        post.imageUrl = await uploadAndVerifyImage(key, match[0]);
+        migratedCount++;
+        modified = true;
+      }
     }
   }
 
-  // 2. Scan imageUrlFallback
-  if (typeof post.imageUrlFallback === 'string' && post.imageUrlFallback.includes('data:image/')) {
-    const match = post.imageUrlFallback.match(/data:image\/[a-zA-Z0-9+.-]+;base64,[^"'\s]+/);
-    if (match) {
-      const key = `img/${postId}-${counter++}.webp`;
-      post.imageUrlFallback = await uploadAndVerifyImage(key, match[0]);
-      migratedCount++;
+  // 2. Scan and repair imageUrlFallback
+  if (typeof post.imageUrlFallback === 'string') {
+    const rep = repairCorruptedPath(post.imageUrlFallback);
+    if (rep.fixed) {
+      post.imageUrlFallback = rep.url;
+      totalUrlsFixed++;
       modified = true;
+      if (isFixUrls) {
+        await headCheckImageUrl(post.imageUrlFallback, postId, 'imageUrlFallback');
+      }
+    } else if (isFixUrls && post.imageUrlFallback.includes('/img/')) {
+      await headCheckImageUrl(post.imageUrlFallback, postId, 'imageUrlFallback');
+    }
+
+    if (post.imageUrlFallback.includes('data:image/')) {
+      const match = post.imageUrlFallback.match(/data:image\/[a-zA-Z0-9+.-]+;base64,[^"'\s]+/);
+      if (match) {
+        const key = `img/${postId}-${counter++}.webp`;
+        post.imageUrlFallback = await uploadAndVerifyImage(key, match[0]);
+        migratedCount++;
+        modified = true;
+      }
     }
   }
 
-  // 3. Scan imageUrls array
+  // 3. Scan and repair imageUrls array
   if (Array.isArray(post.imageUrls)) {
     const updated = [];
-    for (let u of post.imageUrls) {
+    for (let i = 0; i < post.imageUrls.length; i++) {
+      let u = post.imageUrls[i];
       if (typeof u === 'string') {
-        if (u.includes('/uploads/') && u.includes('/img/')) {
-          u = cleanImageUrl(u);
+        const rep = repairCorruptedPath(u);
+        if (rep.fixed) {
+          u = rep.url;
+          totalUrlsFixed++;
           modified = true;
+          if (isFixUrls) {
+            await headCheckImageUrl(u, postId, `imageUrls[${i}]`);
+          }
+        } else if (isFixUrls && u.includes('/img/')) {
+          await headCheckImageUrl(u, postId, `imageUrls[${i}]`);
         }
+
         if (u.includes('data:image/')) {
           const match = u.match(/data:image\/[a-zA-Z0-9+.-]+;base64,[^"'\s]+/);
           if (match) {
@@ -254,15 +343,24 @@ async function processArticleImages(post) {
     post.imageUrls = updated;
   }
 
-  // 4. Scan imageUrlsFallback array
+  // 4. Scan and repair imageUrlsFallback array
   if (Array.isArray(post.imageUrlsFallback)) {
     const updated = [];
-    for (let u of post.imageUrlsFallback) {
+    for (let i = 0; i < post.imageUrlsFallback.length; i++) {
+      let u = post.imageUrlsFallback[i];
       if (typeof u === 'string') {
-        if (u.includes('/uploads/') && u.includes('/img/')) {
-          u = cleanImageUrl(u);
+        const rep = repairCorruptedPath(u);
+        if (rep.fixed) {
+          u = rep.url;
+          totalUrlsFixed++;
           modified = true;
+          if (isFixUrls) {
+            await headCheckImageUrl(u, postId, `imageUrlsFallback[${i}]`);
+          }
+        } else if (isFixUrls && u.includes('/img/')) {
+          await headCheckImageUrl(u, postId, `imageUrlsFallback[${i}]`);
         }
+
         if (u.includes('data:image/')) {
           const match = u.match(/data:image\/[a-zA-Z0-9+.-]+;base64,[^"'\s]+/);
           if (match) {
@@ -278,15 +376,35 @@ async function processArticleImages(post) {
     post.imageUrlsFallback = updated;
   }
 
-  // 5. Scan <img src="data:..."> inside content
+  // 5. Scan <img src="..."> inside content
   if (typeof post.content === 'string') {
     // Repair corrupted /uploads/.../img/ in content
     if (post.content.includes('/uploads/') && post.content.includes('/img/')) {
+      const corruptedImgRegex = /https:\/\/(?:https?[:/]*)*media\.currentnews\.blog\/uploads\/[^"'\s]+\/img\/[^"'\s]+/gi;
+      let m;
+      while ((m = corruptedImgRegex.exec(post.content)) !== null) {
+        totalUrlsFixed++;
+        modified = true;
+      }
       post.content = post.content.replace(
-        /https:\/\/(?:https\/\/)?media\.currentnews\.blog\/uploads\/[^"'\s]+\/img\//gi,
+        /https:\/\/(?:https?[:/]*)*media\.currentnews\.blog\/uploads\/[^"'\s]+\/img\//gi,
         `${publicBaseUrl}/img/`
       );
+    }
+
+    // Clean any duplicated protocols in content like https://https://
+    if (post.content.includes('https://https')) {
+      post.content = post.content.replace(/https:\/\/(?:https?[:/]*)+/gi, 'https://');
       modified = true;
+    }
+
+    // In --fix-urls mode, HEAD check all /img/ URLs in content
+    if (isFixUrls && post.content.includes('/img/')) {
+      const contentImgRegex = /src=["'](https?:\/\/[^"'\s]*?\/img\/[^"'\s]+)["']/gi;
+      let m;
+      while ((m = contentImgRegex.exec(post.content)) !== null) {
+        await headCheckImageUrl(m[1], postId, 'content <img src>');
+      }
     }
 
     if (post.content.includes('data:image/')) {
@@ -415,11 +533,11 @@ async function main() {
     if (migratedCount > 0) {
       console.log(`  ✓ Extracted & migrated ${migratedCount} base64 image(s) to R2`);
     } else {
-      console.log(`  ✓ No base64 images found (clean)`);
+      console.log(`  ✓ Checked images (Clean)`);
     }
 
     // Write cleaned article back to R2 and local mirror
-    if (!isDryRun) {
+    if (!isDryRun && modified) {
       const bodyBuffer = Buffer.from(JSON.stringify(cleanedPost, null, 2), 'utf-8');
 
       // Upload cleaned article to R2
@@ -436,6 +554,7 @@ async function main() {
         if (!fs.existsSync(localDir)) fs.mkdirSync(localDir, { recursive: true });
         fs.writeFileSync(path.join(localDir, `${cleanedPost.id}.json`), JSON.stringify(cleanedPost, null, 2), 'utf-8');
       } catch (e) {}
+      console.log(`  ✓ Updated articles/${cleanedPost.id}.json in R2 and local mirror`);
     } else if (modified) {
       console.log(`  [DRY-RUN] Would update articles/${cleanedPost.id}.json in R2`);
     }
@@ -474,10 +593,26 @@ async function main() {
     console.log(`[DRY-RUN] Final articles/feed.json size would be ${feedSizeKb} KB (${lightFeed.length} articles)`);
   }
 
+  // Print missing images report if any failed HEAD check
+  if (missingImages.length > 0) {
+    console.log('\n' + '!'.repeat(65));
+    console.log(' MISSING / UNREACHABLE IMAGES (HTTP != 200)');
+    console.log(' The following image URLs failed public HEAD checks and must be re-uploaded:');
+    console.log('!'.repeat(65));
+    for (const item of missingImages) {
+      console.log(`  - [Post: ${item.postId}] (${item.field}):`);
+      console.log(`    URL:    ${item.url}`);
+      console.log(`    Status: ${item.status} (${item.statusText})`);
+    }
+    console.log('!'.repeat(65));
+  }
+
   console.log('\n' + '='.repeat(65));
-  console.log(' MIGRATION SUMMARY');
+  console.log(' MIGRATION & URL FIX SUMMARY');
   console.log('='.repeat(65));
   console.log(`  Articles Processed: ${articlesProcessed}`);
+  console.log(`  URLs Fixed:         ${totalUrlsFixed}`);
+  console.log(`  Missing Images:     ${missingImages.length}`);
   console.log(`  Images Uploaded:    ${totalImagesUploaded}`);
   console.log(`  feed.json Size:     ${feedSizeKb} KB`);
   console.log(`  Mode:               ${isDryRun ? 'DRY-RUN (No changes applied)' : 'LIVE (All changes applied to R2)'}`);

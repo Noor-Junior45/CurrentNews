@@ -1,12 +1,13 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   Trash2, 
   AlertTriangle, 
   CheckCircle2, 
-  Mail, 
   LogIn,
-  RefreshCw
+  RefreshCw,
+  Copy,
+  Check
 } from 'lucide-react';
 import { 
   signInWithPopup, 
@@ -27,6 +28,28 @@ export default function DeleteAccountView() {
   const [confirmText, setConfirmText] = useState('');
   const [deletionSuccess, setDeletionSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyDelete = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText('DELETE');
+      } else {
+        const textArea = document.createElement('textarea');
+        textArea.value = 'DELETE';
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.debug('Clipboard write error:', err);
+    }
+  };
 
   useState(() => {
     updateDocumentSEO({
@@ -36,38 +59,6 @@ export default function DeleteAccountView() {
       robots: 'noindex, nofollow'
     });
   });
-
-  const supportEmail = 'Current News <support@guashoomin.resend.app>';
-  const emailSubject = 'Account and Data Deletion Request - Current News';
-  
-  const userEmail = user?.email || '';
-  const userName = user?.displayName || '';
-  const userUid = user?.uid || '';
-  const currentDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-
-  // Pre-made formatted email body autofilled with user details
-  const deletionEmailBody = `Dear Current News Privacy & Support Team,
-
-Please permanently delete my Current News user account and all associated personal data in accordance with Google Play Data Safety policies and applicable privacy regulations.
-
-ACCOUNT IDENTIFICATION:
-• Account Email Address: ${userEmail ? userEmail : '[PLEASE INSERT YOUR ACCOUNT EMAIL HERE]'}
-• Account Display Name: ${userName ? userName : '[YOUR NAME (OPTIONAL)]'}
-• User UID: ${userUid ? userUid : '[NOT SIGNED IN / UNKNOWN]'}
-• Date of Request: ${currentDate}
-
-SCOPE OF DELETION REQUEST:
-1. Permanently delete my Firebase Authentication credentials and user profile.
-2. Remove my registered email address from all subscriber lists, newsletter databases, and communications.
-3. Purge all personal profile records, user preferences, likes, dislikes, and interaction telemetry.
-
-I understand that this action is permanent and cannot be reversed once processed. Please send a confirmation reply to this email once the deletion has been fulfilled.
-
-Thank you,
-${userName || '[Your Name]'}`;
-
-  // Clean RFC 6068 mailto URI with sanitized query parameters autofilling Current News <support@guashoomin.resend.app>
-  const mailtoUrl = `mailto:${encodeURIComponent(supportEmail)}?to=${encodeURIComponent(supportEmail)}&subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(deletionEmailBody)}`;
 
   const googleProvider = new GoogleAuthProvider();
 
@@ -140,10 +131,6 @@ ${userName || '[Your Name]'}`;
       <ProfilePageNavbar title="Account Deletion" />
 
       <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
-        <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mb-8 leading-relaxed">
-          In accordance with Google Play's User Data Policy and international data privacy regulations (GDPR & CCPA), 
-          you have the absolute right to request the permanent deletion of your account and all associated personal records.
-        </p>
 
       {/* Success Notification */}
       {deletionSuccess && (
@@ -180,15 +167,8 @@ ${userName || '[Your Name]'}`;
       {!deletionSuccess && (
         <div className="space-y-8">
           
-          {/* Section 1: In-App Interactive Self-Service Deletion */}
+          {/* In-App Interactive Self-Service Deletion */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6">
-            <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider mb-2 flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
-              Method 1: Instant Self-Service Deletion (Recommended)
-            </h2>
-            <p className="text-xs text-slate-600 dark:text-slate-400 mb-5">
-              Authenticate your identity to execute an immediate, automated purge of your account records.
-            </p>
 
             {authLoading ? (
               <div className="py-6 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
@@ -241,7 +221,21 @@ ${userName || '[Your Name]'}`;
 
                   <div>
                     <label className="block text-slate-600 dark:text-slate-400 mb-1">
-                      Type <span className="font-mono font-bold text-rose-600">DELETE</span> to confirm:
+                      Type{' '}
+                      <button
+                        type="button"
+                        onClick={handleCopyDelete}
+                        title="Click to copy DELETE"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-sans font-medium text-xs transition-colors cursor-pointer select-none active:scale-95 border border-slate-200/70 dark:border-slate-700/70 align-middle"
+                      >
+                        <span>DELETE</span>
+                        {copied ? (
+                          <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                        ) : (
+                          <Copy className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" />
+                        )}
+                      </button>{' '}
+                      to confirm:
                     </label>
                     <input
                       type="text"
@@ -287,37 +281,7 @@ ${userName || '[Your Name]'}`;
             )}
           </div>
 
-          {/* Section 2: Manual Email Request (Google Play Policy Web Requirement) */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6">
-            <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider mb-2 flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
-              Method 2: External Email Request
-            </h2>
-            <p className="text-xs text-slate-600 dark:text-slate-400 mb-5 leading-relaxed">
-              If you have uninstalled the app or are unable to sign in, clicking the button below will automatically open your email app with the complete pre-filled deletion request addressed to our support desk.
-            </p>
 
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-3 border-t border-slate-100 dark:border-slate-800">
-              <div>
-                <div className="text-[11px] font-mono text-slate-500">Inbound Support Desk:</div>
-                <div className="text-xs font-bold text-slate-900 dark:text-slate-100 mt-0.5 font-mono">
-                  {supportEmail}
-                </div>
-                <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-                  Processed within 48 to 72 business hours
-                </div>
-              </div>
-
-              <a
-                href={mailtoUrl}
-                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-xs font-semibold rounded-lg shadow-sm transition-all shrink-0"
-                id="send-deletion-email-btn"
-              >
-                <Mail className="h-4 w-4" />
-                <span>Send Deletion Email</span>
-              </a>
-            </div>
-          </div>
 
           {/* Section 3: Data Safety & Retention Information (Google Play Disclosure) */}
           <div className="border border-slate-200 dark:border-slate-800 rounded-xl p-6 text-xs text-slate-600 dark:text-slate-400 space-y-3">

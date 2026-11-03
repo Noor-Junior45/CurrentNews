@@ -102,4 +102,15 @@
   - Replaced `<div id="root">` content with a clean initial wireframe skeleton that matches the actual app layout during initial bundle download.
   - Bumped PWA service worker to `v2` (`current-news-live-v2`) and switched navigation requests (`event.request.mode === 'navigate'`) to a strict **Network-First** strategy so browsers never get trapped in stale cached HTML.
   - Implemented root `ErrorBoundary` in `src/components/ErrorBoundary.tsx` wrapping `<App />` in `src/main.tsx` to handle any unexpected runtime errors gracefully with instant recovery.
+- **Phase 21 (Streamlined In-App Account Deletion):** [COMPLETED]
+  - Removed top descriptive policy paragraph from `/delete-account`.
+  - Removed "Method 2: External Email Request" and external mailto logic.
+  - Removed "Method 1" heading and subtitle; the interface directly displays user login credentials, Permanent Action Notice, confirmation checklist/input, and deletion trigger.
+- **Phase 22 (One-Click Copy Confirmation Pill):** [COMPLETED]
+  - Styled confirmation label to match reference image: light gray pill badge (`Type [DELETE ❐] to confirm:`) with icon-only copy trigger, smooth active states, clipboard copying with fallback, and subtle check indicator.
+- **Phase 23 (R2 Image URL Sanitization & Standalone Migration Tool):** [COMPLETED]
+  - Added `getPublicBase()` in `src/server/r2Articles.ts` to strictly sanitize the hostname from `R2_PUBLIC_DOMAIN` (stripping protocol, path, and query params) and always return `https://${host}` (fallback: `https://media.currentnews.blog`).
+  - Strict atomic upload: `uploadBase64ImageToR2` throws a fatal error if credentials or PutObject fail, guaranteeing articles can never point to unverified image links.
+  - Added self-healing URL sanitization in `imageUrl.ts` and `processAndExtractBase64Images` repairing accidental `/uploads/.../img/` paths.
+  - Created standalone CLI tool `scripts/migrate-from-r2.mjs` (and `npm run migrate:r2`): downloads all bucket articles, decodes base64 images into `img/{postId}-{n}.webp`, sends mandatory `HEAD` requests to verify HTTP 200 before writing, updates full articles, rebuilds light 37 KB `feed.json`, supports `--dry-run`, and outputs a comprehensive migration summary.
 - **Immediate Next Step:** Production deployment to Google Cloud Run and Cloudflare D1/Worker deployment.

@@ -108,12 +108,38 @@ function loadLocalFeed(): any[] {
 }
 
 /**
+ * Safely extracts the canonical public base URL from process.env.R2_PUBLIC_DOMAIN.
+ * Strips any protocol, path, or port typos, keeping strictly the hostname,
+ * with media.currentnews.blog as fallback.
+ * Always returns "https://" + host (e.g. "https://media.currentnews.blog").
+ */
+export function getPublicBase(): string {
+  const raw = process.env.R2_PUBLIC_DOMAIN || 'media.currentnews.blog';
+  let host = raw.trim();
+  // Strip any protocol
+  host = host.replace(/^[a-zA-Z]+:\/\//, '');
+  // Strip any path components or query strings (e.g. /uploads/photo.jpg)
+  host = host.split('/')[0].split('?')[0].split('#')[0].trim();
+  // Strip trailing slashes
+  host = host.replace(/\/+$/, '');
+  if (!host) {
+    host = 'media.currentnews.blog';
+  }
+  return `https://${host}`;
+}
+
+/**
  * Decodes a base64 data URL and uploads it directly to Cloudflare R2 as a standalone webp image file
  * with immutable 1-year cache headers, saving local mirror copy as fallback.
+ * CRITICAL: If R2 credentials are missing or the upload fails, this function throws
+ * so articles are never rewritten to point to non-existent uploaded images.
  */
 export async function uploadBase64ImageToR2(base64DataUrl: string, key: string): Promise<string> {
-  const customDomain = process.env.R2_PUBLIC_DOMAIN || 'media.currentnews.blog';
-  const publicUrl = `https://${customDomain}/${key}`;
+  const client = getR2Client();
+  const bucket = getR2BucketName();
+  if (!client) {
+    throw new Error(`R2 client credentials missing (R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY). Cannot upload ${key} to Cloudflare R2.`);
+  }
 
   const match = base64DataUrl.match(/^data:image\/([a-zA-Z0-9+.-]+);base64,(.+)$/);
   if (!match) {
@@ -125,23 +151,15 @@ export async function uploadBase64ImageToR2(base64DataUrl: string, key: string):
   const buffer = Buffer.from(base64Data, 'base64');
   const contentType = key.endsWith('.webp') ? 'image/webp' : (rawFormat === 'png' ? 'image/png' : 'image/jpeg');
 
-  // 1. Upload to Cloudflare R2 with immutable 1-year cache headers
-  const client = getR2Client();
-  const bucket = getR2BucketName();
-  if (client) {
-    try {
-      await client.send(new PutObjectCommand({
-        Bucket: bucket,
-        Key: key,
-        Body: buffer,
-        ContentType: contentType,
-        CacheControl: 'public, max-age=31536000, s-maxage=31536000, immutable',
-      }));
-      console.log(`[R2 Image] Uploaded ${key} (${Math.round(buffer.length / 1024)} KB)`);
-    } catch (err: any) {
-      console.warn(`[R2 Image] Failed to upload ${key} to R2:`, err?.message || err);
-    }
-  }
+  // 1. Upload to Cloudflare R2 with immutable 1-year cache headers (must throw if fails)
+  await client.send(new PutObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    Body: buffer,
+    ContentType: contentType,
+    CacheControl: 'public, max-age=31536000, s-maxage=31536000, immutable',
+  }));
+  console.log(`[R2 Image] Uploaded ${key} (${Math.round(buffer.length / 1024)} KB) to Cloudflare R2`);
 
   // 2. Also save to local mirror in data/img as fallback
   try {
@@ -155,6 +173,7 @@ export async function uploadBase64ImageToR2(base64DataUrl: string, key: string):
     console.debug(`[R2 Image] Local write notice for ${key}:`, err);
   }
 
+  const publicUrl = `${getPublicBase()}/${key}`;
   return cleanImageUrl(publicUrl);
 }
 
@@ -234,19 +253,27 @@ export async function processAndExtractBase64Images(post: any): Promise<{ post: 
   }
 
   // 5. Scan <img src="data:image/..."> inside post.content
-  if (typeof post.content === 'string' && post.content.includes('data:image/')) {
-    const regex = /src=["'](data:image\/[a-zA-Z0-9+.-]+;base64,[^"']+)["']/g;
-    let match: RegExpExecArray | null;
-    const matches: string[] = [];
-    while ((match = regex.exec(post.content)) !== null) {
-      matches.push(match[1]);
-    }
+  if (typeof post.content === 'string') {
+    // Repair any previously corrupted /uploads/.../img/ references
+    post.content = post.content.replace(
+      /https:\/\/(?:https\/\/)?media\.currentnews\.blog\/uploads\/[^"'\s]+\/img\//gi,
+      `${getPublicBase()}/img/`
+    );
 
-    for (const dataUrl of matches) {
-      const key = `img/${postId}-${counter++}.webp`;
-      const uploadedUrl = await uploadBase64ImageToR2(dataUrl, key);
-      post.content = post.content.split(dataUrl).join(uploadedUrl);
-      migratedCount++;
+    if (post.content.includes('data:image/')) {
+      const regex = /src=["'](data:image\/[a-zA-Z0-9+.-]+;base64,[^"']+)["']/g;
+      let match: RegExpExecArray | null;
+      const matches: string[] = [];
+      while ((match = regex.exec(post.content)) !== null) {
+        matches.push(match[1]);
+      }
+
+      for (const dataUrl of matches) {
+        const key = `img/${postId}-${counter++}.webp`;
+        const uploadedUrl = await uploadBase64ImageToR2(dataUrl, key);
+        post.content = post.content.split(dataUrl).join(uploadedUrl);
+        migratedCount++;
+      }
     }
   }
 
@@ -309,8 +336,7 @@ export async function saveArticleToR2(post: any): Promise<{ success: boolean; ur
   // 3. Update the aggregated light feed.json in R2
   await updateFeedIndexInR2(post);
 
-  const customDomain = process.env.R2_PUBLIC_DOMAIN || 'media.currentnews.blog';
-  const publicUrl = `https://${customDomain}/${r2Key}`;
+  const publicUrl = `${getPublicBase()}/${r2Key}`;
 
   return { success: true, url: publicUrl };
 }
@@ -475,12 +501,14 @@ export async function getArticleFromR2(postId: string): Promise<any | null> {
   }
 
   // 3. Check Public R2 CDN HTTP URL
-  const customDomain = process.env.R2_PUBLIC_DOMAIN || 'media.currentnews.blog';
-  const devDomain = process.env.R2_DEV_DOMAIN || 'pub-03dd1274c4824531a1478f20e0485d75.r2.dev';
+  const customBase = getPublicBase();
+  const rawDev = process.env.R2_DEV_DOMAIN || 'pub-03dd1274c4824531a1478f20e0485d75.r2.dev';
+  const devHost = rawDev.replace(/^[a-zA-Z]+:\/\//, '').split('/')[0].trim();
+  const devBase = `https://${devHost || 'pub-03dd1274c4824531a1478f20e0485d75.r2.dev'}`;
 
-  for (const domain of [customDomain, devDomain]) {
+  for (const base of [customBase, devBase]) {
     try {
-      const cdnUrl = `https://${domain}/articles/${postId}.json`;
+      const cdnUrl = `${base}/articles/${postId}.json`;
       const res = await fetch(cdnUrl, { signal: AbortSignal.timeout(3000) });
       if (res.ok) {
         const data = await res.json();
@@ -528,12 +556,14 @@ export async function getFeedFromR2(): Promise<any[]> {
   }
 
   // 2. Try Public R2 CDN
-  const customDomain = process.env.R2_PUBLIC_DOMAIN || 'media.currentnews.blog';
-  const devDomain = process.env.R2_DEV_DOMAIN || 'pub-03dd1274c4824531a1478f20e0485d75.r2.dev';
+  const customBase = getPublicBase();
+  const rawDev = process.env.R2_DEV_DOMAIN || 'pub-03dd1274c4824531a1478f20e0485d75.r2.dev';
+  const devHost = rawDev.replace(/^[a-zA-Z]+:\/\//, '').split('/')[0].trim();
+  const devBase = `https://${devHost || 'pub-03dd1274c4824531a1478f20e0485d75.r2.dev'}`;
 
-  for (const domain of [customDomain, devDomain]) {
+  for (const base of [customBase, devBase]) {
     try {
-      const cdnUrl = `https://${domain}/articles/feed.json`;
+      const cdnUrl = `${base}/articles/feed.json`;
       const res = await fetch(cdnUrl, { signal: AbortSignal.timeout(3000) });
       if (res.ok) {
         const data = await res.json();

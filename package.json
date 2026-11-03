@@ -13,7 +13,8 @@
     "cap:build": "npm run build && npx cap sync android",
     "cap:sync": "npx cap sync android",
     "cap:open": "npx cap open android",
-    "cap:sha": "node scripts/get-sha.js"
+    "cap:sha": "node scripts/get-sha.js",
+    "migrate:r2": "node scripts/migrate-from-r2.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1135.0",

@@ -131,9 +131,10 @@ export function cleanImageUrl(url?: string | null): string {
   // 1. Fix duplicated, malformed, or missing-colon protocols (e.g. "https://https//", "https//", "http://https://", "https:")
   let formatted = cleaned.replace(/^(?:https?[:/]*)+/i, 'https://');
 
-  // 2. Fix accidental path insertions like "/uploads/photo.jpg/uploads/" or "/photo.jpg/uploads/"
+  // 2. Fix accidental path insertions like "/uploads/photo.jpg/uploads/" or "/photo.jpg/uploads/" or "/uploads/photo.jpg/img/"
   // e.g. "media.currentnews.blog/uploads/photo.jpg/uploads/2026/..." -> "media.currentnews.blog/uploads/2026/..."
   formatted = formatted.replace(/\/uploads\/[^/]+\.(?:jpe?g|png|webp|gif|svg)\/uploads\//gi, '/uploads/');
+  formatted = formatted.replace(/\/uploads\/[^/]+\.(?:jpe?g|png|webp|gif|svg)\/img\//gi, '/img/');
   formatted = formatted.replace(/\/uploads\/uploads\//gi, '/uploads/');
 
   // 3. Fix double slashes inside the path (excluding https://)
@@ -247,6 +248,10 @@ export function sanitizePostImages<T extends {
     sanitized.content = sanitized.content.replace(
       /https:\/\/(?:https\/\/)?media\.currentnews\.blog\/uploads\/photo\.jpg\/uploads\//g,
       'https://media.currentnews.blog/uploads/'
+    );
+    sanitized.content = sanitized.content.replace(
+      /https:\/\/(?:https\/\/)?media\.currentnews\.blog\/uploads\/photo\.jpg\/img\//g,
+      'https://media.currentnews.blog/img/'
     );
     sanitized.content = sanitized.content.replace(
       /https:\/\/https\/\/media\.currentnews\.blog\//g,

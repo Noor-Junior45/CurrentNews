@@ -61,10 +61,40 @@
   - Client-side smart load balancer (`src/utils/clientLoadBalancer.ts`): Dynamic multi-origin traffic distribution (Cloudflare Edge CDN <-> Cloud Run Origin API <-> R2 Mirror) with active latency scoring, circuit breaker (30s cooldown after 2 failures), and transparent fallback.
 - **Phase 11 (Server-Driven In-App Update Engine — Option B):** [COMPLETED]
   - Server endpoints: `GET /api/app/version` and `POST /api/app/version` managing `latestVersion`, `latestVersionCode`, `minSupportedVersionCode`, `releaseNotes`, and `forceUpdate` flag.
-  - Client controller (`src/utils/appVersionManager.ts`): Semantic version parser and build code checker via `@capacitor/app` (`App.getInfo()`) with 24-hour snooze cooldown.
-  - Bottom sheet update prompt (`src/components/AppUpdatePrompt.tsx`): Newspaper-themed slide-up card showing what's new, "Update on Google Play" button (`market://details?id=blog.currentnews.app`), and full-screen blocking support for mandatory security updates (`forceUpdate: true`).
-- **Immediate Next Step:** Production deployment to Google Cloud Run and Cloudflare CDN monitoring.
-
-
-
-
+  - Client controller (`src/utils/appVersionManager.ts`): Semantic version parser and build code checker via `@capacitor/app` (`App.getInfo()`).
+  - Update popup banner completely removed from UI per user request, leaving zero popup interruptions.
+- **Phase 12 (Category-Synchronized Dynamic Poster Showcase):** [COMPLETED]
+  - Poster pool dynamically synchronizes with active `selectedCategory`: viewing "All" cycles through all dispatches, while viewing "Sports", "Politics", "Tech", "Business", "Health", "World", "Opinion", "General", or "Jharkhand" filters the rotating carousel strictly to dispatches from that category.
+  - Automatically resets carousel index (`currentPosterIndex`) to 0 on category switch to prevent index bounds drift.
+  - Preserves 100% of the Golden Ratio aspect ratios, Right-to-Left swipe animation, high-contrast typography, and beige/blue/brown color theme.
+- **Phase 13 (Popup De-Cluttering & Codebase Purification):** [COMPLETED]
+  - Permanently removed Web Push Notification Alert Prompt (`NotificationBanner.tsx`) from `src/App.tsx` and filesystem.
+  - Permanently deleted Newsletter Subscription Modal (`NewsletterPopup.tsx`) from filesystem.
+  - Streamlined reader viewport: zero intrusive popup sheets or subscription overlays during reading.
+- **Phase 14 (Legal Navigation & Header Left Alignment Alignment):** [COMPLETED]
+  - Renamed top navbar headings to "Privacy Policy" and "Terms of Service" placed directly on the left adjacent to the tailless back button (`ChevronLeft`).
+  - Unified back navigation: tapping the tailless back button, triggering touch edge-swipe gestures, or pressing the Android hardware back button strictly navigates back to `/profile`.
+- **Phase 15 (Universal Left-Aligned Navbar & Profile Page Alignment):** [COMPLETED]
+  - Updated `ProfilePageNavbar.tsx` so the page title is universally positioned on the left side, directly next to the tailless back button (`ChevronLeft`).
+  - Applied across the Profile dashboard (`/profile`) and all individual sub-pages (`/settings`, `/liked`, `/delete-account`, `/admin`, `/about`, `/contact`, `/editorial-policy`, `/signin`, `/privacy`, `/terms`).
+  - Verified 100% presence of all individual page view files in `src/views/`.
+- **Phase 17 (Firestore Quota Resilience & Security Rules Resolution):** [COMPLETED]
+  - Fixed `Failed to save pen name: Missing or insufficient permissions`: Added `match /users/{userId}` security rule in `firestore.rules` allowing authenticated users to manage their own pen name profiles, explicitly added `mdhassan1738@gmail.com` to admin checks, and registered the `User` schema in `firebase-blueprint.json`. Successfully deployed rules via `deploy_firebase`.
+  - Added dual-layer caching for author pen names: `localStorage.setItem('current_news_pen_name_' + user.uid)` ensures pen names render instantly without requiring a network read and persist even during quota exhaustion.
+  - Fixed `[Push Service] Count error: [FirebaseError: Quota limit exceeded]`: Replaced unbounded `getDocs(collection(db, 'push_subscriptions'))` with `getCountFromServer` aggregate queries, added a 5-minute memory cache, and implemented safe quota error interception returning `{ success: true, count, quotaLimited: true }` instead of HTTP 500.
+  - Added zero-quota fallback in `AdminDashboardView.tsx` and `CurrentPublicationsView.tsx` to read from compressed local storage and Cloudflare R2 mirror when Firestore read units are exhausted.
+  - Handled Firebase Firestore GrpcConnection 'Listen' stream idle timeout cancellation as an expected non-breaking lifecycle event.
+- **Phase 18 (R2 Light Feed Index & Base64 Image Extraction):** [COMPLETED]
+  - R2 Feed Payload Reduction: `articles/feed.json` optimized from 5.7 MB down to 37 KB (99.3% reduction) by stripping `content` HTML and base64 URLs, retaining only light index items (`id`, `title`, `category`, `authorName`, `createdAt`, `status`, `imageUrl`, `hashtags`, `likes`, `dislikes`, `views`, `excerpt`).
+  - Base64 Image Extraction: Implemented `processAndExtractBase64Images` in `src/server/r2Articles.ts` to scan `imageUrl`, `imageUrlFallback`, `imageUrls`, `imageUrlsFallback` and `<img src="data:...">` in HTML content, decode base64 blobs, upload directly to R2 as `img/{postId}-{n}.webp` with 1-year immutable cache headers (`public, max-age=31536000, s-maxage=31536000, immutable`), and replace inline URLs with `https://media.currentnews.blog/img/{postId}-{n}.webp`.
+  - Added admin migration endpoint `POST /api/articles/migrate-images` which successfully migrated 46 base64 images and re-indexed all 41 articles.
+  - Zero-Firestore Reads for Feed & Related Posts: Removed all `getDoc`/`getDocs` calls on `posts` from `HomeView.tsx`, `BlogPostCard.tsx`, and the related-posts carousel in `PostDetailView.tsx`.
+- **Phase 19 (Cloudflare D1 & Edge Worker Migration — Decoupling Reader Data from Firestore):** [COMPLETED]
+  - Created `/worker` service with Cloudflare Worker (`/worker/src/index.ts`), D1 database schema (`/worker/schema.sql`), and `wrangler.toml` bound to `currentnews-db` under route `api.currentnews.blog/*`.
+  - Token Auth: Edge Worker verifies Firebase Auth JWTs directly with Web Crypto API (`crypto.subtle`) using Google's public JWK set (`securetoken@system.gserviceaccount.com`).
+  - Strict Admin Authorization: Direct exact email matching against `ADMIN_EMAILS` (`mdhassan1738@gmail.com`).
+  - Edge Cache & Rate Limiting: 30-second edge cache on `GET /stats?ids=...`, 30-minute deduplication on `POST /view/:postId` via Cloudflare Cache API, and IP rate limiting on writes.
+  - Zero-Firestore Reader Operations: Replaced Firestore queries across `HomeView.tsx` (batch stats + my-reactions), `BlogPostCard.tsx`, `PostDetailView.tsx`, `Header.tsx`, `SettingsView.tsx`, `AudienceRegistryView.tsx`, `LikedView.tsx`, `AdminDashboardView.tsx`, `CurrentPublicationsView.tsx`, `DraftPublicationView.tsx`, `DeleteAccountView.tsx`, and `pushNotifications.ts`.
+  - `src/firebase.ts` converted to export strictly `auth`; zero `firebase/firestore` calls remain in client and server code.
+  - Data Migration: Added `scripts/export-firestore.ts` with quota resilience to export Firestore data to `/scripts/firestore-export.json` and `POST /import` endpoint to batch-load into D1.
+- **Immediate Next Step:** Production deployment to Google Cloud Run and Cloudflare D1/Worker deployment.

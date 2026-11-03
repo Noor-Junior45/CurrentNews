@@ -120,6 +120,28 @@
         }
       },
       "required": ["endpoint", "keys"]
+    },
+    "User": {
+      "title": "User",
+      "description": "User account profile storing pen name and author metadata",
+      "type": "object",
+      "properties": {
+        "penName": {
+          "type": "string",
+          "description": "Author pen name",
+          "maxLength": 100
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Account email address"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update timestamp"
+        }
+      }
     }
   },
   "firestore": {
@@ -146,6 +168,10 @@
     "push_subscriptions/{subscriptionId}": {
       "schema": "PushSubscription",
       "description": "Audience devices registered to receive instant push alerts"
+    },
+    "users/{userId}": {
+      "schema": "User",
+      "description": "Individual author profile and pen name settings"
     }
   }
 }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, Eye, EyeOff, LogIn, ChevronLeft } from 'lucide-react';
+import ProfilePageNavbar from '../components/ProfilePageNavbar';
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
@@ -169,20 +170,14 @@ export default function SignInView(): React.JSX.Element {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100/70 dark:bg-slate-950 flex flex-col font-sans relative" id="signin-page-stage">
-      {/* Tailless arrow back button with no background design */}
-      <button
-        type="button"
-        onClick={() => navigate('/profile', { replace: true })}
-        className="absolute top-4 left-4 p-2 text-slate-600 dark:text-slate-400 hover:text-black dark:hover:text-white transition-colors cursor-pointer bg-transparent border-0 shadow-none focus:outline-none"
-        aria-label="Go back"
-        title="Go back"
-        id="signin-back-button"
-      >
-        <ChevronLeft className="w-6 h-6 stroke-[2.2]" />
-      </button>
+    <div className="min-h-screen bg-slate-100/70 dark:bg-slate-950 flex flex-col font-sans" id="signin-page-stage">
+      <ProfilePageNavbar 
+        title="Sign In" 
+        fallbackUrl="/profile" 
+        onBack={() => navigate('/profile', { replace: true })} 
+      />
 
-      <main className="flex-1 max-w-sm sm:max-w-md mx-auto w-full px-5 pt-12 pb-8 sm:py-14 flex flex-col items-center">
+      <main className="flex-1 max-w-sm sm:max-w-md mx-auto w-full px-5 pt-8 pb-8 sm:py-14 flex flex-col items-center">
         {/* Website Logo perfectly fit in box div */}
         <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-white dark:bg-slate-900 shadow-md border border-slate-200/80 dark:border-slate-800 overflow-hidden flex items-center justify-center mb-4 transition-transform hover:scale-105 p-0">
           <img 

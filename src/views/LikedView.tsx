@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import { collection, query, where, documentId, getDocs } from 'firebase/firestore';
-import { db, auth } from '../firebase';
+import { auth } from '../firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { Post, slugify } from '../types';
 import { cleanImageUrl, getFallbackImageUrl, sanitizePostImages } from '../utils/imageUrl';
@@ -9,6 +8,9 @@ import { BookOpen, Clock } from 'lucide-react';
 import ProfilePageNavbar from '../components/ProfilePageNavbar';
 import { safeFormatDate } from '../utils/dateHelper';
 import { updateDocumentSEO } from '../utils/seo';
+import { api } from '../utils/api';
+import { clientLoadBalancer } from '../utils/clientLoadBalancer';
+import { getCompressedStory } from '../utils/compressedStorage';
 
 export default function LikedView() {
   const navigate = useNavigate();
@@ -33,22 +35,14 @@ export default function LikedView() {
         let likedIds: string[] = [];
 
         if (user) {
-          // Fetch reactions from Firestore
-          const reactionsQuery = query(
-            collection(db, 'reactions'),
-            where('userId', '==', user.uid),
-            where('type', '==', 'liked')
-          );
-          const reactionSnapshot = await getDocs(reactionsQuery);
-          reactionSnapshot.forEach((docSnap) => {
-            const data = docSnap.data();
-            if (data.postId) {
-              likedIds.push(data.postId);
-            }
-          });
+          try {
+            likedIds = await api.getMyReactions();
+          } catch (e) {
+            console.debug('Failed to fetch user liked posts from Worker D1:', e);
+          }
         }
 
-        // Fallback to localStorage if the user is a guest or we didn't find any Firestore liked posts yet
+        // Fallback to localStorage if the user is a guest or we didn't find any liked posts yet
         if (likedIds.length === 0) {
           for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
@@ -70,24 +64,30 @@ export default function LikedView() {
           return;
         }
 
-        // Firestore 'in' operator max is 30 IDs per query. Chunk IDs into groups of 30 to fetch all liked articles for long scrolling
-        const chunkSize = 30;
-        const chunks: string[][] = [];
-        for (let i = 0; i < likedIds.length; i += chunkSize) {
-          chunks.push(likedIds.slice(i, i + chunkSize));
+        // Fetch articles using light feed and client load balancer
+        const { posts: feedPosts } = await clientLoadBalancer.fetchArticlesFeed({ limit: 100 });
+        const feedMap = new Map<string, Post>();
+        for (const p of feedPosts) {
+          feedMap.set(p.id, p);
         }
 
         const list: Post[] = [];
-        for (const chunk of chunks) {
-          if (chunk.length === 0) continue;
-          const q = query(
-            collection(db, 'posts'),
-            where(documentId(), 'in', chunk)
-          );
-          const snapshot = await getDocs(q);
-          snapshot.forEach(docSnap => {
-            list.push(sanitizePostImages({ id: docSnap.id, ...docSnap.data() } as Post));
-          });
+        for (const id of likedIds) {
+          if (feedMap.has(id)) {
+            list.push(sanitizePostImages(feedMap.get(id)!));
+          } else {
+            const cached = getCompressedStory(id);
+            if (cached) {
+              list.push(sanitizePostImages(cached));
+            } else {
+              try {
+                const { post: fetchedPost } = await clientLoadBalancer.fetchArticleById(id);
+                if (fetchedPost) {
+                  list.push(sanitizePostImages(fetchedPost));
+                }
+              } catch (_) {}
+            }
+          }
         }
 
         setLikedPosts(list);

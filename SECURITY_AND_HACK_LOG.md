@@ -42,5 +42,9 @@
    - **Exploit Vector:** Attackers forging client IP headers (`X-Forwarded-For`, `CF-Connecting-IP`) to bypass security rate limits, or upstream load balancers (Google Cloud Load Balancer / Cloudflare) dropping requests with `502 Bad Gateway` when backend servers close idle TCP connections prematurely during traffic spikes.
    - **Defense:** Configured `app.set('trust proxy', true)` in `server.ts` to allow verified upstream proxies to correctly populate client IPs and protocols. Aligned Node's TCP socket settings with `server.keepAliveTimeout = 650000ms` (650s) and `server.headersTimeout = 660000ms` (660s) to exceed GCLB's 600s timeout. Created frontend multi-origin load balancer (`clientLoadBalancer.ts`) with automated circuit breaking and failover to ensure readers never encounter dead ends or frozen screens.
 
+11. **Vulnerability: Prompt Fatigue & Intrusive Interstitial SEO Penalties**
+   - **Exploit Vector:** Aggressive floating subscription prompts (push notification sheets, newsletter modals) triggering high bounce rates and risking Google Search Core Web Vitals penalties for intrusive interstitials.
+   - **Defense:** Permanently removed `NotificationBanner.tsx` and `NewsletterPopup.tsx` from the codebase and DOM, guaranteeing a distraction-free, zero-interruption reading environment.
+
 
 

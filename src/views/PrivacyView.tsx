@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { 
   ShieldCheck, 
   Lock, 
@@ -19,10 +19,12 @@ import ProfilePageNavbar from '../components/ProfilePageNavbar';
 import { updateDocumentSEO } from '../utils/seo';
 
 export default function PrivacyView() {
+  const navigate = useNavigate();
+
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' });
     updateDocumentSEO({
-      title: 'Privacy Policy & Worldwide Data Protection Codex | Current News Live',
+      title: 'Privacy Policy | Current News',
       description: 'Enterprise global privacy policy, data protection rules, GDPR, CCPA/CPRA, PIPEDA, LGPD, and Google Play Store safety standards for Current News Live.',
       canonicalPath: '/privacy'
     });
@@ -52,7 +54,12 @@ export default function PrivacyView() {
 
   return (
     <div className="min-h-screen bg-[#FAF7F0] dark:bg-[#161513] text-[#2C2621] dark:text-[#E2DDD3] transition-colors" id="privacy-policy-view">
-      <ProfilePageNavbar title="Global Privacy Codex" />
+      <ProfilePageNavbar 
+        title="Privacy Policy" 
+        align="left" 
+        fallbackUrl="/profile" 
+        onBack={() => navigate('/profile')} 
+      />
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-16">
         
@@ -64,7 +71,7 @@ export default function PrivacyView() {
           </div>
 
           <h1 className="text-3xl sm:text-4xl md:text-5xl font-serif font-black text-[#1C1814] dark:text-[#FAF7F2] tracking-tight leading-tight mb-4">
-            Comprehensive Privacy Policy & Worldwide Data Protection Notice
+            Privacy Policy
           </h1>
 
           <p className="text-base sm:text-lg text-[#554C42] dark:text-[#B8AEA0] font-sans leading-relaxed mb-6">

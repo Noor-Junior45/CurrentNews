@@ -2,16 +2,18 @@ import React, { useState, useEffect } from 'react';
 import { Post, slugify } from '../types';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { ThumbsUp, ThumbsDown, Eye } from 'lucide-react';
-import { doc, getDoc, setDoc, deleteDoc, updateDoc, increment } from 'firebase/firestore';
-import { auth, db } from '../firebase';
-import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged } from 'firebase/auth';
+import { auth } from '../firebase';
+import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { safeFormatDate } from '../utils/dateHelper';
 import { saveCompressedStory } from '../utils/compressedStorage';
 import { clientLoadBalancer } from '../utils/clientLoadBalancer';
+import { api, PostStats } from '../utils/api';
 
 interface BlogPostCardProps {
   post: Post;
   globalPenName?: string;
+  cardStats?: PostStats;
+  isLikedByUser?: boolean;
   key?: any;
 }
 
@@ -29,10 +31,10 @@ function getHtmlTextPreview(htmlString: string, maxLength: number = 160): string
   return excerpt.substring(0, maxLength).trim() + '...';
 }
 
-export default function BlogPostCard({ post, globalPenName }: BlogPostCardProps): React.JSX.Element {
+export default function BlogPostCard({ post, globalPenName, cardStats, isLikedByUser }: BlogPostCardProps): React.JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
-  const previewText = getHtmlTextPreview(post.content);
+  const previewText = post.excerpt || getHtmlTextPreview(post.content || '');
   const displayedAuthor = post.authorName || globalPenName || 'Current News';
   const postUrl = `/post/${post.id}/${slugify(post.title)}`;
 
@@ -52,47 +54,28 @@ export default function BlogPostCard({ post, globalPenName }: BlogPostCardProps)
     navigate(postUrl, { state: { previewPost: post } });
   };
   
-  const [likes, setLikes] = useState(post.likes || 0);
-  const [dislikes, setDislikes] = useState(post.dislikes || 0);
-  const [myReaction, setMyReaction] = useState<'liked' | 'disliked' | null>(null);
+  const [likes, setLikes] = useState(cardStats?.likes ?? post.likes ?? 0);
+  const [dislikes, setDislikes] = useState(cardStats?.dislikes ?? post.dislikes ?? 0);
+  const [myReaction, setMyReaction] = useState<'liked' | 'disliked' | null>(() => {
+    if (isLikedByUser) return 'liked';
+    return (localStorage.getItem(`react_${post.id}`) as 'liked' | 'disliked' | null) || null;
+  });
 
   useEffect(() => {
-    const saved = localStorage.getItem(`react_${post.id}`) as 'liked' | 'disliked' | null;
-    setMyReaction(saved);
-
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        try {
-          const reactionDocRef = doc(db, 'reactions', `${user.uid}_${post.id}`);
-          const snap = await getDoc(reactionDocRef);
-          if (snap.exists()) {
-            const data = snap.data();
-            const serverType = data.type as 'liked' | 'disliked' | null;
-            setMyReaction(serverType);
-            if (serverType) {
-              localStorage.setItem(`react_${post.id}`, serverType);
-            } else {
-              localStorage.removeItem(`react_${post.id}`);
-            }
-          } else {
-            setMyReaction(null);
-            localStorage.removeItem(`react_${post.id}`);
-          }
-        } catch (err) {
-          console.warn('Failed to load user reaction from Firestore', err);
-        }
-      } else {
-        setMyReaction(null);
-      }
-    });
-
-    return () => unsubscribe();
-  }, [post.id]);
+    if (isLikedByUser !== undefined) {
+      setMyReaction(isLikedByUser ? 'liked' : (localStorage.getItem(`react_${post.id}`) as any) || null);
+    }
+  }, [isLikedByUser, post.id]);
 
   useEffect(() => {
-    setLikes(post.likes || 0);
-    setDislikes(post.dislikes || 0);
-  }, [post.likes, post.dislikes]);
+    if (cardStats) {
+      setLikes(cardStats.likes);
+      setDislikes(cardStats.dislikes);
+    } else {
+      setLikes(post.likes || 0);
+      setDislikes(post.dislikes || 0);
+    }
+  }, [cardStats, post.likes, post.dislikes]);
 
   const handleReaction = async (type: 'liked' | 'disliked', e: React.MouseEvent) => {
     e.stopPropagation();
@@ -113,24 +96,16 @@ export default function BlogPostCard({ post, globalPenName }: BlogPostCardProps)
       return;
     }
 
-    const postRef = doc(db, 'posts', post.id);
-    const reactionRef = doc(db, 'reactions', `${user.uid}_${post.id}`);
-
     let newLikes = likes;
     let newDislikes = dislikes;
     let nextReaction: 'liked' | 'disliked' | null = null;
-
-    let likesDiff = 0;
-    let dislikesDiff = 0;
 
     if (myReaction === type) {
       // Undo reaction
       if (type === 'liked') {
         newLikes = Math.max(0, likes - 1);
-        likesDiff = -1;
       } else {
         newDislikes = Math.max(0, dislikes - 1);
-        dislikesDiff = -1;
       }
       localStorage.removeItem(`react_${post.id}`);
       nextReaction = null;
@@ -138,17 +113,13 @@ export default function BlogPostCard({ post, globalPenName }: BlogPostCardProps)
       // Apply new reaction
       if (type === 'liked') {
         newLikes = likes + 1;
-        likesDiff = 1;
         if (myReaction === 'disliked') {
           newDislikes = Math.max(0, dislikes - 1);
-          dislikesDiff = -1;
         }
       } else {
         newDislikes = dislikes + 1;
-        dislikesDiff = 1;
         if (myReaction === 'liked') {
           newLikes = Math.max(0, likes - 1);
-          likesDiff = -1;
         }
       }
       localStorage.setItem(`react_${post.id}`, type);
@@ -160,28 +131,10 @@ export default function BlogPostCard({ post, globalPenName }: BlogPostCardProps)
     setMyReaction(nextReaction);
 
     try {
-      // Update reactions collection
-      if (nextReaction === null) {
-        await deleteDoc(reactionRef);
-      } else {
-        await setDoc(reactionRef, {
-          userId: user.uid,
-          userEmail: user.email || '',
-          postId: post.id,
-          type: nextReaction,
-          updatedAt: new Date().toISOString()
-        });
-      }
-
-      // Update post likes/dislikes counts
-      const updates: Record<string, any> = {};
-      if (likesDiff !== 0) updates.likes = increment(likesDiff);
-      if (dislikesDiff !== 0) updates.dislikes = increment(dislikesDiff);
-      if (Object.keys(updates).length > 0) {
-        await updateDoc(postRef, updates);
-      }
+      const apiType = nextReaction === 'liked' ? 'like' : nextReaction === 'disliked' ? 'dislike' : null;
+      await api.setUserReaction(post.id, apiType);
     } catch (err) {
-      console.error('Failed to update reaction in Firestore', err);
+      console.error('Failed to update reaction in Worker D1', err);
       // Rollback on failure
       setLikes(likes);
       setDislikes(dislikes);

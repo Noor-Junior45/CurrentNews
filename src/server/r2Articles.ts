@@ -45,13 +45,51 @@ function getLocalDataDir(): string {
   return dir;
 }
 
-// In-memory feed cache for instantaneous (0ms) responses
+// In-memory light feed cache for instantaneous (0ms) responses
 let inMemoryFeedCache: any[] = [];
 let inMemoryFeedTimestamp = 0;
 const FEED_CACHE_TTL = 30 * 1000; // 30 seconds
 
 /**
- * Load feed from local backup disk cache on startup
+ * Strips HTML tags and extracts ~200 characters of plain text for light card previews
+ */
+export function extractPlainExcerpt(htmlOrText: string, maxLength = 200): string {
+  if (!htmlOrText) return '';
+  const stripped = htmlOrText
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\[fig(?:ure)?(?:\.|\s+)?\s*\d+[^\]]*\]/gi, '')
+    .replace(/data:image\/[a-zA-Z0-9+.-]+;base64,[^"'\s]+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return stripped.length > maxLength ? stripped.slice(0, maxLength).trim() + '...' : stripped;
+}
+
+/**
+ * Transforms a full post into a light index entry for articles/feed.json.
+ * Drops full content and guarantees zero base64 images so the feed index stays tiny (~20-40 KB).
+ */
+export function toLightArticle(post: any): any {
+  if (!post || !post.id) return null;
+  const cleanImg = cleanImageUrl(post.imageUrl);
+
+  return {
+    id: post.id,
+    title: post.title || '',
+    category: post.category || 'General',
+    authorName: post.authorName || 'Current News',
+    createdAt: post.createdAt || new Date().toISOString(),
+    status: post.status || 'published',
+    imageUrl: cleanImg,
+    hashtags: Array.isArray(post.hashtags) ? post.hashtags : [],
+    likes: typeof post.likes === 'number' ? post.likes : 0,
+    dislikes: typeof post.dislikes === 'number' ? post.dislikes : 0,
+    views: typeof post.views === 'number' ? post.views : 0,
+    excerpt: post.excerpt || extractPlainExcerpt(post.content || ''),
+  };
+}
+
+/**
+ * Load light feed from local disk cache on startup
  */
 function loadLocalFeed(): any[] {
   try {
@@ -60,7 +98,7 @@ function loadLocalFeed(): any[] {
       const content = fs.readFileSync(feedFile, 'utf-8');
       const parsed = JSON.parse(content);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+        return parsed.map(toLightArticle).filter(Boolean);
       }
     }
   } catch (err) {
@@ -70,7 +108,155 @@ function loadLocalFeed(): any[] {
 }
 
 /**
- * Save article JSON directly to Cloudflare R2 and local mirror
+ * Decodes a base64 data URL and uploads it directly to Cloudflare R2 as a standalone webp image file
+ * with immutable 1-year cache headers, saving local mirror copy as fallback.
+ */
+export async function uploadBase64ImageToR2(base64DataUrl: string, key: string): Promise<string> {
+  const customDomain = process.env.R2_PUBLIC_DOMAIN || 'media.currentnews.blog';
+  const publicUrl = `https://${customDomain}/${key}`;
+
+  const match = base64DataUrl.match(/^data:image\/([a-zA-Z0-9+.-]+);base64,(.+)$/);
+  if (!match) {
+    return cleanImageUrl(base64DataUrl);
+  }
+
+  const rawFormat = match[1].toLowerCase();
+  const base64Data = match[2];
+  const buffer = Buffer.from(base64Data, 'base64');
+  const contentType = key.endsWith('.webp') ? 'image/webp' : (rawFormat === 'png' ? 'image/png' : 'image/jpeg');
+
+  // 1. Upload to Cloudflare R2 with immutable 1-year cache headers
+  const client = getR2Client();
+  const bucket = getR2BucketName();
+  if (client) {
+    try {
+      await client.send(new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Body: buffer,
+        ContentType: contentType,
+        CacheControl: 'public, max-age=31536000, s-maxage=31536000, immutable',
+      }));
+      console.log(`[R2 Image] Uploaded ${key} (${Math.round(buffer.length / 1024)} KB)`);
+    } catch (err: any) {
+      console.warn(`[R2 Image] Failed to upload ${key} to R2:`, err?.message || err);
+    }
+  }
+
+  // 2. Also save to local mirror in data/img as fallback
+  try {
+    const localImgDir = path.join(process.cwd(), 'data', 'img');
+    if (!fs.existsSync(localImgDir)) {
+      fs.mkdirSync(localImgDir, { recursive: true });
+    }
+    const filename = path.basename(key);
+    fs.writeFileSync(path.join(localImgDir, filename), buffer);
+  } catch (err) {
+    console.debug(`[R2 Image] Local write notice for ${key}:`, err);
+  }
+
+  return cleanImageUrl(publicUrl);
+}
+
+/**
+ * Scans imageUrl, imageUrlFallback, imageUrls, imageUrlsFallback, and <img src="data:..."> in content.
+ * For every base64 image found, decodes it, uploads to R2 as img/{postId}-{n}.webp,
+ * and replaces the inline string with https://media.currentnews.blog/img/{postId}-{n}.webp.
+ */
+export async function processAndExtractBase64Images(post: any): Promise<{ post: any; migratedCount: number }> {
+  if (!post || !post.id) return { post, migratedCount: 0 };
+  const postId = String(post.id).replace(/[^a-zA-Z0-9_-]/g, '_');
+  let migratedCount = 0;
+  let counter = 1;
+
+  // 1. Scan imageUrl
+  if (typeof post.imageUrl === 'string') {
+    if (post.imageUrl.includes('data:image/')) {
+      const dataMatch = post.imageUrl.match(/data:image\/[a-zA-Z0-9+.-]+;base64,[^"'\s]+/);
+      if (dataMatch) {
+        const key = `img/${postId}-${counter++}.webp`;
+        post.imageUrl = await uploadBase64ImageToR2(dataMatch[0], key);
+        migratedCount++;
+      }
+    }
+    post.imageUrl = cleanImageUrl(post.imageUrl);
+  }
+
+  // 2. Scan imageUrlFallback
+  if (typeof post.imageUrlFallback === 'string') {
+    if (post.imageUrlFallback.includes('data:image/')) {
+      const dataMatch = post.imageUrlFallback.match(/data:image\/[a-zA-Z0-9+.-]+;base64,[^"'\s]+/);
+      if (dataMatch) {
+        const key = `img/${postId}-${counter++}.webp`;
+        post.imageUrlFallback = await uploadBase64ImageToR2(dataMatch[0], key);
+        migratedCount++;
+      }
+    }
+    post.imageUrlFallback = cleanImageUrl(post.imageUrlFallback);
+  }
+
+  // 3. Scan imageUrls array
+  if (Array.isArray(post.imageUrls)) {
+    const updatedUrls: string[] = [];
+    for (let url of post.imageUrls) {
+      if (typeof url === 'string') {
+        if (url.includes('data:image/')) {
+          const dataMatch = url.match(/data:image\/[a-zA-Z0-9+.-]+;base64,[^"'\s]+/);
+          if (dataMatch) {
+            const key = `img/${postId}-${counter++}.webp`;
+            url = await uploadBase64ImageToR2(dataMatch[0], key);
+            migratedCount++;
+          }
+        }
+        updatedUrls.push(cleanImageUrl(url));
+      }
+    }
+    post.imageUrls = updatedUrls.filter(Boolean);
+  }
+
+  // 4. Scan imageUrlsFallback array
+  if (Array.isArray(post.imageUrlsFallback)) {
+    const updatedUrls: string[] = [];
+    for (let url of post.imageUrlsFallback) {
+      if (typeof url === 'string') {
+        if (url.includes('data:image/')) {
+          const dataMatch = url.match(/data:image\/[a-zA-Z0-9+.-]+;base64,[^"'\s]+/);
+          if (dataMatch) {
+            const key = `img/${postId}-${counter++}.webp`;
+            url = await uploadBase64ImageToR2(dataMatch[0], key);
+            migratedCount++;
+          }
+        }
+        updatedUrls.push(cleanImageUrl(url));
+      }
+    }
+    post.imageUrlsFallback = updatedUrls.filter(Boolean);
+  }
+
+  // 5. Scan <img src="data:image/..."> inside post.content
+  if (typeof post.content === 'string' && post.content.includes('data:image/')) {
+    const regex = /src=["'](data:image\/[a-zA-Z0-9+.-]+;base64,[^"']+)["']/g;
+    let match: RegExpExecArray | null;
+    const matches: string[] = [];
+    while ((match = regex.exec(post.content)) !== null) {
+      matches.push(match[1]);
+    }
+
+    for (const dataUrl of matches) {
+      const key = `img/${postId}-${counter++}.webp`;
+      const uploadedUrl = await uploadBase64ImageToR2(dataUrl, key);
+      post.content = post.content.split(dataUrl).join(uploadedUrl);
+      migratedCount++;
+    }
+  }
+
+  return { post, migratedCount };
+}
+
+/**
+ * Save article JSON directly to Cloudflare R2 and local mirror.
+ * Extracts any base64 images into standalone webp files on R2 first,
+ * saves the FULL article to articles/{id}.json, and updates the LIGHT feed.json.
  */
 export async function saveArticleToR2(post: any): Promise<{ success: boolean; url?: string; error?: string }> {
   if (!post || !post.id) {
@@ -82,7 +268,15 @@ export async function saveArticleToR2(post: any): Promise<{ success: boolean; ur
     post.authorName = 'Current News';
   }
 
-  // 1. Save to local disk cache for instant fallback
+  // Extract excerpt if not already set
+  if (!post.excerpt) {
+    post.excerpt = extractPlainExcerpt(post.content || '');
+  }
+
+  // Scan and migrate any base64 images to R2 img/{postId}-{n}.webp
+  await processAndExtractBase64Images(post);
+
+  // 1. Save full article to local disk cache for instant fallback
   try {
     const localDir = getLocalDataDir();
     const filePath = path.join(localDir, `${post.id}.json`);
@@ -91,7 +285,7 @@ export async function saveArticleToR2(post: any): Promise<{ success: boolean; ur
     console.warn('[R2 Articles] Failed to save local article backup:', err);
   }
 
-  // 2. Upload article JSON to Cloudflare R2
+  // 2. Upload full article JSON to Cloudflare R2
   const client = getR2Client();
   const bucket = getR2BucketName();
   const r2Key = `articles/${post.id}.json`;
@@ -106,13 +300,13 @@ export async function saveArticleToR2(post: any): Promise<{ success: boolean; ur
         ContentType: 'application/json; charset=utf-8',
         CacheControl: 'public, max-age=60, s-maxage=300, stale-while-revalidate=86400',
       }));
-      console.log(`[R2 Articles] Successfully saved article ${post.id} to Cloudflare R2`);
+      console.log(`[R2 Articles] Successfully saved full article ${post.id} to Cloudflare R2`);
     } catch (r2Err: any) {
       console.warn(`[R2 Articles] S3 PutObject failed for ${post.id}, fallback will serve local mirror:`, r2Err?.message || r2Err);
     }
   }
 
-  // 3. Update the aggregated feed.json in R2
+  // 3. Update the aggregated light feed.json in R2
   await updateFeedIndexInR2(post);
 
   const customDomain = process.env.R2_PUBLIC_DOMAIN || 'media.currentnews.blog';
@@ -122,7 +316,10 @@ export async function saveArticleToR2(post: any): Promise<{ success: boolean; ur
 }
 
 /**
- * Update the public aggregated feed in Cloudflare R2 and memory
+ * Update the public aggregated LIGHT feed in Cloudflare R2 and memory.
+ * articles/feed.json stores ONLY light index objects: id, title, category,
+ * authorName, createdAt, status, imageUrl, hashtags, likes, dislikes, views, excerpt.
+ * No full content, no base64 strings.
  */
 async function updateFeedIndexInR2(updatedPost: any): Promise<void> {
   try {
@@ -135,12 +332,16 @@ async function updateFeedIndexInR2(updatedPost: any): Promise<void> {
         feed.splice(existingIndex, 1);
       }
     } else {
+      const lightPost = toLightArticle(updatedPost);
       if (existingIndex >= 0) {
-        feed[existingIndex] = updatedPost;
+        feed[existingIndex] = lightPost;
       } else {
-        feed.unshift(updatedPost);
+        feed.unshift(lightPost);
       }
     }
+
+    // Ensure all items in feed are light
+    feed = feed.map(toLightArticle).filter(Boolean);
 
     // Sort by createdAt descending
     feed.sort((a, b) => {
@@ -152,13 +353,13 @@ async function updateFeedIndexInR2(updatedPost: any): Promise<void> {
     inMemoryFeedCache = feed;
     inMemoryFeedTimestamp = Date.now();
 
-    // Save local feed copy
+    // Save local light feed copy
     try {
       const feedFile = path.join(process.cwd(), 'data', 'feed.json');
       fs.writeFileSync(feedFile, JSON.stringify(feed), 'utf-8');
     } catch (e) {}
 
-    // Upload feed.json to Cloudflare R2
+    // Upload light feed.json to Cloudflare R2
     const client = getR2Client();
     const bucket = getR2BucketName();
     if (client) {
@@ -171,7 +372,7 @@ async function updateFeedIndexInR2(updatedPost: any): Promise<void> {
           CacheControl: 'public, max-age=30, s-maxage=60, stale-while-revalidate=300',
         }));
       } catch (err) {
-        console.warn('[R2 Articles] Failed to update articles/feed.json on R2:', err);
+        console.warn('[R2 Articles] Failed to update light articles/feed.json on R2:', err);
       }
     }
   } catch (err) {
@@ -185,7 +386,7 @@ async function updateFeedIndexInR2(updatedPost: any): Promise<void> {
 export async function deleteArticleFromR2(postId: string): Promise<boolean> {
   if (!postId) return false;
 
-  // 1. Delete from local mirror
+  // 1. Delete full article from local mirror
   try {
     const localDir = getLocalDataDir();
     const filePath = path.join(localDir, `${postId}.json`);
@@ -196,7 +397,7 @@ export async function deleteArticleFromR2(postId: string): Promise<boolean> {
     console.warn('[R2 Articles] Error unlinking local file:', err);
   }
 
-  // 2. Delete from R2
+  // 2. Delete full article from R2
   const client = getR2Client();
   const bucket = getR2BucketName();
   if (client) {
@@ -210,7 +411,7 @@ export async function deleteArticleFromR2(postId: string): Promise<boolean> {
     }
   }
 
-  // 3. Remove from in-memory and R2 feed
+  // 3. Remove from in-memory and R2 light feed
   inMemoryFeedCache = inMemoryFeedCache.filter(p => p.id !== postId);
   try {
     const feedFile = path.join(process.cwd(), 'data', 'feed.json');
@@ -233,25 +434,26 @@ export async function deleteArticleFromR2(postId: string): Promise<boolean> {
 }
 
 /**
- * Retrieve article JSON from R2 with local fallback
+ * Retrieve FULL article JSON from R2 with local fallback.
+ * Guarantees that returned object includes full article content.
  */
 export async function getArticleFromR2(postId: string): Promise<any | null> {
   if (!postId) return null;
 
-  // 1. Check in-memory feed first
-  const inMemory = inMemoryFeedCache.find(p => p.id === postId);
-  if (inMemory) return inMemory;
-
-  // 2. Check local disk mirror
+  // 1. Check local disk mirror first (contains full post with content)
   try {
     const localDir = getLocalDataDir();
     const filePath = path.join(localDir, `${postId}.json`);
     if (fs.existsSync(filePath)) {
-      return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+      const content = fs.readFileSync(filePath, 'utf-8');
+      const parsed = JSON.parse(content);
+      if (parsed && (parsed.content || parsed.title)) {
+        return parsed;
+      }
     }
   } catch (e) {}
 
-  // 3. Check S3 R2 GetObject
+  // 2. Check S3 R2 GetObject
   const client = getR2Client();
   const bucket = getR2BucketName();
   if (client) {
@@ -263,14 +465,16 @@ export async function getArticleFromR2(postId: string): Promise<any | null> {
       if (resp.Body) {
         const str = await resp.Body.transformToString();
         const parsed = JSON.parse(str);
-        return parsed;
+        if (parsed && (parsed.content || parsed.title)) {
+          return parsed;
+        }
       }
     } catch (err) {
       // Key may not exist in R2 yet
     }
   }
 
-  // 4. Check Public R2 CDN HTTP URL
+  // 3. Check Public R2 CDN HTTP URL
   const customDomain = process.env.R2_PUBLIC_DOMAIN || 'media.currentnews.blog';
   const devDomain = process.env.R2_DEV_DOMAIN || 'pub-03dd1274c4824531a1478f20e0485d75.r2.dev';
 
@@ -280,7 +484,9 @@ export async function getArticleFromR2(postId: string): Promise<any | null> {
       const res = await fetch(cdnUrl, { signal: AbortSignal.timeout(3000) });
       if (res.ok) {
         const data = await res.json();
-        return data;
+        if (data && (data.content || data.title)) {
+          return data;
+        }
       }
     } catch (e) {}
   }
@@ -289,7 +495,7 @@ export async function getArticleFromR2(postId: string): Promise<any | null> {
 }
 
 /**
- * Retrieve all published articles from Cloudflare R2 (feed.json)
+ * Retrieve light published articles feed from Cloudflare R2 (articles/feed.json)
  */
 export async function getFeedFromR2(): Promise<any[]> {
   const now = Date.now();
@@ -310,9 +516,10 @@ export async function getFeedFromR2(): Promise<any[]> {
         const str = await resp.Body.transformToString();
         const parsed = JSON.parse(str);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          inMemoryFeedCache = parsed;
+          const lightList = parsed.map(toLightArticle).filter(Boolean);
+          inMemoryFeedCache = lightList;
           inMemoryFeedTimestamp = now;
-          return parsed;
+          return lightList;
         }
       }
     } catch (err) {
@@ -331,9 +538,10 @@ export async function getFeedFromR2(): Promise<any[]> {
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data) && data.length > 0) {
-          inMemoryFeedCache = data;
+          const lightList = data.map(toLightArticle).filter(Boolean);
+          inMemoryFeedCache = lightList;
           inMemoryFeedTimestamp = now;
-          return data;
+          return lightList;
         }
       }
     } catch (e) {}
@@ -368,8 +576,8 @@ export async function syncArticlesToR2(posts: any[]): Promise<{ synced: number; 
     }
   }
 
-  // Update in-memory feed
-  inMemoryFeedCache = posts.filter(p => p.status !== 'draft');
+  // Update in-memory light feed
+  inMemoryFeedCache = posts.filter(p => p.status !== 'draft').map(toLightArticle).filter(Boolean);
   inMemoryFeedTimestamp = Date.now();
 
   return { synced: count, total: posts.length };
@@ -445,14 +653,133 @@ export async function handleSyncArticles(req: Request, res: Response) {
 }
 
 /**
- * Startup bootloader to ensure Cloudflare R2 articles feed is warm and all dispatches are available.
+ * Express handler for POST /api/articles/migrate-images
+ * Scans all existing articles in data/articles and data/feed.json, decodes all base64 images,
+ * uploads them as img/{postId}-{n}.webp, rewrites full articles, and rebuilds the light feed.json.
+ */
+export async function handleMigrateImages(_req: Request, res: Response) {
+  try {
+    const localDir = getLocalDataDir();
+    const files = fs.existsSync(localDir) ? fs.readdirSync(localDir).filter(f => f.endsWith('.json')) : [];
+
+    const feedFile = path.join(process.cwd(), 'data', 'feed.json');
+    let feedPosts: any[] = [];
+    if (fs.existsSync(feedFile)) {
+      try {
+        const parsed = JSON.parse(fs.readFileSync(feedFile, 'utf-8'));
+        if (Array.isArray(parsed)) feedPosts = parsed;
+      } catch (e) {}
+    }
+
+    const postMap = new Map<string, any>();
+    for (const p of feedPosts) {
+      if (p && p.id) postMap.set(p.id, p);
+    }
+
+    for (const file of files) {
+      try {
+        const raw = fs.readFileSync(path.join(localDir, file), 'utf-8');
+        const p = JSON.parse(raw);
+        if (p && p.id) {
+          if (!postMap.has(p.id) || (p.content && !postMap.get(p.id).content)) {
+            postMap.set(p.id, p);
+          } else {
+            postMap.set(p.id, { ...postMap.get(p.id), ...p });
+          }
+        }
+      } catch (e) {}
+    }
+
+    const allPosts = Array.from(postMap.values());
+    let totalMigratedImages = 0;
+    const processedArticles: any[] = [];
+
+    const client = getR2Client();
+    const bucket = getR2BucketName();
+
+    for (const post of allPosts) {
+      const { post: cleanedPost, migratedCount } = await processAndExtractBase64Images(post);
+      totalMigratedImages += migratedCount;
+
+      // Extract excerpt if missing
+      if (!cleanedPost.excerpt) {
+        cleanedPost.excerpt = extractPlainExcerpt(cleanedPost.content || '');
+      }
+
+      // Save updated full article JSON to local disk
+      const filePath = path.join(localDir, `${cleanedPost.id}.json`);
+      fs.writeFileSync(filePath, JSON.stringify(cleanedPost, null, 2), 'utf-8');
+
+      // Upload full article to R2
+      if (client) {
+        try {
+          await client.send(new PutObjectCommand({
+            Bucket: bucket,
+            Key: `articles/${cleanedPost.id}.json`,
+            Body: Buffer.from(JSON.stringify(cleanedPost)),
+            ContentType: 'application/json; charset=utf-8',
+            CacheControl: 'public, max-age=60, s-maxage=300, stale-while-revalidate=86400',
+          }));
+        } catch (r2Err) {
+          console.warn(`[Migrate] Failed to upload articles/${cleanedPost.id}.json:`, r2Err);
+        }
+      }
+
+      processedArticles.push(cleanedPost);
+    }
+
+    // Build light feed index
+    const lightFeed = processedArticles
+      .filter(p => p.status !== 'draft')
+      .map(toLightArticle)
+      .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+
+    inMemoryFeedCache = lightFeed;
+    inMemoryFeedTimestamp = Date.now();
+
+    // Save light feed.json locally
+    fs.writeFileSync(feedFile, JSON.stringify(lightFeed), 'utf-8');
+    const newFeedSize = fs.statSync(feedFile).size;
+
+    // Upload light feed.json to R2
+    if (client) {
+      try {
+        await client.send(new PutObjectCommand({
+          Bucket: bucket,
+          Key: 'articles/feed.json',
+          Body: Buffer.from(JSON.stringify(lightFeed)),
+          ContentType: 'application/json; charset=utf-8',
+          CacheControl: 'public, max-age=30, s-maxage=60, stale-while-revalidate=300',
+        }));
+      } catch (r2Err) {
+        console.warn('[Migrate] Failed to upload light articles/feed.json to R2:', r2Err);
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Migration complete. Processed ${processedArticles.length} articles, migrated ${totalMigratedImages} base64 images.`,
+      articlesProcessed: processedArticles.length,
+      imagesMigrated: totalMigratedImages,
+      feedSizeKb: Math.round(newFeedSize / 1024),
+    });
+  } catch (err: any) {
+    console.error('[API /api/articles/migrate-images Error]:', err);
+    return res.status(500).json({
+      success: false,
+      error: err?.message || 'Migration failed',
+    });
+  }
+}
+
+/**
+ * Startup bootloader to ensure Cloudflare R2 articles feed is warm and light feed is loaded.
  */
 export async function ensureR2ArticlesWarmup(): Promise<void> {
   try {
     const feed = await getFeedFromR2();
-    console.log(`[R2 Bootloader] Cloudflare R2 feed active with ${feed.length} published articles ready for instant delivery.`);
+    console.log(`[R2 Bootloader] Cloudflare R2 light feed active with ${feed.length} dispatches (~${Math.round(JSON.stringify(feed).length / 1024)} KB) ready for instant delivery.`);
   } catch (err) {
     console.warn('[R2 Bootloader] Warmup check deferred:', err);
   }
 }
-

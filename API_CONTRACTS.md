@@ -207,10 +207,112 @@
   { "success": true, "message": "Successfully synced 41 of 41 articles to Cloudflare R2", "synced": 41, "total": 41 }
   ```
 
+### `POST /api/articles/migrate-images`
+- **Method:** `POST`
+- **Headers:** `Content-Type: application/json`
+- **Action:** Scans all articles on disk and Cloudflare R2, extracts inline base64 image data from `imageUrl`, `imageUrlFallback`, `imageUrls`, `imageUrlsFallback` and `<img src="data:...">` in HTML content, decodes and uploads to `img/{postId}-{n}.webp`, updates image references to `https://media.currentnews.blog/img/{postId}-{n}.webp`, rewrites full post JSON files, and recompiles a lightweight 37 KB `articles/feed.json`.
+- **Response Shape (200 OK):**
+  ```json
+  {
+    "success": true,
+    "message": "Migration complete. Processed 41 articles, migrated 46 base64 images.",
+    "articlesProcessed": 41,
+    "imagesMigrated": 46,
+    "feedSizeKb": 37
+  }
+  ```
+
 ### Direct CDN URL Contracts:
-- **Feed CDN:** `https://media.currentnews.blog/articles/feed.json`
-- **Individual Story CDN:** `https://media.currentnews.blog/articles/${id}.json`
-- **Cache-Control:** `public, max-age=60, s-maxage=300`
+- **Feed CDN (Light Index, ~37 KB):** `https://media.currentnews.blog/articles/feed.json`
+  - Shape: Array of `{ id, title, category, authorName, createdAt, status, imageUrl, hashtags, likes, dislikes, views, excerpt }` (No `content`, no base64 images).
+  - Cache-Control: `public, max-age=60, s-maxage=300`
+- **Individual Story CDN (Full Article Body):** `https://media.currentnews.blog/articles/${id}.json`
+  - Shape: Complete Post object including full `content` HTML with external image URLs.
+  - Cache-Control: `public, max-age=300, s-maxage=3600`
+- **Media Image CDN:** `https://media.currentnews.blog/img/{postId}-{n}.webp`
+  - Cache-Control: `public, max-age=31536000, s-maxage=31536000, immutable`
+
+## 4. Cloudflare Worker & D1 Database API (`api.currentnews.blog`)
+
+### `GET /stats?ids=a,b,c`
+- **Method:** `GET`
+- **Headers:** `Cache-Control: public, s-maxage=30, max-age=15`
+- **Response Shape (200 OK):**
+  ```json
+  {
+    "success": true,
+    "stats": {
+      "postId1": { "likes": 12, "dislikes": 0, "views": 250 },
+      "postId2": { "likes": 4, "dislikes": 1, "views": 80 }
+    }
+  }
+  ```
+
+### `POST /view/:postId`
+- **Method:** `POST`
+- **Deduplication:** Cloudflare Cache API suppresses duplicate counts per IP + postId for 30 minutes.
+- **Response Shape (200 OK):** `{ "success": true }` or `{ "success": true, "deduped": true }`
+
+### `GET /reaction/:postId`
+- **Method:** `GET`
+- **Headers:** `Authorization: Bearer <Firebase_ID_Token>`
+- **Response Shape (200 OK):** `{ "success": true, "type": "like" | "dislike" | null }`
+
+### `POST /reaction/:postId`
+- **Method:** `POST`
+- **Headers:** `Authorization: Bearer <Firebase_ID_Token>`, `Content-Type: application/json`
+- **Body:** `{ "type": "like" | "dislike" | null }`
+- **Action:** Sets, toggles, or clears reaction and updates `posts_stats` in a single atomic D1 batch.
+- **Response Shape (200 OK):** `{ "success": true, "type": "like" | null, "stats": { "likes": 1, "dislikes": 0, "views": 5 } }`
+
+### `GET /my-reactions`
+- **Method:** `GET`
+- **Headers:** `Authorization: Bearer <Firebase_ID_Token>`
+- **Response Shape (200 OK):** `{ "success": true, "reactions": { "postA": "like", "postB": "dislike" } }`
+
+### `POST /subscribe`
+- **Method:** `POST`
+- **Body:** `{ "email": "user@example.com" }`
+- **Response Shape (200 OK):** `{ "success": true, "message": "Subscribed successfully" }`
+
+### `GET /subscribe/check?email=user@example.com`
+- **Method:** `GET`
+- **Headers:** `Authorization: Bearer <Firebase_ID_Token>` (must match requested email)
+- **Response Shape (200 OK):** `{ "success": true, "subscribed": true | false }`
+
+### `DELETE /subscribe`
+- **Method:** `DELETE`
+- **Headers:** `Authorization: Bearer <Firebase_ID_Token>`
+- **Response Shape (200 OK):** `{ "success": true, "message": "Unsubscribed successfully" }`
+
+### `POST /push/subscribe` & `DELETE /push/subscribe`
+- **Methods:** `POST`, `DELETE`
+- **Body:** `{ "id": "...", "subscription": "{...}" }` or `{ "id": "..." }`
+- **Response Shape (200 OK):** `{ "success": true }`
+
+### `GET /push/count`
+- **Method:** `GET`
+- **Headers:** `Cache-Control: public, s-maxage=300, max-age=60`
+- **Response Shape (200 OK):** `{ "success": true, "count": 142 }`
+
+### `GET /user/pen-name` & `PUT /user/pen-name`
+- **Methods:** `GET`, `PUT`
+- **Headers:** `Authorization: Bearer <Firebase_ID_Token>`
+- **Body (PUT):** `{ "penName": "Jane Doe" }`
+- **Response Shape (200 OK):** `{ "success": true, "penName": "Jane Doe" }`
+
+### `GET /subscribers` (Admin Only)
+- **Method:** `GET`
+- **Headers:** `Authorization: Bearer <Firebase_ID_Token>` (exact email match in `ADMIN_EMAILS`)
+- **Response Shape (200 OK):** `{ "success": true, "subscribers": [ { "email": "...", "created_at": 1700000000000 } ] }`
+
+### `POST /import` (Admin Only)
+- **Method:** `POST`
+- **Headers:** `Authorization: Bearer <Firebase_ID_Token>`, `Content-Type: application/json`
+- **Body:** `{ "posts_stats": [...], "reactions": [...], "subscribers": [...], "push_subscriptions": [...], "users": [...] }`
+- **Response Shape (200 OK):** `{ "success": true, "imported": { "posts_stats": 41, "reactions": 10, "subscribers": 5, "push_subscriptions": 2, "users": 1 } }`
+
+
 
 
 

@@ -4,6 +4,7 @@ The following files, components, and logic structures represent finalized UI and
 
 1. **`src/views/HomeView.tsx`**
    - Editorial Hero Showcase (`#editorial-hero-showcase`): Panoramic animated multi-poster showcase (`#hero-feature-poster-carousel`) using Golden Ratio scaling (`aspect-[4/3]` to `md:aspect-[1.618/1]`) and Right-to-Left swipe animations without overlay numbers, dots, or arrow clutter.
+   - Dynamic Category Matching: When on 'All' category page, rotates dispatches across all categories; when on specific category tab (e.g. 'Sports', 'Tech', 'Politics', 'Business', 'Health', 'World', 'Opinion', 'General', 'Jharkhand'), automatically filters posters to match that specific category while preserving 100% of the design, typography, and animation physics.
    - Default author byline unified to "Current News".
    - Public reader feed grid layout, responsive typography, filter category tabs, and pick-up reading progress card.
    - Dynamic page-by-page navigator and pagination scroll preservation.
@@ -15,7 +16,9 @@ The following files, components, and logic structures represent finalized UI and
    - Article reader typography, inline image flow (`cleanImageUrl`), and fallback mechanics.
    - Background scroll progress tracker (`saveReadingProgress`).
 
-3. **`src/views/PrivacyView.tsx` & `src/views/TermsView.tsx`**
+3. **`src/components/ProfilePageNavbar.tsx` & All Profile Sub-Pages**
+   - Universal Left-Aligned Header Layout: All page titles (`Profile`, `Privacy Policy`, `Terms of Service`, `Settings`, `Liked`, `Account Deletion`, `Admin`, `About Us`, `Contact`, `Editorial Policy`, `Sign In`) are strictly positioned on the left side, directly next to the tailless arrow back button (`ChevronLeft`).
+   - Tailless back button and Android edge-swipe gesture navigation strictly return to the `/profile` page (or Home on Profile root).
    - Soft cream/beige theme styling (`#fbf8f2` / `#161412`), chapter navigation book design, and international legal copyright clauses.
 
 4. **`src/components/Header.tsx` & `src/components/Footer.tsx`**
@@ -56,10 +59,26 @@ The following files, components, and logic structures represent finalized UI and
    - Automated circuit breaker (trips for 30s after 2 consecutive failures) and real-time latency probing.
    - Speculative pre-fetching for instant article transitions without user wait-time.
 
-12. **`src/components/AppUpdatePrompt.tsx` & `src/utils/appVersionManager.ts` (In-App Update Engine)**
-   - Server-driven version check (`/api/app/version`) via Option B.
-   - Native Capacitor `@capacitor/app` build comparison (`build` code & `versionName`).
-   - Non-intrusive floating bottom sheet with Google Play Store direct redirect (`market://details?id=blog.currentnews.app`).
-   - 24-hour snooze cooldown and mandatory security lock (`forceUpdate: true`).
+12. **`src/utils/appVersionManager.ts` & Server Version API**
+   - Server-driven version check (`GET /api/app/version` & `POST /api/app/version`).
+   - Native Capacitor build comparison engine (`build` code & `versionName`).
+   - UI update pop-up (`AppUpdatePrompt`) unmounted from DOM per user request to maintain completely uninterrupted reading.
+
+13. **Uncluttered Zero-Popup Reader Experience Policy**
+   - Web Push Notification Alert Prompt (`NotificationBanner.tsx`) and Newsletter Subscription Modal (`NewsletterPopup.tsx`) are permanently removed from the codebase.
+   - Reader viewport is strictly preserved with zero intrusive subscription or alert overlays.
+
+14. **Dedicated Individual View Files Architecture**
+   - Every page has its own modular file in `src/views/`:
+     * `src/views/AdminDashboardView.tsx` (main editorial metrics, R2 edge sync, and author pen name manager)
+     * `src/views/DraftPublicationView.tsx` (article composer, rich text, photo attachments, and publishing)
+     * `src/views/CurrentPublicationsView.tsx` (publications table, filter switcher, and delete modal)
+     * `src/views/AudienceRegistryView.tsx` (subscribers directory, push device listeners, and Resend test console)
+     * `src/views/SettingsView.tsx` (theme, notifications, and preferences)
+     * `src/views/LikedView.tsx` (curated liked articles ledger)
+     * `src/views/DeleteAccountView.tsx` (account purge & Google Play data safety compliance)
+     * `src/views/PrivacyView.tsx` (Privacy Policy)
+     * `src/views/TermsView.tsx` (Terms of Service)
+   - All protected by `AdminAuthGuard.tsx` and unified with left-aligned `ProfilePageNavbar`.
 
 

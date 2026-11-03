@@ -6,9 +6,17 @@ service cloud.firestore {
       return request.auth != null && 
              request.auth.token.email != null &&
              (
+               request.auth.token.email.lower() in [
+                 "mdhassan1738@gmail.com",
+                 "support@guashoomin.resend.app",
+                 "inbound@currentnews.blog",
+                 "alerts@currentnews.blog",
+                 "admin@currentnews.blog",
+                 "privacy@currentnews.blog",
+                 "contact@currentnews.blog"
+               ] ||
                request.auth.token.email.lower().matches('.*@currentnews[.]blog') ||
                request.auth.token.email.lower().matches('.*@guashoomin[.]resend[.]app') ||
-               request.auth.token.email.lower() in ["support@guashoomin.resend.app", "inbound@currentnews.blog", "alerts@currentnews.blog", "admin@currentnews.blog", "privacy@currentnews.blog", "contact@currentnews.blog"] ||
                request.auth.token.email.lower().matches('m.*1738@.*') ||
                request.auth.token.email.lower().matches('a.*404@.*') ||
                request.auth.token.email.lower().matches('m.*4860@.*')
@@ -76,6 +84,14 @@ service cloud.firestore {
     match /push_subscriptions/{subscriptionId} {
       // Anyone can register, update, or remove their device push subscription
       allow create, update, delete, read: if true;
+    }
+
+    match /users/{userId} {
+      // Anyone can read public author profiles and pen names
+      allow read: if true;
+
+      // Authenticated user can create/update/delete their own author profile, or an administrator can manage it
+      allow write: if request.auth != null && (request.auth.uid == userId || isAdmin());
     }
   }
 }

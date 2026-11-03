@@ -21,7 +21,7 @@ import {
   handleGetSubscribersCount
 } from './src/server/pushNotifications.js';
 import { handleGetPosts, handleGetPostById, handleGetWriters } from './src/server/postsApi.js';
-import { handleSaveArticle, handleDeleteArticle, handleSyncArticles, ensureR2ArticlesWarmup } from './src/server/r2Articles.js';
+import { handleSaveArticle, handleDeleteArticle, handleSyncArticles, handleMigrateImages, ensureR2ArticlesWarmup } from './src/server/r2Articles.js';
 import { handleGetAppVersion, handleUpdateAppVersion } from './src/server/appVersionApi.js';
 
 // Load environment variables
@@ -128,7 +128,9 @@ async function startServer() {
   app.post('/api/articles/save', asyncHandler(handleSaveArticle));
   app.delete('/api/articles/:id', asyncHandler(handleDeleteArticle));
   app.post('/api/articles/sync', asyncHandler(handleSyncArticles));
+  app.post('/api/articles/migrate-images', asyncHandler(handleMigrateImages));
   app.get('/api/writers', asyncHandler(handleGetWriters));
+  app.use('/img', express.static(path.join(process.cwd(), 'data', 'img'), { maxAge: '1y', immutable: true }));
 
   // Server-driven App Update endpoints (Google Play Store / Cloud Run dynamic update triggers)
   app.get('/api/app/version', asyncHandler(handleGetAppVersion));

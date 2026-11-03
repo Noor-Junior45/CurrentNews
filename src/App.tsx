@@ -1,17 +1,16 @@
 import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { getDocFromServer, doc } from 'firebase/firestore';
-import { db } from './firebase';
 import Header from './components/Header';
 import Footer from './components/Footer';
 import ConsentBanner from './components/ConsentBanner';
-import NotificationBanner from './components/NotificationBanner';
-import AppUpdatePrompt from './components/AppUpdatePrompt';
 import AndroidBackGestureHandler from './components/AndroidBackGestureHandler';
 import { syncPushSubscriptionOnAppBoot } from './utils/pushManager';
 import HomeView from './views/HomeView';
 import PostDetailView from './views/PostDetailView';
 import AdminView from './views/AdminView';
+import DraftPublicationView from './views/DraftPublicationView';
+import CurrentPublicationsView from './views/CurrentPublicationsView';
+import AudienceRegistryView from './views/AudienceRegistryView';
 import LikedView from './views/LikedView';
 import PrivacyView from './views/PrivacyView';
 import TermsView from './views/TermsView';
@@ -69,24 +68,7 @@ function AdSenseRouteWatcher() {
 }
 
 export default function App() {
-  
-  // CRITICAL CONSTRAINT: When the application initially boots, validate connection to Firestore
   useEffect(() => {
-    async function testConnection() {
-      try {
-        await getDocFromServer(doc(db, 'test', 'connection'));
-        console.log('Firestore connection verified successfully on application startup.');
-      } catch (error) {
-        if (error instanceof Error && error.message.includes('the client is offline')) {
-          console.warn("Firestore client operating in offline mode. Local cached stories are fully active.");
-        } else {
-          // Standard other errors are logged but shouldn't halt execution or crash client experience
-          console.log('Firestore initialization complete.');
-        }
-      }
-    }
-    testConnection();
-
     // Register PWA service worker for notifications and offline support
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').then(() => {
@@ -120,8 +102,11 @@ export default function App() {
             <Route path="/post/:id" element={<PostDetailView />} />
             <Route path="/post/:id/:slug" element={<PostDetailView />} />
 
-            {/* 3. Secure Admin Panel */}
+            {/* 3. Secure Admin Panel & Dedicated Editorial Views */}
             <Route path="/admin" element={<AdminView />} />
+            <Route path="/admin/draft" element={<DraftPublicationView />} />
+            <Route path="/admin/publications" element={<CurrentPublicationsView />} />
+            <Route path="/admin/audience" element={<AudienceRegistryView />} />
 
             {/* 4. Profile Hub Page */}
             <Route path="/profile" element={<ProfileView />} />
@@ -154,12 +139,6 @@ export default function App() {
 
         {/* Dynamic bottom GDPR/Google policy compliant consent banner */}
         <ConsentBanner />
-
-        {/* Automated Background Push Notification Subscription Prompt */}
-        <NotificationBanner />
-
-        {/* Server-Driven Dynamic App Update Bottom Pop-up (Option B) */}
-        <AppUpdatePrompt />
 
         {/* Native Android Phone Edge-Swipe Back Gesture & Navigation Handler */}
         <AndroidBackGestureHandler />

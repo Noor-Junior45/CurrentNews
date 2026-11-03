@@ -1,0 +1,20 @@
+name = "currentnews-worker"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+# D1 Database binding
+[[d1_databases]]
+binding = "DB"
+database_name = "currentnews-db"
+database_id = "CURRENTNEWS_D1_DATABASE_ID_PLACEHOLDER"
+
+# Production Route mapping
+# Route traffic for api.currentnews.blog to this worker
+routes = [
+  { pattern = "api.currentnews.blog/*", zone_name = "currentnews.blog" }
+]
+
+[vars]
+ADMIN_EMAILS = "mdhassan1738@gmail.com"
+FIREBASE_PROJECT_ID = "gen-lang-client-0638643565"

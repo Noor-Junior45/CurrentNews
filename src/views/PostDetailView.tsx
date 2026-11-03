@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
-import { doc, getDoc, setDoc, deleteDoc, updateDoc, increment, collection, query, where, limit, getDocs } from 'firebase/firestore';
-import { auth, db, handleFirestoreError, OperationType } from '../firebase';
+import { auth } from '../firebase';
+import { api } from '../utils/api';
 import { onAuthStateChanged } from 'firebase/auth';
 import { Post, slugify } from '../types';
 import { cleanImageUrl, getFallbackImageUrl, sanitizePostImages } from '../utils/imageUrl';
@@ -162,28 +162,26 @@ export default function PostDetailView() {
     const fetchRelatedPosts = async () => {
       if (!post) return;
       try {
-        const postsCol = collection(db, 'posts');
-        const q = query(
-          postsCol,
-          where('status', '==', 'published'),
-          where('category', '==', post.category || 'General'),
-          limit(10)
-        );
-        const snapshot = await getDocs(q);
-        const fetched: Post[] = [];
-        snapshot.forEach((docSnap) => {
-          if (docSnap.id !== post.id) {
-            fetched.push(sanitizePostImages({ id: docSnap.id, ...docSnap.data() } as Post));
-          }
+        // Use light feed from client load balancer / local cache (zero Firestore reads)
+        const { posts: feedPosts } = await clientLoadBalancer.fetchArticlesFeed({
+          category: post.category || 'General',
         });
-        setRelatedPosts(fetched.slice(0, 3));
+        const matched = feedPosts.filter(p => p.id !== post.id);
+        if (matched.length > 0) {
+          setRelatedPosts(matched.slice(0, 3));
+          return;
+        }
+
+        const { posts: allPosts } = await clientLoadBalancer.fetchArticlesFeed();
+        const generalMatched = allPosts.filter(p => p.id !== post.id);
+        setRelatedPosts(generalMatched.slice(0, 3));
       } catch (err) {
-        console.warn('Failed to fetch related posts', err);
+        console.debug('Failed to fetch related posts from light feed:', err);
       }
     };
 
     fetchRelatedPosts();
-  }, [post]);
+  }, [post?.id, post?.category]);
 
   useEffect(() => {
     if (post) {
@@ -192,26 +190,30 @@ export default function PostDetailView() {
       const saved = localStorage.getItem(`react_${post.id}`) as 'liked' | 'disliked' | null;
       setMyReaction(saved);
 
+      // Refresh real-time stats from Cloudflare Worker D1
+      api.getPostStats([post.id]).then(statsMap => {
+        const currentStats = statsMap[post.id];
+        if (currentStats) {
+          if (currentStats.likes !== undefined) setLikes(currentStats.likes);
+          if (currentStats.dislikes !== undefined) setDislikes(currentStats.dislikes);
+          if (currentStats.views !== undefined && post) {
+            setPost(prev => prev ? { ...prev, views: currentStats.views } : null);
+          }
+        }
+      }).catch(() => {});
+
       const unsubscribe = onAuthStateChanged(auth, async (user) => {
         if (user) {
           try {
-            const reactionDocRef = doc(db, 'reactions', `${user.uid}_${post.id}`);
-            const snap = await getDoc(reactionDocRef);
-            if (snap.exists()) {
-              const data = snap.data();
-              const serverType = data.type as 'liked' | 'disliked' | null;
-              setMyReaction(serverType);
-              if (serverType) {
-                localStorage.setItem(`react_${post.id}`, serverType);
-              } else {
-                localStorage.removeItem(`react_${post.id}`);
-              }
+            const serverType = await api.getUserReaction(post.id);
+            setMyReaction(serverType);
+            if (serverType) {
+              localStorage.setItem(`react_${post.id}`, serverType);
             } else {
-              setMyReaction(null);
               localStorage.removeItem(`react_${post.id}`);
             }
           } catch (err) {
-            console.warn('Failed to load user reaction from Firestore', err);
+            console.debug('Failed to load user reaction from Worker D1:', err);
           }
         } else {
           // Keep local state for guests, but if they logged out reset
@@ -221,7 +223,7 @@ export default function PostDetailView() {
 
       return () => unsubscribe();
     }
-  }, [post]);
+  }, [post?.id]);
 
   useEffect(() => {
     if (!post) {
@@ -485,24 +487,16 @@ export default function PostDetailView() {
       return;
     }
 
-    const postRef = doc(db, 'posts', post.id);
-    const reactionRef = doc(db, 'reactions', `${user.uid}_${post.id}`);
-
     let newLikes = likes;
     let newDislikes = dislikes;
     let nextReaction: 'liked' | 'disliked' | null = null;
-
-    let likesDiff = 0;
-    let dislikesDiff = 0;
 
     if (myReaction === type) {
       // Undo
       if (type === 'liked') {
         newLikes = Math.max(0, likes - 1);
-        likesDiff = -1;
       } else {
         newDislikes = Math.max(0, dislikes - 1);
-        dislikesDiff = -1;
       }
       localStorage.removeItem(`react_${post.id}`);
       nextReaction = null;
@@ -510,17 +504,13 @@ export default function PostDetailView() {
       // Apply
       if (type === 'liked') {
         newLikes = likes + 1;
-        likesDiff = 1;
         if (myReaction === 'disliked') {
           newDislikes = Math.max(0, dislikes - 1);
-          dislikesDiff = -1;
         }
       } else {
         newDislikes = dislikes + 1;
-        dislikesDiff = 1;
         if (myReaction === 'liked') {
           newLikes = Math.max(0, likes - 1);
-          likesDiff = -1;
         }
       }
       localStorage.setItem(`react_${post.id}`, type);
@@ -532,28 +522,10 @@ export default function PostDetailView() {
     setMyReaction(nextReaction);
 
     try {
-      // Update reactions collection
-      if (nextReaction === null) {
-        await deleteDoc(reactionRef);
-      } else {
-        await setDoc(reactionRef, {
-          userId: user.uid,
-          userEmail: user.email || '',
-          postId: post.id,
-          type: nextReaction,
-          updatedAt: new Date().toISOString()
-        });
-      }
-
-      // Update post likes/dislikes counts
-      const updates: Record<string, any> = {};
-      if (likesDiff !== 0) updates.likes = increment(likesDiff);
-      if (dislikesDiff !== 0) updates.dislikes = increment(dislikesDiff);
-      if (Object.keys(updates).length > 0) {
-        await updateDoc(postRef, updates);
-      }
+      const apiType = nextReaction === 'liked' ? 'like' : nextReaction === 'disliked' ? 'dislike' : null;
+      await api.setUserReaction(post.id, apiType);
     } catch (err) {
-      console.error('Failed to write reaction to cloud', err);
+      console.error('Failed to write reaction to Worker D1', err);
       // Rollback on failure
       setLikes(likes);
       setDislikes(dislikes);
@@ -622,6 +594,16 @@ export default function PostDetailView() {
           setPost(balancedPost);
           setLoading(false);
           setIsOfflineCached(false);
+
+          // Increment views without reading the document
+          const viewedSessionKey = `viewed_post_${id}`;
+          const alreadyViewed = sessionStorage.getItem(viewedSessionKey);
+          if (!alreadyViewed) {
+            sessionStorage.setItem(viewedSessionKey, 'true');
+            api.recordPostView(id).catch(viewErr => {
+              console.debug('Views counter update notice:', viewErr);
+            });
+          }
           return;
         }
       } catch (lbErr) {
@@ -631,7 +613,7 @@ export default function PostDetailView() {
       // 2. Local compressed story fallback (instant offline render)
       try {
         const compressed = getCompressedStory(id);
-        if (compressed) {
+        if (compressed && compressed.title) {
           const sanitized = sanitizePostImages(compressed);
           setPost(sanitized);
           setLoading(false);
@@ -640,75 +622,9 @@ export default function PostDetailView() {
         }
       } catch (e) {}
 
-      // 4. Legacy Firestore fallback (only if article not found in R2 or local cache)
-      const docPath = `posts/${id}`;
-      try {
-        const docRef = doc(db, 'posts', id);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          const rawDoc = docSnap.data();
-          let postData = {
-            id: docSnap.id,
-            ...rawDoc
-          } as Post;
-          
-          postData = sanitizePostImages(postData);
-
-          // If stored document had malformed URLs, auto-repair silently in Firestore (excluding data URLs)
-          if (
-            !rawDoc.imageUrl?.startsWith('data:') &&
-            ((rawDoc.imageUrl && rawDoc.imageUrl !== postData.imageUrl) ||
-             (rawDoc.imageUrls && JSON.stringify(rawDoc.imageUrls) !== JSON.stringify(postData.imageUrls)))
-          ) {
-            updateDoc(docRef, {
-              imageUrl: postData.imageUrl || '',
-              imageUrlFallback: postData.imageUrlFallback || '',
-              imageUrls: postData.imageUrls || [],
-              imageUrlsFallback: postData.imageUrlsFallback || []
-            }).catch((patchErr) => console.warn('Silent auto-repair of post image URLs in Firestore:', patchErr));
-          }
-          
-          // Increment and display views
-          const viewedSessionKey = `viewed_post_${id}`;
-          const alreadyViewed = sessionStorage.getItem(viewedSessionKey);
-          if (!alreadyViewed) {
-            sessionStorage.setItem(viewedSessionKey, 'true');
-            try {
-              await updateDoc(docRef, { views: increment(1) });
-              postData.views = (postData.views || 0) + 1;
-            } catch (viewErr) {
-              console.warn('Failed to update views in Firestore:', viewErr);
-            }
-          }
-          
-          setPost(postData);
-          saveCompressedStory(postData);
-          setIsOfflineCached(false);
-        } else {
-          setError('Article not found. The article could have been removed by an administrator or has an incorrect web link.');
-        }
-      } catch (err: any) {
-        console.warn('Network fetch deferred, checking compressed storage:', err?.message || err);
-        try {
-          const compressed = getCompressedStory(id);
-          if (compressed) {
-            setPost(sanitizePostImages(compressed));
-            setIsOfflineCached(true);
-            setError(null);
-          } else {
-            const isQuota = String(err?.message || err).toLowerCase().includes('quota');
-            if (isQuota) {
-              setError('The free daily database read quota has been reached for today. Cached stories remain available while the daily quota resets.');
-            } else {
-              setError('Failed to fetch article details. There might be a temporary server disconnection.');
-            }
-          }
-        } catch (cacheReadErr) {
-          setError('Failed to fetch article details. There might be a temporary server disconnection.');
-        }
-      } finally {
-        setLoading(false);
-      }
+      // If not found in CDN, API, R2, or local cache
+      setError('Article not found. The article could have been removed by an administrator or has an incorrect web link.');
+      setLoading(false);
     };
 
     fetchPost();

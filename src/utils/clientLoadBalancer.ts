@@ -219,6 +219,7 @@ class ClientLoadBalancer {
                 const term = params.search.toLowerCase();
                 sanitized = sanitized.filter(p =>
                   (p.title || '').toLowerCase().includes(term) ||
+                  (p.excerpt || '').toLowerCase().includes(term) ||
                   (p.content || '').toLowerCase().includes(term) ||
                   (p.authorName || '').toLowerCase().includes(term)
                 );
@@ -252,7 +253,9 @@ class ClientLoadBalancer {
         const term = params.search.toLowerCase();
         filtered = filtered.filter(p =>
           (p.title || '').toLowerCase().includes(term) ||
-          (p.content || '').toLowerCase().includes(term)
+          (p.excerpt || '').toLowerCase().includes(term) ||
+          (p.content || '').toLowerCase().includes(term) ||
+          (p.authorName || '').toLowerCase().includes(term)
         );
       }
       return { posts: filtered, source: 'Local LZW Cache (Offline)' };

@@ -22,6 +22,7 @@ export interface Post {
   galleryPositions?: ('gallery' | 'top' | 'middle' | 'bottom' | 'inline')[]; // Flow placement for all photos
   views?: number; // Total article views
   hashtags?: string[]; // Custom social/instagram hashtags
+  excerpt?: string; // Light feed plain-text excerpt (~200 chars)
 }
 
 export function slugify(text: string): string {

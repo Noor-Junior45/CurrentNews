@@ -7,14 +7,16 @@ interface ProfilePageNavbarProps {
   onBack?: () => void;
   fallbackUrl?: string;
   rightAction?: React.ReactNode;
+  align?: 'center' | 'left';
 }
 
 export default function ProfilePageNavbar({ 
   title, 
   onBack, 
   fallbackUrl = '/profile',
-  rightAction 
-}: ProfilePageNavbarProps) {
+  rightAction,
+  align = 'left'
+}: ProfilePageNavbarProps): React.JSX.Element {
   const navigate = useNavigate();
 
   const handleBack = () => {
@@ -22,18 +24,20 @@ export default function ProfilePageNavbar({
       onBack();
     } else if (fallbackUrl === '/') {
       navigate('/');
+    } else if (fallbackUrl) {
+      navigate(fallbackUrl);
     } else if (window.history.state && typeof window.history.state.idx === 'number' && window.history.state.idx > 0) {
       navigate(-1);
     } else {
-      navigate(fallbackUrl);
+      navigate('/profile');
     }
   };
 
   return (
     <header className="sticky top-0 z-40 w-full bg-white/80 dark:bg-slate-950/80 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80 transition-colors">
       <div className="max-w-7xl mx-auto px-3 sm:px-6 h-14 sm:h-16 flex items-center justify-between gap-2">
-        {/* Tailless arrow Back button with no background design or text */}
-        <div className="flex items-center shrink-0 min-w-[40px] sm:min-w-[48px]">
+        {/* Left container: Tailless arrow Back button + Heading directly next to it on the left */}
+        <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0 flex-1">
           <button
             type="button"
             onClick={handleBack}
@@ -44,11 +48,8 @@ export default function ProfilePageNavbar({
           >
             <ChevronLeft className="h-6 w-6 stroke-[2.2] shrink-0 transition-transform group-hover:-translate-x-0.5" />
           </button>
-        </div>
 
-        {/* Page heading */}
-        <div className="flex-1 text-center px-1 sm:px-2 min-w-0">
-          <h1 className="text-[11px] sm:text-xs md:text-sm lg:text-base font-bold text-slate-900 dark:text-white uppercase tracking-tight sm:tracking-wider font-display truncate whitespace-nowrap">
+          <h1 className="text-sm sm:text-base md:text-lg font-bold text-slate-900 dark:text-white uppercase tracking-tight sm:tracking-wider font-display truncate">
             {title}
           </h1>
         </div>

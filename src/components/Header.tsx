@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
-import { db, auth } from '../firebase';
-import { collection, addDoc, query, where, getDocs, deleteDoc, doc, serverTimestamp, limit } from 'firebase/firestore';
+import { auth } from '../firebase';
+import { api } from '../utils/api';
 import { useAuthState } from '../hooks/useAuthState';
 import { getCanonicalSiteOrigin } from '../utils/shareUrl';
 import { 
@@ -176,29 +176,18 @@ export default function Header() {
     }
 
     try {
-      const q = query(
-        collection(db, 'subscribers'),
-        where('email', '==', user.email.toLowerCase()),
-        limit(1)
-      );
-      const querySnapshot = await getDocs(q);
-      if (!querySnapshot.empty) {
-        const id = querySnapshot.docs[0].id;
+      const subscribed = await api.checkEmailSubscription(user.email.toLowerCase());
+      if (subscribed) {
         setIsSubscribed(true);
-        setSubDocId(id);
-        localStorage.setItem(emailKey, id);
+        setSubDocId('subscribed');
+        localStorage.setItem(emailKey, 'true');
       } else {
         setIsSubscribed(false);
         setSubDocId(null);
         localStorage.removeItem(emailKey);
       }
     } catch (err: any) {
-      const isQuota = String(err?.message || err).toLowerCase().includes('quota');
-      if (isQuota) {
-        console.warn('Newsletter query skipped: daily Firestore read quota reached. Falling back to local cache.');
-      } else {
-        console.debug('Failed to check newsletter subscription from server:', err);
-      }
+      console.debug('Failed to check newsletter subscription from server:', err);
     }
   };
 
@@ -332,45 +321,17 @@ export default function Header() {
     setIsSubscribing(true);
     try {
       if (target === 'unsubscribe') {
-        if (subDocId) {
-          await deleteDoc(doc(db, 'subscribers', subDocId));
-        } else {
-          const q = query(
-            collection(db, 'subscribers'), 
-            where('email', '==', user.email.toLowerCase())
-          );
-          const snap = await getDocs(q);
-          for (const docItem of snap.docs) {
-            await deleteDoc(doc(db, 'subscribers', docItem.id));
-          }
-        }
+        await api.unsubscribeEmail();
         setIsSubscribed(false);
         setSubDocId(null);
         localStorage.removeItem('cn_sub_' + user.email.toLowerCase());
         localStorage.removeItem('newsletter_subscribed');
         window.dispatchEvent(new Event('settings-updated'));
       } else {
-        const q = query(
-          collection(db, 'subscribers'), 
-          where('email', '==', user.email.toLowerCase()),
-          limit(1)
-        );
-        const snap = await getDocs(q);
-        
-        let newDocId = null;
-        if (snap.empty) {
-          const newDocRef = await addDoc(collection(db, 'subscribers'), {
-            email: user.email.toLowerCase(),
-            createdAt: serverTimestamp()
-          });
-          newDocId = newDocRef.id;
-        } else {
-          newDocId = snap.docs[0].id;
-        }
-        
+        await api.subscribeEmail(user.email.toLowerCase());
         setIsSubscribed(true);
-        setSubDocId(newDocId);
-        localStorage.setItem('cn_sub_' + user.email.toLowerCase(), newDocId || 'true');
+        setSubDocId('subscribed');
+        localStorage.setItem('cn_sub_' + user.email.toLowerCase(), 'true');
         localStorage.setItem('newsletter_subscribed', 'true');
         window.dispatchEvent(new Event('settings-updated'));
 

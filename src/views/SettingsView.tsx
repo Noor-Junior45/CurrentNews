@@ -8,19 +8,9 @@ import {
   CheckCircle2, 
   Download 
 } from 'lucide-react';
-import { 
-  collection, 
-  query, 
-  where, 
-  getDocs, 
-  addDoc, 
-  deleteDoc, 
-  doc, 
-  serverTimestamp,
-  limit
-} from 'firebase/firestore';
 import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
-import { db, auth } from '../firebase';
+import { auth } from '../firebase';
+import { api } from '../utils/api';
 import { useAuthState } from '../hooks/useAuthState';
 import ProfilePageNavbar from '../components/ProfilePageNavbar';
 import GlassThemeToggle from '../components/ThemeToggle';
@@ -89,17 +79,11 @@ export default function SettingsView() {
         }
 
         try {
-          const q = query(
-            collection(db, 'subscribers'), 
-            where('email', '==', emailLower),
-            limit(1)
-          );
-          const snap = await getDocs(q);
-          if (!snap.empty) {
-            const docId = snap.docs[0].id;
+          const subscribed = await api.checkEmailSubscription(emailLower);
+          if (subscribed) {
             setIsSubscribed(true);
-            setSubDocId(docId);
-            localStorage.setItem('cn_sub_' + emailLower, docId);
+            setSubDocId('subscribed');
+            localStorage.setItem('cn_sub_' + emailLower, 'true');
             localStorage.setItem('newsletter_subscribed', 'true');
           } else {
             setIsSubscribed(false);
@@ -107,12 +91,7 @@ export default function SettingsView() {
             localStorage.removeItem('cn_sub_' + emailLower);
           }
         } catch (err: any) {
-          const isQuota = String(err?.message || err).toLowerCase().includes('quota');
-          if (isQuota) {
-            console.warn("Newsletter query skipped: daily Firestore read quota reached. Falling back to local cache.");
-          } else {
-            console.debug("Failed to query newsletter status:", err);
-          }
+          console.debug("Failed to query newsletter status from Worker D1:", err);
         }
       } else {
         setIsSubscribed(localStorage.getItem('newsletter_subscribed') === 'true');
@@ -206,18 +185,7 @@ export default function SettingsView() {
     setIsSubscribing(true);
     try {
       if (isSubscribed) {
-        if (subDocId) {
-          await deleteDoc(doc(db, 'subscribers', subDocId));
-        } else {
-          const q = query(
-            collection(db, 'subscribers'), 
-            where('email', '==', user.email?.toLowerCase())
-          );
-          const snap = await getDocs(q);
-          for (const docItem of snap.docs) {
-            await deleteDoc(doc(db, 'subscribers', docItem.id));
-          }
-        }
+        await api.unsubscribeEmail();
         setIsSubscribed(false);
         setSubDocId(null);
         localStorage.removeItem('newsletter_subscribed');
@@ -227,17 +195,14 @@ export default function SettingsView() {
         window.dispatchEvent(new Event('settings-updated'));
         showToast("Unsubscribed from newsletter alerts.");
       } else {
-        const docRef = await addDoc(collection(db, 'subscribers'), {
-          email: user.email?.toLowerCase(),
-          userId: user.uid,
-          source: 'settings_toggle',
-          createdAt: serverTimestamp()
-        });
+        if (user.email) {
+          await api.subscribeEmail(user.email.toLowerCase());
+        }
         setIsSubscribed(true);
-        setSubDocId(docRef.id);
+        setSubDocId('subscribed');
         localStorage.setItem('newsletter_subscribed', 'true');
         if (user.email) {
-          localStorage.setItem('cn_sub_' + user.email.toLowerCase(), docRef.id);
+          localStorage.setItem('cn_sub_' + user.email.toLowerCase(), 'true');
         }
         window.dispatchEvent(new Event('settings-updated'));
         showToast("Subscribed to breaking news alerts!");

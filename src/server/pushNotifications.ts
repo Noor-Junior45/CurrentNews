@@ -1,27 +1,61 @@
 import { Request, Response } from 'express';
 import webpush from 'web-push';
 import crypto from 'crypto';
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, collection, doc, setDoc, deleteDoc, getDocs } from 'firebase/firestore';
 import fs from 'fs';
 import path from 'path';
 
-// Load Firebase configuration
-let firebaseConfig: any = {};
-try {
-  const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
-  if (fs.existsSync(configPath)) {
-    firebaseConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+// Local disk persistence for push subscriptions (decoupled from Firestore)
+const DATA_DIR = path.join(process.cwd(), 'data');
+const PUSH_SUBS_FILE = path.join(DATA_DIR, 'push_subscriptions.json');
+
+function ensureDataDir() {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
   }
-} catch (e) {
-  console.error('[Push Service] Failed to read firebase-applet-config.json:', e);
 }
 
-const fbApp = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-const db = getFirestore(fbApp, firebaseConfig.firestoreDatabaseId);
+interface StoredPushSub {
+  id: string;
+  endpoint: string;
+  keys: {
+    p256dh?: string;
+    auth?: string;
+  };
+  userAgent?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function loadPushSubscriptions(): Map<string, StoredPushSub> {
+  const map = new Map<string, StoredPushSub>();
+  try {
+    ensureDataDir();
+    if (fs.existsSync(PUSH_SUBS_FILE)) {
+      const raw = fs.readFileSync(PUSH_SUBS_FILE, 'utf-8');
+      const list: StoredPushSub[] = JSON.parse(raw);
+      for (const item of list) {
+        if (item && item.endpoint) {
+          map.set(item.id || getEndpointId(item.endpoint), item);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[Push Service] Could not read push_subscriptions.json:', err);
+  }
+  return map;
+}
+
+function savePushSubscriptions(map: Map<string, StoredPushSub>) {
+  try {
+    ensureDataDir();
+    const arr = Array.from(map.values());
+    fs.writeFileSync(PUSH_SUBS_FILE, JSON.stringify(arr, null, 2), 'utf-8');
+  } catch (err) {
+    console.error('[Push Service] Could not write push_subscriptions.json:', err);
+  }
+}
 
 // VAPID credentials for Web Push protocol (RFC 8292 / RFC 8291 standard)
-// These allow waking up Android phones (via Google Play Services / FCM) and PCs without native app store builds.
 let resolvedPublicKey = process.env.VAPID_PUBLIC_KEY;
 let resolvedPrivateKey = process.env.VAPID_PRIVATE_KEY;
 
@@ -66,7 +100,7 @@ export function handleGetVapidPublicKey(_req: Request, res: Response) {
 
 /**
  * POST /api/push/subscribe
- * Registers a device push subscription into Firestore push_subscriptions collection.
+ * Registers a device push subscription into local JSON store.
  */
 export async function handleSubscribe(req: Request, res: Response) {
   try {
@@ -80,18 +114,22 @@ export async function handleSubscribe(req: Request, res: Response) {
     }
 
     const docId = getEndpointId(subscription.endpoint);
-    const subRef = doc(db, 'push_subscriptions', docId);
+    const subsMap = loadPushSubscriptions();
 
-    await setDoc(subRef, {
+    const existing = subsMap.get(docId);
+    subsMap.set(docId, {
+      id: docId,
       endpoint: subscription.endpoint,
       keys: {
         p256dh: subscription.keys.p256dh,
         auth: subscription.keys.auth,
       },
       userAgent: userAgent || req.headers['user-agent'] || '',
+      createdAt: existing?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-    }, { merge: true });
+    });
+
+    savePushSubscriptions(subsMap);
 
     return res.json({
       success: true,
@@ -122,8 +160,9 @@ export async function handleUnsubscribe(req: Request, res: Response) {
     }
 
     const docId = getEndpointId(endpoint);
-    const subRef = doc(db, 'push_subscriptions', docId);
-    await deleteDoc(subRef);
+    const subsMap = loadPushSubscriptions();
+    subsMap.delete(docId);
+    savePushSubscriptions(subsMap);
 
     return res.json({
       success: true,
@@ -144,16 +183,16 @@ export async function handleUnsubscribe(req: Request, res: Response) {
  */
 export async function handleGetSubscribersCount(_req: Request, res: Response) {
   try {
-    const snapshot = await getDocs(collection(db, 'push_subscriptions'));
+    const subsMap = loadPushSubscriptions();
     return res.json({
       success: true,
-      count: snapshot.size,
+      count: subsMap.size,
     });
   } catch (error: any) {
-    console.error('[Push Service] Count error:', error);
-    return res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to count subscribers',
+    console.warn('[Push Service] Count notice:', error);
+    return res.json({
+      success: true,
+      count: 0,
     });
   }
 }
@@ -161,7 +200,6 @@ export async function handleGetSubscribersCount(_req: Request, res: Response) {
 /**
  * POST /api/push/broadcast
  * Dispatches an automated background push notification to all subscribed devices.
- * Wakes up closed apps, sleeping phones, and background service workers.
  */
 export async function handleBroadcast(req: Request, res: Response) {
   try {
@@ -185,12 +223,8 @@ export async function handleBroadcast(req: Request, res: Response) {
       timestamp: Date.now(),
     });
 
-    // Fetch all active subscriptions from Firestore
-    const snapshot = await getDocs(collection(db, 'push_subscriptions'));
-    const subscriptions: any[] = [];
-    snapshot.forEach((d) => {
-      subscriptions.push({ id: d.id, ...d.data() });
-    });
+    const subsMap = loadPushSubscriptions();
+    const subscriptions = Array.from(subsMap.values());
 
     if (subscriptions.length === 0) {
       return res.json({
@@ -207,7 +241,6 @@ export async function handleBroadcast(req: Request, res: Response) {
     let failed = 0;
     let purged = 0;
 
-    // Send notifications in batches to avoid overwhelming network
     const BATCH_SIZE = 25;
     for (let i = 0; i < subscriptions.length; i += BATCH_SIZE) {
       const batch = subscriptions.slice(i, i + BATCH_SIZE);
@@ -223,24 +256,25 @@ export async function handleBroadcast(req: Request, res: Response) {
             };
 
             await webpush.sendNotification(pushConfig, payload, {
-              TTL: 86400, // Keep in Google/Apple push queue for 24 hours if device is offline
+              TTL: 86400,
               urgency: 'high',
             });
             sent++;
           } catch (err: any) {
             failed++;
-            // 404 or 410 means the user uninstalled the app or revoked notification permission
             if (err.statusCode === 404 || err.statusCode === 410) {
-              try {
-                await deleteDoc(doc(db, 'push_subscriptions', sub.id));
-                purged++;
-              } catch (_) {}
+              subsMap.delete(sub.id);
+              purged++;
             } else {
               console.warn(`[Push Service] Push delivery notice for ${sub.id}:`, err.message);
             }
           }
         })
       );
+    }
+
+    if (purged > 0) {
+      savePushSubscriptions(subsMap);
     }
 
     return res.json({

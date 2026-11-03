@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
-import { collection, getDocs, query, orderBy, limit, doc, getDoc } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../firebase';
+import React, { useEffect, useState, useMemo } from 'react';
+import { auth } from '../firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { api, PostStats } from '../utils/api';
 import { Post, slugify } from '../types';
 import { sanitizePostImages, cleanImageUrl } from '../utils/imageUrl';
 import BlogPostCard from '../components/BlogPostCard';
@@ -284,27 +285,6 @@ export default function HomeView() {
         setIsOfflineCached(true);
         return;
       }
-
-      // 4. Legacy Firestore fallback (only if R2 and cache have 0 articles)
-      try {
-        const q = query(collection(db, path), orderBy('createdAt', 'desc'), limit(30));
-        const querySnapshot = await getDocs(q);
-        const fetchedPosts: Post[] = [];
-        querySnapshot.forEach((doc) => {
-          fetchedPosts.push(sanitizePostImages({
-            id: doc.id,
-            ...doc.data()
-          } as Post));
-        });
-        if (fetchedPosts.length > 0) {
-          setPosts(fetchedPosts);
-          setIsOfflineCached(false);
-          saveCompressedStories(fetchedPosts);
-          return;
-        }
-      } catch (firestoreErr) {
-        console.warn('Firestore fallback quota or connection limit reached:', firestoreErr);
-      }
     } catch (err: any) {
       console.warn('Fetch posts from network deferred, checking compressed storage:', err?.message || err);
       try {
@@ -319,11 +299,6 @@ export default function HomeView() {
             setError('The free daily database read quota has been reached for today. Displaying cached dispatches while the daily quota resets.');
           } else {
             setError('Could not retrieve publications. Please make sure the database is provisioned and active.');
-          }
-          try {
-            handleFirestoreError(err, OperationType.GET, path);
-          } catch (wrappedErr) {
-            // Graceful UI handling
           }
         }
       } catch (cacheReadErr) {
@@ -372,14 +347,45 @@ export default function HomeView() {
   const publishedPosts = posts.filter((p) => p.status !== 'draft');
 
   // Featured Story Posters for rotating hero showcase (prioritizes stories with image covers)
-  const postsWithImage = publishedPosts.filter((p) => p.imageUrl && p.imageUrl.trim().length > 0);
+  // Dynamic Category Filtering:
+  // - If 'All' category page: shows posters from all dispatches across the publication.
+  // - If specific category page (e.g. Sports, Politics, Tech): shows posters matching that specific category.
+  const categoryPostsForPoster = selectedCategory === 'All'
+    ? publishedPosts
+    : publishedPosts.filter(p => {
+        const postCat = p.category || 'General';
+        if (selectedCategory.toLowerCase() === 'jharkhand') {
+          return (
+            postCat.toLowerCase() === 'jharkhand' ||
+            p.title.toLowerCase().includes('jharkhand') ||
+            p.content.toLowerCase().includes('jharkhand') ||
+            p.title.toLowerCase().includes('ranchi') ||
+            p.content.toLowerCase().includes('ranchi') ||
+            p.title.toLowerCase().includes('dhanbad') ||
+            p.title.toLowerCase().includes('jamshedpur') ||
+            p.title.toLowerCase().includes('bokaro') ||
+            (p.hashtags || []).some(h => /jharkhand|ranchi|dhanbad|jamshedpur/i.test(h))
+          );
+        }
+        return postCat.toLowerCase() === selectedCategory.toLowerCase();
+      });
+
+  // Use category-filtered dispatches if available; gracefully fallback to publishedPosts if a category has 0 posts
+  const activePosterPool = categoryPostsForPoster.length > 0 ? categoryPostsForPoster : publishedPosts;
+
+  const postsWithImage = activePosterPool.filter((p) => p.imageUrl && p.imageUrl.trim().length > 0);
   const posterPosts = (postsWithImage.length >= 3 
     ? postsWithImage 
-    : [...postsWithImage, ...publishedPosts.filter(p => !p.imageUrl || !p.imageUrl.trim().length)]
+    : [...postsWithImage, ...activePosterPool.filter(p => !p.imageUrl || !p.imageUrl.trim().length)]
   ).slice(0, 6);
 
   const [currentPosterIndex, setCurrentPosterIndex] = useState(0);
   const [isPosterHovered, setIsPosterHovered] = useState(false);
+
+  // Reset poster rotation index to 0 whenever category changes
+  useEffect(() => {
+    setCurrentPosterIndex(0);
+  }, [selectedCategory]);
 
   // Auto-rotate poster every 6 seconds, pause on mouse hover
   useEffect(() => {
@@ -394,6 +400,40 @@ export default function HomeView() {
 
   const totalPages = Math.max(1, Math.ceil(filteredPosts.length / postsPerPage));
   const paginatedPosts = filteredPosts.slice((currentPage - 1) * postsPerPage, currentPage * postsPerPage);
+
+  // Batch stats for all visible cards in ONE GET /stats?ids=... call
+  const [statsMap, setStatsMap] = useState<Record<string, PostStats>>({});
+  const [userLikedIds, setUserLikedIds] = useState<Set<string>>(new Set());
+
+  // Fetch the user's own reactions once via /my-reactions, not per card
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        try {
+          const liked = await api.getMyReactions();
+          setUserLikedIds(new Set(liked));
+        } catch (e) {
+          console.debug('Failed to load user reactions:', e);
+        }
+      } else {
+        setUserLikedIds(new Set());
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Fetch likes/dislikes/views for all visible cards with ONE query
+  useEffect(() => {
+    if (paginatedPosts.length === 0) return;
+    const ids = paginatedPosts.map(p => p.id);
+    api.getPostStats(ids).then(newStats => {
+      if (newStats && Object.keys(newStats).length > 0) {
+        setStatsMap(prev => ({ ...prev, ...newStats }));
+      }
+    }).catch(err => {
+      console.debug('Failed to batch load post stats:', err);
+    });
+  }, [currentPage, filteredPosts.length, selectedCategory, searchTerm]);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-0" id="homepage-view">
@@ -681,7 +721,12 @@ export default function HomeView() {
                   }}
                   className="flex flex-col h-full"
                 >
-                  <BlogPostCard post={post} globalPenName={globalPenName} />
+                  <BlogPostCard 
+                    post={post} 
+                    globalPenName={globalPenName} 
+                    cardStats={statsMap[post.id]} 
+                    isLikedByUser={userLikedIds.has(post.id)} 
+                  />
                 </motion.div>
                 {(idx === 2 || idx === 5) && paginatedPosts.length > idx + 1 && (
                   <div className="col-span-1 sm:col-span-2 lg:col-span-3 px-4 sm:px-0 my-2">

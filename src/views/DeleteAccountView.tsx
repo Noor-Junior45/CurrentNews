@@ -13,15 +13,8 @@ import {
   GoogleAuthProvider, 
   deleteUser 
 } from 'firebase/auth';
-import { 
-  collection, 
-  query, 
-  where, 
-  getDocs, 
-  deleteDoc, 
-  doc 
-} from 'firebase/firestore';
-import { auth, db } from '../firebase';
+import { auth } from '../firebase';
+import { api } from '../utils/api';
 import { useAuthState } from '../hooks/useAuthState';
 import ProfilePageNavbar from '../components/ProfilePageNavbar';
 import { updateDocumentSEO } from '../utils/seo';
@@ -99,26 +92,11 @@ ${userName || '[Your Name]'}`;
       const userUid = currentUser.uid;
       const userEmail = currentUser.email?.toLowerCase();
 
-      // 1. Purge user reactions if any exist
+      // 1. Purge newsletter subscription via Worker API
       try {
-        const reactionsQ = query(collection(db, 'reactions'), where('userId', '==', userUid));
-        const reactionsSnap = await getDocs(reactionsQ);
-        const reactionDeletePromises = reactionsSnap.docs.map(d => deleteDoc(doc(db, 'reactions', d.id)));
-        await Promise.all(reactionDeletePromises);
+        await api.unsubscribeEmail();
       } catch (e) {
-        console.warn('Non-blocking: could not clean reactions', e);
-      }
-
-      // 2. Purge newsletter subscription if user was subscribed
-      if (userEmail) {
-        try {
-          const subsQ = query(collection(db, 'subscribers'), where('email', '==', userEmail));
-          const subsSnap = await getDocs(subsQ);
-          const subDeletePromises = subsSnap.docs.map(d => deleteDoc(doc(db, 'subscribers', d.id)));
-          await Promise.all(subDeletePromises);
-        } catch (e) {
-          console.warn('Non-blocking: could not clean subscribers', e);
-        }
+        console.warn('Non-blocking: could not unsubscribe', e);
       }
 
       // 3. Delete the user from Firebase Authentication

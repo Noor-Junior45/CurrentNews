@@ -1,0 +1,899 @@
+/**
+ * Cloudflare Worker for Current News Live
+ * Route: api.currentnews.blog/*
+ * Edge D1 Database Integration for all Reader-Side Data
+ */
+
+// Cloudflare Worker & D1 runtime declarations
+export interface D1PreparedStatement {
+  bind(...values: any[]): D1PreparedStatement;
+  first<T = any>(colName?: string): Promise<T | null>;
+  all<T = any>(): Promise<{ results: T[]; success: boolean }>;
+  run(): Promise<{ success: boolean; meta: any }>;
+}
+
+export interface D1Database {
+  prepare(query: string): D1PreparedStatement;
+  batch<T = any>(statements: D1PreparedStatement[]): Promise<any[]>;
+  exec(query: string): Promise<any>;
+}
+
+export interface ExecutionContext {
+  waitUntil(promise: Promise<any>): void;
+  passThroughOnException(): void;
+}
+
+export interface Env {
+  DB: D1Database;
+  ADMIN_EMAILS?: string;
+  FIREBASE_PROJECT_ID?: string;
+}
+
+interface JWKKey {
+  kid: string;
+  kty: string;
+  alg: string;
+  use: string;
+  n: string;
+  e: string;
+}
+
+interface AuthUser {
+  uid: string;
+  email?: string;
+}
+
+// In-memory cache for Google's public JWK set
+let cachedJwks: { keys: JWKKey[]; expiresAt: number } | null = null;
+
+// Lightweight in-memory rate limiting per IP for write endpoints
+const ipWriteRateLimits = new Map<string, { count: number; resetAt: number }>();
+
+function checkRateLimit(ip: string, limit: number = 60, windowMs: number = 60000): boolean {
+  const now = Date.now();
+  const entry = ipWriteRateLimits.get(ip);
+  if (!entry || now > entry.resetAt) {
+    ipWriteRateLimits.set(ip, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+  if (entry.count >= limit) {
+    return false;
+  }
+  entry.count++;
+  return true;
+}
+
+// Clean up stale rate-limit entries periodically
+function cleanupRateLimits() {
+  const now = Date.now();
+  for (const [ip, entry] of ipWriteRateLimits.entries()) {
+    if (now > entry.resetAt) {
+      ipWriteRateLimits.delete(ip);
+    }
+  }
+}
+
+// Allowed CORS origins
+const ALLOWED_ORIGINS = [
+  'https://currentnews.blog',
+  'https://www.currentnews.blog',
+  'https://localhost',
+  'capacitor://localhost',
+  'http://localhost:3000',
+  'http://localhost:5173',
+];
+
+function getCorsHeaders(request: Request): HeadersInit {
+  const origin = request.headers.get('Origin') || '';
+  const isAllowed = ALLOWED_ORIGINS.includes(origin) || origin.endsWith('.currentnews.blog');
+  const allowOrigin = isAllowed ? origin : 'https://currentnews.blog';
+
+  return {
+    'Access-Control-Allow-Origin': allowOrigin,
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+    'Access-Control-Max-Age': '86400',
+  };
+}
+
+function jsonResponse(data: any, status = 200, headers: HeadersInit = {}): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      ...headers,
+    },
+  });
+}
+
+function base64UrlDecode(str: string): Uint8Array {
+  let base64 = str.replace(/-/g, '+').replace(/_/g, '/');
+  while (base64.length % 4) {
+    base64 += '=';
+  }
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+/**
+ * Fetch Google's public JWK set for Firebase ID Token verification
+ */
+async function getGoogleJwks(): Promise<JWKKey[]> {
+  const now = Date.now();
+  if (cachedJwks && cachedJwks.expiresAt > now) {
+    return cachedJwks.keys;
+  }
+
+  const url = 'https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com';
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch Google JWK set: ${res.status}`);
+  }
+
+  // Parse max-age from Cache-Control header, default to 1 hour
+  let maxAge = 3600;
+  const cacheControl = res.headers.get('Cache-Control') || '';
+  const match = cacheControl.match(/max-age=(\d+)/i);
+  if (match) {
+    maxAge = parseInt(match[1], 10);
+  }
+
+  const data = (await res.json()) as { keys: JWKKey[] };
+  cachedJwks = {
+    keys: data.keys || [],
+    expiresAt: now + maxAge * 1000,
+  };
+
+  return cachedJwks.keys;
+}
+
+/**
+ * Verifies a Firebase ID token using Google's public JWK set and Web Crypto API
+ */
+async function verifyFirebaseIdToken(token: string, projectId: string): Promise<AuthUser | null> {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+
+    const [headerB64, payloadB64, signatureB64] = parts;
+
+    // Decode header
+    const headerJson = new TextDecoder().decode(base64UrlDecode(headerB64));
+    const header = JSON.parse(headerJson);
+    if (header.alg !== 'RS256' || !header.kid) return null;
+
+    // Decode payload
+    const payloadJson = new TextDecoder().decode(base64UrlDecode(payloadB64));
+    const payload = JSON.parse(payloadJson);
+
+    // Verify standard Firebase JWT claims
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (!payload.exp || payload.exp < nowSec) return null;
+    if (payload.iss !== `https://securetoken.google.com/${projectId}`) return null;
+    if (payload.aud !== projectId) return null;
+    if (!payload.sub || typeof payload.sub !== 'string') return null;
+
+    // Fetch Google JWKs
+    const jwks = await getGoogleJwks();
+    const jwk = jwks.find((k) => k.kid === header.kid);
+    if (!jwk) return null;
+
+    // Import Public Key into Web Crypto
+    const cryptoKey = await crypto.subtle.importKey(
+      'jwk',
+      jwk,
+      {
+        name: 'RSASSA-PKCS1-v1_5',
+        hash: 'SHA-256',
+      },
+      false,
+      ['verify']
+    );
+
+    // Verify cryptographic signature
+    const dataToVerify = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
+    const signatureBytes = base64UrlDecode(signatureB64);
+
+    const isValid = await crypto.subtle.verify(
+      'RSASSA-PKCS1-v1_5',
+      cryptoKey,
+      signatureBytes,
+      dataToVerify
+    );
+
+    if (!isValid) return null;
+
+    return {
+      uid: payload.sub,
+      email: payload.email,
+    };
+  } catch (err) {
+    console.warn('[Worker Auth] Token verification error:', err);
+    return null;
+  }
+}
+
+/**
+ * Authenticate incoming request via Authorization: Bearer <token>
+ */
+async function authenticateRequest(request: Request, env: Env): Promise<AuthUser | null> {
+  const authHeader = request.headers.get('Authorization') || '';
+  if (!authHeader.startsWith('Bearer ')) {
+    return null;
+  }
+  const token = authHeader.substring(7).trim();
+  if (!token) return null;
+
+  const projectId = env.FIREBASE_PROJECT_ID || 'gen-lang-client-0638643565';
+  return await verifyFirebaseIdToken(token, projectId);
+}
+
+/**
+ * Check if the authenticated user is an administrator via exact email match
+ * Note: Never uses regex or wildcard email patterns.
+ */
+function isUserAdmin(email: string | undefined, env: Env): boolean {
+  if (!email) return false;
+  const rawAdmins = env.ADMIN_EMAILS || 'mdhassan1738@gmail.com';
+  const adminList = rawAdmins
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  return adminList.includes(email.toLowerCase());
+}
+
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const corsHeaders = getCorsHeaders(request);
+
+    // Preflight OPTIONS handler
+    if (request.method === 'OPTIONS') {
+      return new Response(null, {
+        status: 204,
+        headers: corsHeaders,
+      });
+    }
+
+    const url = new URL(request.url);
+    const path = url.pathname.replace(/\/+$/, '') || '/';
+    const method = request.method;
+    const clientIp = request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || '127.0.0.1';
+
+    // Cleanup rate limits periodically
+    if (Math.random() < 0.05) {
+      cleanupRateLimits();
+    }
+
+    // Rate limit write endpoints lightly per IP
+    if (['POST', 'PUT', 'DELETE'].includes(method)) {
+      if (!checkRateLimit(clientIp, 80, 60000)) {
+        return jsonResponse(
+          { error: 'Too many requests. Please slow down.' },
+          429,
+          corsHeaders
+        );
+      }
+    }
+
+    try {
+      // -------------------------------------------------------------
+      // 1. GET /stats?ids=a,b,c
+      // Batch fetch likes/dislikes/views for multiple posts in ONE query
+      // Cached at edge with Cache-Control: public, s-maxage=30
+      // -------------------------------------------------------------
+      if (method === 'GET' && path === '/stats') {
+        const idsParam = url.searchParams.get('ids') || '';
+        const ids = idsParam
+          .split(',')
+          .map((id) => id.trim())
+          .filter(Boolean)
+          .slice(0, 100); // Guard max 100 IDs per query
+
+        if (ids.length === 0) {
+          return jsonResponse({ stats: {} }, 200, {
+            ...corsHeaders,
+            'Cache-Control': 'public, s-maxage=30',
+          });
+        }
+
+        const placeholders = ids.map(() => '?').join(',');
+        const query = `SELECT post_id, likes, dislikes, views FROM posts_stats WHERE post_id IN (${placeholders})`;
+        const stmt = env.DB.prepare(query).bind(...ids);
+        const { results } = await stmt.all();
+
+        const statsMap: Record<string, { likes: number; dislikes: number; views: number }> = {};
+        for (const id of ids) {
+          statsMap[id] = { likes: 0, dislikes: 0, views: 0 };
+        }
+
+        if (results && Array.isArray(results)) {
+          for (const row of results as any[]) {
+            if (row.post_id) {
+              statsMap[row.post_id] = {
+                likes: Number(row.likes) || 0,
+                dislikes: Number(row.dislikes) || 0,
+                views: Number(row.views) || 0,
+              };
+            }
+          }
+        }
+
+        return jsonResponse({ stats: statsMap }, 200, {
+          ...corsHeaders,
+          'Cache-Control': 'public, s-maxage=30',
+        });
+      }
+
+      // -------------------------------------------------------------
+      // 2. POST /view/:postId
+      // Increments view count, deduplicated 1 count per IP+post per 30 min
+      // -------------------------------------------------------------
+      if (method === 'POST' && path.startsWith('/view/')) {
+        const postId = path.replace('/view/', '').trim();
+        if (!postId) {
+          return jsonResponse({ error: 'Post ID is required' }, 400, corsHeaders);
+        }
+
+        // Deduplicate using Cloudflare Cache API
+        const cache = (caches as any).default;
+        const cacheUrl = new URL(`https://cache.local/view/${encodeURIComponent(postId)}/${encodeURIComponent(clientIp)}`);
+        const cacheKey = new Request(cacheUrl.toString());
+
+        const cachedHit = await cache.match(cacheKey);
+        if (cachedHit) {
+          return jsonResponse({ success: true, deduped: true }, 200, corsHeaders);
+        }
+
+        // Put deduplication marker into Cache API with 30-min TTL
+        const dedupeResponse = new Response('1', {
+          headers: { 'Cache-Control': 'public, max-age=1800' },
+        });
+        ctx.waitUntil(cache.put(cacheKey, dedupeResponse));
+
+        // Increment in D1 atomically
+        await env.DB.prepare(
+          `INSERT INTO posts_stats (post_id, views) VALUES (?, 1)
+           ON CONFLICT(post_id) DO UPDATE SET views = views + 1`
+        )
+          .bind(postId)
+          .run();
+
+        return jsonResponse({ success: true, viewsIncremented: true }, 200, corsHeaders);
+      }
+
+      // -------------------------------------------------------------
+      // 3. GET /reaction/:postId (requires auth)
+      // Returns current user's reaction ('like' | 'dislike' | null)
+      // -------------------------------------------------------------
+      if (method === 'GET' && path.startsWith('/reaction/')) {
+        const postId = path.replace('/reaction/', '').trim();
+        if (!postId) {
+          return jsonResponse({ error: 'Post ID is required' }, 400, corsHeaders);
+        }
+
+        const user = await authenticateRequest(request, env);
+        if (!user) {
+          return jsonResponse({ error: 'Unauthorized' }, 401, corsHeaders);
+        }
+
+        const row = await env.DB.prepare(
+          'SELECT type FROM reactions WHERE user_id = ? AND post_id = ?'
+        )
+          .bind(user.uid, postId)
+          .first<{ type: string }>();
+
+        return jsonResponse(
+          {
+            type: row?.type || null,
+          },
+          200,
+          corsHeaders
+        );
+      }
+
+      // -------------------------------------------------------------
+      // 4. POST /reaction/:postId { type } (requires auth)
+      // Set/change/remove reaction & update posts_stats in a SINGLE D1 batch
+      // -------------------------------------------------------------
+      if (method === 'POST' && path.startsWith('/reaction/')) {
+        const postId = path.replace('/reaction/', '').trim();
+        if (!postId) {
+          return jsonResponse({ error: 'Post ID is required' }, 400, corsHeaders);
+        }
+
+        const user = await authenticateRequest(request, env);
+        if (!user) {
+          return jsonResponse({ error: 'Unauthorized' }, 401, corsHeaders);
+        }
+
+        let body: any = {};
+        try {
+          body = await request.json();
+        } catch (_) {}
+
+        const targetType = body.type === 'like' || body.type === 'dislike' ? body.type : null;
+        const nowMs = Date.now();
+
+        // 1. Check current reaction
+        const currentRow = await env.DB.prepare(
+          'SELECT type FROM reactions WHERE user_id = ? AND post_id = ?'
+        )
+          .bind(user.uid, postId)
+          .first<{ type: string }>();
+
+        const prevType = currentRow?.type || null;
+
+        // If target matches current state, nothing to change
+        if (prevType === targetType) {
+          return jsonResponse({ success: true, type: targetType }, 200, corsHeaders);
+        }
+
+        const statements: D1PreparedStatement[] = [];
+
+        // Ensure post_id exists in posts_stats
+        statements.push(
+          env.DB.prepare(
+            `INSERT INTO posts_stats (post_id, likes, dislikes, views)
+             VALUES (?, 0, 0, 0)
+             ON CONFLICT(post_id) DO NOTHING`
+          ).bind(postId)
+        );
+
+        if (targetType === null) {
+          // Remove reaction
+          statements.push(
+            env.DB.prepare('DELETE FROM reactions WHERE user_id = ? AND post_id = ?').bind(user.uid, postId)
+          );
+          if (prevType === 'like') {
+            statements.push(
+              env.DB.prepare('UPDATE posts_stats SET likes = MAX(0, likes - 1) WHERE post_id = ?').bind(postId)
+            );
+          } else if (prevType === 'dislike') {
+            statements.push(
+              env.DB.prepare('UPDATE posts_stats SET dislikes = MAX(0, dislikes - 1) WHERE post_id = ?').bind(postId)
+            );
+          }
+        } else if (prevType === null) {
+          // New reaction
+          statements.push(
+            env.DB.prepare(
+              `INSERT INTO reactions (user_id, post_id, type, updated_at)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(user_id, post_id) DO UPDATE SET type = excluded.type, updated_at = excluded.updated_at`
+            ).bind(user.uid, postId, targetType, nowMs)
+          );
+          if (targetType === 'like') {
+            statements.push(
+              env.DB.prepare('UPDATE posts_stats SET likes = likes + 1 WHERE post_id = ?').bind(postId)
+            );
+          } else {
+            statements.push(
+              env.DB.prepare('UPDATE posts_stats SET dislikes = dislikes + 1 WHERE post_id = ?').bind(postId)
+            );
+          }
+        } else {
+          // Switching reaction ('like' -> 'dislike' or 'dislike' -> 'like')
+          statements.push(
+            env.DB.prepare(
+              `UPDATE reactions SET type = ?, updated_at = ? WHERE user_id = ? AND post_id = ?`
+            ).bind(targetType, nowMs, user.uid, postId)
+          );
+          if (targetType === 'like' && prevType === 'dislike') {
+            statements.push(
+              env.DB.prepare(
+                'UPDATE posts_stats SET likes = likes + 1, dislikes = MAX(0, dislikes - 1) WHERE post_id = ?'
+              ).bind(postId)
+            );
+          } else if (targetType === 'dislike' && prevType === 'like') {
+            statements.push(
+              env.DB.prepare(
+                'UPDATE posts_stats SET dislikes = dislikes + 1, likes = MAX(0, likes - 1) WHERE post_id = ?'
+              ).bind(postId)
+            );
+          }
+        }
+
+        // Execute batch transaction in D1
+        await env.DB.batch(statements);
+
+        return jsonResponse({ success: true, type: targetType }, 200, corsHeaders);
+      }
+
+      // -------------------------------------------------------------
+      // 5. GET /my-reactions (requires auth)
+      // Returns list of post IDs liked by the authenticated user
+      // -------------------------------------------------------------
+      if (method === 'GET' && path === '/my-reactions') {
+        const user = await authenticateRequest(request, env);
+        if (!user) {
+          return jsonResponse({ error: 'Unauthorized' }, 401, corsHeaders);
+        }
+
+        const { results } = await env.DB.prepare(
+          `SELECT post_id FROM reactions WHERE user_id = ? AND type = 'like' ORDER BY updated_at DESC`
+        )
+          .bind(user.uid)
+          .all<{ post_id: string }>();
+
+        const likedPostIds = (results || []).map((r) => r.post_id);
+        return jsonResponse({ likedPostIds }, 200, corsHeaders);
+      }
+
+      // -------------------------------------------------------------
+      // 6. POST /subscribe { email }
+      // Insert new subscriber, ignore if exists
+      // -------------------------------------------------------------
+      if (method === 'POST' && path === '/subscribe') {
+        let body: any = {};
+        try {
+          body = await request.json();
+        } catch (_) {}
+
+        const email = (body.email || '').trim().toLowerCase();
+        if (!email || !email.includes('@')) {
+          return jsonResponse({ error: 'Valid email address is required' }, 400, corsHeaders);
+        }
+
+        const nowMs = Date.now();
+        await env.DB.prepare(
+          `INSERT INTO subscribers (email, created_at) VALUES (?, ?)
+           ON CONFLICT(email) DO NOTHING`
+        )
+          .bind(email, nowMs)
+          .run();
+
+        return jsonResponse({ success: true, message: 'Subscribed successfully' }, 200, corsHeaders);
+      }
+
+      // -------------------------------------------------------------
+      // 7. GET /subscribe/check?email= (requires auth)
+      // Verifies if email is subscribed (email must match token or admin)
+      // -------------------------------------------------------------
+      if (method === 'GET' && path === '/subscribe/check') {
+        const user = await authenticateRequest(request, env);
+        if (!user) {
+          return jsonResponse({ error: 'Unauthorized' }, 401, corsHeaders);
+        }
+
+        const queryEmail = (url.searchParams.get('email') || '').trim().toLowerCase();
+        const userEmail = (user.email || '').toLowerCase();
+        const isAdmin = isUserAdmin(userEmail, env);
+
+        // Security check: email must match token or user must be admin
+        if (!isAdmin && queryEmail !== userEmail) {
+          return jsonResponse({ error: 'Forbidden: Email mismatch' }, 403, corsHeaders);
+        }
+
+        const emailToCheck = queryEmail || userEmail;
+        const row = await env.DB.prepare('SELECT email FROM subscribers WHERE email = ?')
+          .bind(emailToCheck)
+          .first<{ email: string }>();
+
+        return jsonResponse({ subscribed: !!row }, 200, corsHeaders);
+      }
+
+      // -------------------------------------------------------------
+      // 8. DELETE /subscribe (requires auth)
+      // Removes user's own subscription based on auth token
+      // -------------------------------------------------------------
+      if (method === 'DELETE' && path === '/subscribe') {
+        const user = await authenticateRequest(request, env);
+        if (!user || !user.email) {
+          return jsonResponse({ error: 'Unauthorized' }, 401, corsHeaders);
+        }
+
+        await env.DB.prepare('DELETE FROM subscribers WHERE email = ?')
+          .bind(user.email.toLowerCase())
+          .run();
+
+        return jsonResponse({ success: true, message: 'Unsubscribed successfully' }, 200, corsHeaders);
+      }
+
+      // -------------------------------------------------------------
+      // 9. Push Notification Endpoints
+      // POST /push/subscribe, DELETE /push/subscribe, GET /push/count
+      // -------------------------------------------------------------
+      if (method === 'POST' && path === '/push/subscribe') {
+        let body: any = {};
+        try {
+          body = await request.json();
+        } catch (_) {}
+
+        const id = (body.id || '').trim();
+        const subscription = typeof body.subscription === 'string'
+          ? body.subscription
+          : JSON.stringify(body.subscription || {});
+
+        if (!id || !subscription) {
+          return jsonResponse({ error: 'ID and subscription payload required' }, 400, corsHeaders);
+        }
+
+        const nowMs = Date.now();
+        await env.DB.prepare(
+          `INSERT INTO push_subscriptions (id, subscription, created_at)
+           VALUES (?, ?, ?)
+           ON CONFLICT(id) DO UPDATE SET subscription = excluded.subscription`
+        )
+          .bind(id, subscription, nowMs)
+          .run();
+
+        return jsonResponse({ success: true, message: 'Push subscription stored' }, 200, corsHeaders);
+      }
+
+      if (method === 'DELETE' && path === '/push/subscribe') {
+        let id = url.searchParams.get('id') || '';
+        if (!id) {
+          try {
+            const body: any = await request.json();
+            id = body.id || '';
+          } catch (_) {}
+        }
+
+        if (!id) {
+          return jsonResponse({ error: 'Subscription ID is required' }, 400, corsHeaders);
+        }
+
+        await env.DB.prepare('DELETE FROM push_subscriptions WHERE id = ?').bind(id).run();
+        return jsonResponse({ success: true, message: 'Push subscription removed' }, 200, corsHeaders);
+      }
+
+      if (method === 'GET' && path === '/push/count') {
+        const row = await env.DB.prepare('SELECT COUNT(*) as count FROM push_subscriptions').first<{ count: number }>();
+        const count = row?.count || 0;
+
+        return jsonResponse(
+          { count },
+          200,
+          {
+            ...corsHeaders,
+            'Cache-Control': 'public, s-maxage=300', // Cache count 5 min
+          }
+        );
+      }
+
+      // -------------------------------------------------------------
+      // 10. User Pen Name Endpoints (requires auth)
+      // GET /user/pen-name, PUT /user/pen-name
+      // -------------------------------------------------------------
+      if (path === '/user/pen-name') {
+        const user = await authenticateRequest(request, env);
+        if (!user) {
+          return jsonResponse({ error: 'Unauthorized' }, 401, corsHeaders);
+        }
+
+        if (method === 'GET') {
+          const row = await env.DB.prepare('SELECT pen_name FROM users WHERE uid = ?')
+            .bind(user.uid)
+            .first<{ pen_name: string }>();
+
+          return jsonResponse({ penName: row?.pen_name || null }, 200, corsHeaders);
+        }
+
+        if (method === 'PUT') {
+          let body: any = {};
+          try {
+            body = await request.json();
+          } catch (_) {}
+
+          const penName = (body.penName || '').trim().substring(0, 100);
+          await env.DB.prepare(
+            `INSERT INTO users (uid, pen_name) VALUES (?, ?)
+             ON CONFLICT(uid) DO UPDATE SET pen_name = excluded.pen_name`
+          )
+            .bind(user.uid, penName)
+            .run();
+
+          return jsonResponse({ success: true, penName }, 200, corsHeaders);
+        }
+      }
+
+      // -------------------------------------------------------------
+      // 11. Admin Endpoints (requires auth + exact admin email check)
+      // GET /subscribers, POST /import, DELETE /admin/subscriber
+      // -------------------------------------------------------------
+      if (path === '/subscribers' && method === 'GET') {
+        const user = await authenticateRequest(request, env);
+        if (!user || !isUserAdmin(user.email, env)) {
+          return jsonResponse({ error: 'Forbidden: Admin access required' }, 403, corsHeaders);
+        }
+
+        const { results } = await env.DB.prepare(
+          'SELECT email, created_at FROM subscribers ORDER BY created_at DESC LIMIT 1000'
+        ).all<{ email: string; created_at: number }>();
+
+        return jsonResponse({ subscribers: results || [] }, 200, corsHeaders);
+      }
+
+      if (path === '/admin/subscriber' && method === 'DELETE') {
+        const user = await authenticateRequest(request, env);
+        if (!user || !isUserAdmin(user.email, env)) {
+          return jsonResponse({ error: 'Forbidden: Admin access required' }, 403, corsHeaders);
+        }
+
+        let body: any = {};
+        try {
+          body = await request.json();
+        } catch (_) {}
+
+        const email = (body.email || '').trim().toLowerCase();
+        if (!email) {
+          return jsonResponse({ error: 'Email is required' }, 400, corsHeaders);
+        }
+
+        await env.DB.prepare('DELETE FROM subscribers WHERE email = ?').bind(email).run();
+        return jsonResponse({ success: true, message: 'Subscriber deleted' }, 200, corsHeaders);
+      }
+
+      // POST /import: Bulk import JSON from Firestore export into D1
+      if (path === '/import' && method === 'POST') {
+        const user = await authenticateRequest(request, env);
+        if (!user || !isUserAdmin(user.email, env)) {
+          return jsonResponse({ error: 'Forbidden: Admin access required' }, 403, corsHeaders);
+        }
+
+        let data: any = {};
+        try {
+          data = await request.json();
+        } catch (e) {
+          return jsonResponse({ error: 'Invalid JSON payload' }, 400, corsHeaders);
+        }
+
+        const counts = {
+          posts_stats: 0,
+          reactions: 0,
+          subscribers: 0,
+          push_subscriptions: 0,
+          users: 0,
+        };
+
+        const batchStatements: D1PreparedStatement[] = [];
+
+        // 1. posts_stats
+        if (Array.isArray(data.posts_stats)) {
+          for (const item of data.posts_stats) {
+            if (item.post_id) {
+              batchStatements.push(
+                env.DB.prepare(
+                  `INSERT INTO posts_stats (post_id, likes, dislikes, views)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT(post_id) DO UPDATE SET
+                     likes = excluded.likes,
+                     dislikes = excluded.dislikes,
+                     views = excluded.views`
+                ).bind(
+                  item.post_id,
+                  Number(item.likes) || 0,
+                  Number(item.dislikes) || 0,
+                  Number(item.views) || 0
+                )
+              );
+              counts.posts_stats++;
+            }
+          }
+        }
+
+        // 2. reactions
+        if (Array.isArray(data.reactions)) {
+          for (const item of data.reactions) {
+            if (item.user_id && item.post_id && (item.type === 'like' || item.type === 'dislike')) {
+              batchStatements.push(
+                env.DB.prepare(
+                  `INSERT INTO reactions (user_id, post_id, type, updated_at)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT(user_id, post_id) DO UPDATE SET
+                     type = excluded.type,
+                     updated_at = excluded.updated_at`
+                ).bind(
+                  item.user_id,
+                  item.post_id,
+                  item.type,
+                  Number(item.updated_at) || Date.now()
+                )
+              );
+              counts.reactions++;
+            }
+          }
+        }
+
+        // 3. subscribers
+        if (Array.isArray(data.subscribers)) {
+          for (const item of data.subscribers) {
+            const email = (item.email || '').trim().toLowerCase();
+            if (email && email.includes('@')) {
+              batchStatements.push(
+                env.DB.prepare(
+                  `INSERT INTO subscribers (email, created_at)
+                   VALUES (?, ?)
+                   ON CONFLICT(email) DO NOTHING`
+                ).bind(email, Number(item.created_at) || Date.now())
+              );
+              counts.subscribers++;
+            }
+          }
+        }
+
+        // 4. push_subscriptions
+        if (Array.isArray(data.push_subscriptions)) {
+          for (const item of data.push_subscriptions) {
+            if (item.id && item.subscription) {
+              const subStr = typeof item.subscription === 'string'
+                ? item.subscription
+                : JSON.stringify(item.subscription);
+              batchStatements.push(
+                env.DB.prepare(
+                  `INSERT INTO push_subscriptions (id, subscription, created_at)
+                   VALUES (?, ?, ?)
+                   ON CONFLICT(id) DO UPDATE SET subscription = excluded.subscription`
+                ).bind(item.id, subStr, Number(item.created_at) || Date.now())
+              );
+              counts.push_subscriptions++;
+            }
+          }
+        }
+
+        // 5. users
+        if (Array.isArray(data.users)) {
+          for (const item of data.users) {
+            if (item.uid) {
+              batchStatements.push(
+                env.DB.prepare(
+                  `INSERT INTO users (uid, pen_name)
+                   VALUES (?, ?)
+                   ON CONFLICT(uid) DO UPDATE SET pen_name = excluded.pen_name`
+                ).bind(item.uid, item.pen_name || '')
+              );
+              counts.users++;
+            }
+          }
+        }
+
+        // Execute batch in chunks of 50 to respect D1 batch limits
+        const chunkSize = 50;
+        for (let i = 0; i < batchStatements.length; i += chunkSize) {
+          const chunk = batchStatements.slice(i, i + chunkSize);
+          await env.DB.batch(chunk);
+        }
+
+        return jsonResponse(
+          {
+            success: true,
+            message: 'Firestore export imported into Cloudflare D1 successfully',
+            imported: counts,
+          },
+          200,
+          corsHeaders
+        );
+      }
+
+      // Root endpoint
+      if (path === '/' || path === '/health') {
+        return jsonResponse(
+          {
+            service: 'currentnews-worker',
+            status: 'operational',
+            edge: 'cloudflare',
+            timestamp: new Date().toISOString(),
+          },
+          200,
+          corsHeaders
+        );
+      }
+
+      // 404 for unknown endpoints
+      return jsonResponse({ error: 'Endpoint not found' }, 404, corsHeaders);
+    } catch (err: any) {
+      console.error('[Worker Fatal Error]', err);
+      return jsonResponse(
+        {
+          error: err?.message || 'Internal Server Error',
+        },
+        500,
+        corsHeaders
+      );
+    }
+  },
+};

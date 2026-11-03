@@ -127,7 +127,7 @@ export default function ProfileView(): React.JSX.Element {
                   </Link>
 
                   <Link
-                    to="/admin?focus=draft"
+                    to="/admin/draft"
                     className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 dark:text-slate-100 dark:hover:text-white bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-transparent backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 dark:hover:border-indigo-500/60 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
                     id="profile-draft-publication-button"
                   >
@@ -136,7 +136,7 @@ export default function ProfileView(): React.JSX.Element {
                   </Link>
 
                   <Link
-                    to="/admin?focus=publications"
+                    to="/admin/publications"
                     className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 dark:text-slate-100 dark:hover:text-white bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-transparent backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 dark:hover:border-indigo-500/60 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
                     id="profile-current-publication-button"
                   >
@@ -145,7 +145,7 @@ export default function ProfileView(): React.JSX.Element {
                   </Link>
 
                   <Link
-                    to="/admin?focus=audience"
+                    to="/admin/audience"
                     className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 dark:text-slate-100 dark:hover:text-white bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-transparent backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 dark:hover:border-indigo-500/60 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
                     id="profile-audience-registry-button"
                   >

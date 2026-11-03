@@ -30,155 +30,34 @@ interface CachedPost {
   status?: string;
 }
 
-// In-memory server cache to maximize phone loading speed and prevent Firestore read quota exhaustion
+// In-memory server cache to maximize phone loading speed and avoid redundant R2 reads
 let inMemoryPostsCache: CachedPost[] = [];
 let lastCacheTimestamp = 0;
 const CACHE_TTL_MS = 60 * 1000; // 60 seconds cache TTL
 
-function getFirestoreConfig() {
-  let fbConfig: any = {};
+function getDiskFeed(): CachedPost[] {
   try {
-    const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
-    if (fs.existsSync(configPath)) {
-      fbConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    const feedFile = path.join(process.cwd(), 'data', 'articles', 'feed.json');
+    if (fs.existsSync(feedFile)) {
+      const data = JSON.parse(fs.readFileSync(feedFile, 'utf-8'));
+      if (Array.isArray(data)) return data;
     }
   } catch (e) {
-    console.warn('[Posts API] Failed to parse firebase-applet-config.json:', e);
+    console.warn('[Posts API] Failed to read disk feed fallback:', e);
   }
-
-  return {
-    projectId: process.env.VITE_FIREBASE_PROJECT_ID || fbConfig.projectId || 'gen-lang-client-0638643565',
-    firestoreDatabaseId: process.env.VITE_FIREBASE_DATABASE_ID || fbConfig.firestoreDatabaseId || 'ai-studio-6e2ba5e1-c245-4586-90fd-9ba4777b81c4',
-    apiKey: process.env.VITE_FIREBASE_API_KEY || fbConfig.apiKey || ''
-  };
+  return [];
 }
 
-function parseFirestoreField(field: any): any {
-  if (!field) return null;
-  if (field.stringValue !== undefined) return field.stringValue;
-  if (field.integerValue !== undefined) return parseInt(field.integerValue, 10);
-  if (field.doubleValue !== undefined) return parseFloat(field.doubleValue);
-  if (field.booleanValue !== undefined) return field.booleanValue;
-  if (field.timestampValue !== undefined) return field.timestampValue;
-  if (field.arrayValue !== undefined) {
-    return (field.arrayValue.values || []).map(parseFirestoreField);
-  }
-  if (field.mapValue !== undefined) {
-    const obj: any = {};
-    const fields = field.mapValue.fields || {};
-    for (const key of Object.keys(fields)) {
-      obj[key] = parseFirestoreField(fields[key]);
+function getDiskArticle(id: string): CachedPost | null {
+  try {
+    const postFile = path.join(process.cwd(), 'data', 'articles', `${id}.json`);
+    if (fs.existsSync(postFile)) {
+      return JSON.parse(fs.readFileSync(postFile, 'utf-8'));
     }
-    return obj;
+  } catch (e) {
+    console.warn(`[Posts API] Failed to read disk article ${id}:`, e);
   }
   return null;
-}
-
-function parseFirestoreDoc(doc: any): CachedPost | null {
-  if (!doc || !doc.fields) return null;
-  const nameParts = (doc.name || '').split('/');
-  const id = nameParts[nameParts.length - 1] || '';
-  if (!id) return null;
-
-  const fields = doc.fields;
-  const post: CachedPost = {
-    id,
-    title: parseFirestoreField(fields.title) || 'Untitled Dispatch',
-    content: parseFirestoreField(fields.content) || '',
-    category: parseFirestoreField(fields.category) || 'General',
-    authorName: parseFirestoreField(fields.authorName) || 'Current News',
-    authorEmail: parseFirestoreField(fields.authorEmail) || '',
-    authorId: parseFirestoreField(fields.authorId) || '',
-    createdAt: parseFirestoreField(fields.createdAt) || new Date().toISOString(),
-    updatedAt: parseFirestoreField(fields.updatedAt) || undefined,
-    imageUrl: parseFirestoreField(fields.imageUrl) || '',
-    imageUrlFallback: parseFirestoreField(fields.imageUrlFallback) || '',
-    imageUrls: parseFirestoreField(fields.imageUrls) || [],
-    imageUrlsFallback: parseFirestoreField(fields.imageUrlsFallback) || [],
-    imagePosition: parseFirestoreField(fields.imagePosition) || 'top',
-    galleryPositions: parseFirestoreField(fields.galleryPositions) || [],
-    youtubeUrl: parseFirestoreField(fields.youtubeUrl) || '',
-    facebookUrl: parseFirestoreField(fields.facebookUrl) || '',
-    customLinks: parseFirestoreField(fields.customLinks) || [],
-    hashtags: parseFirestoreField(fields.hashtags) || [],
-    likes: parseFirestoreField(fields.likes) || 0,
-    dislikes: parseFirestoreField(fields.dislikes) || 0,
-    views: parseFirestoreField(fields.views) || 0,
-    status: parseFirestoreField(fields.status) || 'published'
-  };
-
-  post.imageUrl = cleanImageUrl(post.imageUrl);
-  post.imageUrlFallback = getFallbackImageUrl(post.imageUrl, post.imageUrlFallback);
-
-  return post;
-}
-
-async function fetchAllPostsFromFirestore(): Promise<CachedPost[]> {
-  const config = getFirestoreConfig();
-  const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/${config.firestoreDatabaseId}/documents:runQuery?key=${config.apiKey}`;
-
-  const queryBody = {
-    structuredQuery: {
-      from: [{ collectionId: 'posts' }],
-      where: {
-        fieldFilter: {
-          field: { fieldPath: 'status' },
-          op: 'EQUAL',
-          value: { stringValue: 'published' }
-        }
-      },
-      orderBy: [
-        {
-          field: { fieldPath: 'createdAt' },
-          direction: 'DESCENDING'
-        }
-      ],
-      limit: 100
-    }
-  };
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 6000);
-
-  try {
-    const response = await fetch(firestoreUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(queryBody),
-      signal: controller.signal
-    });
-
-    clearTimeout(timeout);
-
-    if (!response.ok) {
-      const errText = await response.text();
-      console.warn('[Posts API] Firestore returned non-OK status:', response.status, errText);
-      return inMemoryPostsCache; // Fallback to stale cache if quota or network issue
-    }
-
-    const data = await response.json();
-    const parsedPosts: CachedPost[] = [];
-
-    if (Array.isArray(data)) {
-      for (const item of data) {
-        if (item.document) {
-          const p = parseFirestoreDoc(item.document);
-          if (p) parsedPosts.push(p);
-        }
-      }
-    }
-
-    if (parsedPosts.length > 0) {
-      inMemoryPostsCache = parsedPosts;
-      lastCacheTimestamp = Date.now();
-    }
-
-    return inMemoryPostsCache;
-  } catch (err) {
-    clearTimeout(timeout);
-    console.warn('[Posts API] Network fetch error, serving memory cache:', err);
-    return inMemoryPostsCache;
-  }
 }
 
 /**
@@ -194,21 +73,27 @@ export async function handleGetPosts(req: Request, res: Response) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
 
-  // Check if cache needs refreshing from Cloudflare R2 first
   const now = Date.now();
-  try {
-    const r2Posts = await getFeedFromR2();
-    if (r2Posts && Array.isArray(r2Posts) && r2Posts.length > 0) {
-      inMemoryPostsCache = r2Posts;
-      lastCacheTimestamp = now;
-    } else if (inMemoryPostsCache.length === 0 || now - lastCacheTimestamp > CACHE_TTL_MS) {
-      // Fallback to Firestore only if R2 is completely empty
-      await fetchAllPostsFromFirestore();
-    }
-  } catch (r2Err) {
-    console.debug('[Posts API] R2 read deferred:', r2Err);
-    if (inMemoryPostsCache.length === 0 || now - lastCacheTimestamp > CACHE_TTL_MS) {
-      await fetchAllPostsFromFirestore();
+  if (inMemoryPostsCache.length === 0 || now - lastCacheTimestamp > CACHE_TTL_MS) {
+    try {
+      const r2Posts = await getFeedFromR2();
+      if (r2Posts && Array.isArray(r2Posts) && r2Posts.length > 0) {
+        inMemoryPostsCache = r2Posts;
+        lastCacheTimestamp = now;
+      } else {
+        const diskPosts = getDiskFeed();
+        if (diskPosts.length > 0) {
+          inMemoryPostsCache = diskPosts;
+          lastCacheTimestamp = now;
+        }
+      }
+    } catch (r2Err) {
+      console.debug('[Posts API] R2 read deferred, falling back to disk cache:', r2Err);
+      const diskPosts = getDiskFeed();
+      if (diskPosts.length > 0) {
+        inMemoryPostsCache = diskPosts;
+        lastCacheTimestamp = now;
+      }
     }
   }
 
@@ -252,7 +137,7 @@ export async function handleGetPosts(req: Request, res: Response) {
 
 /**
  * GET /api/posts/:id
- * Fast single article endpoint with Cloudflare R2 and in-memory caching.
+ * Fast single article endpoint with Cloudflare R2 and disk caching (zero Firestore).
  */
 export async function handleGetPostById(req: Request, res: Response) {
   const id = req.params.id;
@@ -263,25 +148,35 @@ export async function handleGetPostById(req: Request, res: Response) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
 
-  // 1. Check in-memory cache first
+  // 1. Check in-memory cache first if it contains content
   let post = inMemoryPostsCache.find(p => p.id === id);
-
-  // 2. Check Cloudflare R2
-  if (!post) {
+  if (!post || !post.content) {
+    // 2. Fetch full article from Cloudflare R2
     try {
-      post = await getArticleFromR2(id);
-    } catch (e) {}
+      const r2Post = await getArticleFromR2(id);
+      if (r2Post) {
+        post = r2Post;
+      }
+    } catch (e) {
+      console.debug('[Posts API] R2 single article fetch deferred:', e);
+    }
   }
 
-  // 3. Fallback to Firestore only if missing from R2
-  if (!post) {
-    await fetchAllPostsFromFirestore();
-    post = inMemoryPostsCache.find(p => p.id === id);
+  // 3. Fallback to local disk file if missing from R2
+  if (!post || !post.content) {
+    const diskPost = getDiskArticle(id);
+    if (diskPost) {
+      post = diskPost;
+    }
   }
 
   if (!post) {
     return res.status(404).json({ error: 'Article not found' });
   }
+
+  // Ensure image URLs are clean
+  post.imageUrl = cleanImageUrl(post.imageUrl);
+  post.imageUrlFallback = getFallbackImageUrl(post.imageUrl, post.imageUrlFallback);
 
   return res.status(200).json({
     success: true,

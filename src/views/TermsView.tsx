@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { 
   Scale, 
   ShieldCheck, 
@@ -17,10 +17,12 @@ import ProfilePageNavbar from '../components/ProfilePageNavbar';
 import { updateDocumentSEO } from '../utils/seo';
 
 export default function TermsView() {
+  const navigate = useNavigate();
+
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' });
     updateDocumentSEO({
-      title: 'Terms of Service & Universal Legal Codex | Current News Live',
+      title: 'Terms of Service | Current News',
       description: 'Universal terms of service, worldwide intellectual property notices, Berne Convention protections, DMCA takedown procedures, and commercial liability disclaimers for Current News Live.',
       canonicalPath: '/terms'
     });
@@ -51,7 +53,12 @@ export default function TermsView() {
 
   return (
     <div className="min-h-screen bg-[#FAF7F0] dark:bg-[#161513] text-[#2C2621] dark:text-[#E2DDD3] transition-colors" id="terms-of-service-view">
-      <ProfilePageNavbar title="Universal Terms Codex" />
+      <ProfilePageNavbar 
+        title="Terms of Service" 
+        align="left" 
+        fallbackUrl="/profile" 
+        onBack={() => navigate('/profile')} 
+      />
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-16">
         
@@ -63,7 +70,7 @@ export default function TermsView() {
           </div>
 
           <h1 className="text-3xl sm:text-4xl md:text-5xl font-serif font-black text-[#1C1814] dark:text-[#FAF7F2] tracking-tight leading-tight mb-4">
-            Terms of Service & Universal User Agreement
+            Terms of Service
           </h1>
 
           <p className="text-base sm:text-lg text-[#554C42] dark:text-[#B8AEA0] font-sans leading-relaxed mb-6">

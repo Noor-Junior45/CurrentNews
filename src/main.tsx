@@ -78,8 +78,12 @@ try {
   // Graceful fallback if Intl cannot be patched
 }
 
+import ErrorBoundary from './components/ErrorBoundary';
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </StrictMode>,
 );

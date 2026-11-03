@@ -180,6 +180,25 @@
   </head>
   <body>
     <div id="root">
+      <div style="min-height: 100vh; background-color: #ffffff; display: flex; flex-direction: column;">
+        <div style="height: 64px; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; justify-content: space-between; padding: 0 16px;">
+          <div style="height: 24px; width: 140px; background: #e2e8f0; border-radius: 4px; animation: pulse 1.5s infinite;"></div>
+          <div style="display: flex; gap: 8px;">
+            <div style="height: 24px; width: 32px; background: #f1f5f9; border-radius: 4px;"></div>
+            <div style="height: 24px; width: 32px; background: #f1f5f9; border-radius: 4px;"></div>
+          </div>
+        </div>
+        <div style="max-width: 1280px; width: 100%; margin: 0 auto; padding: 16px;">
+          <div style="height: 40px; background: #f8fafc; border-radius: 8px; margin-bottom: 24px;"></div>
+          <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;">
+            <div style="height: 260px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px;"></div>
+            <div style="height: 260px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px;"></div>
+            <div style="height: 260px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <noscript>
       <header style="padding: 16px 24px; border-bottom: 1px solid #e2e8f0; font-family: system-ui, sans-serif; display: flex; justify-content: space-between; align-items: center;">
         <div>
           <h1 style="font-size: 20px; font-weight: 800; margin: 0; text-transform: uppercase; letter-spacing: -0.5px;">Current News Live</h1>
@@ -228,7 +247,7 @@
           <a href="/ads.txt" style="color: #cbd5e1; text-decoration: underline;">Ads.txt</a>
         </p>
       </footer>
-    </div>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
 
     <!-- Service Worker PWA Registration -->

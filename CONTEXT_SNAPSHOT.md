@@ -97,4 +97,9 @@
   - Zero-Firestore Reader Operations: Replaced Firestore queries across `HomeView.tsx` (batch stats + my-reactions), `BlogPostCard.tsx`, `PostDetailView.tsx`, `Header.tsx`, `SettingsView.tsx`, `AudienceRegistryView.tsx`, `LikedView.tsx`, `AdminDashboardView.tsx`, `CurrentPublicationsView.tsx`, `DraftPublicationView.tsx`, `DeleteAccountView.tsx`, and `pushNotifications.ts`.
   - `src/firebase.ts` converted to export strictly `auth`; zero `firebase/firestore` calls remain in client and server code.
   - Data Migration: Added `scripts/export-firestore.ts` with quota resilience to export Firestore data to `/scripts/firestore-export.json` and `POST /import` endpoint to batch-load into D1.
+- **Phase 20 (Static SEO Fallback Isolation & Service Worker Cache Fix):** [COMPLETED]
+  - Isolated static crawler fallback HTML into `<noscript>` tags in `index.html` so standard browsers never display raw fallback text.
+  - Replaced `<div id="root">` content with a clean initial wireframe skeleton that matches the actual app layout during initial bundle download.
+  - Bumped PWA service worker to `v2` (`current-news-live-v2`) and switched navigation requests (`event.request.mode === 'navigate'`) to a strict **Network-First** strategy so browsers never get trapped in stale cached HTML.
+  - Implemented root `ErrorBoundary` in `src/components/ErrorBoundary.tsx` wrapping `<App />` in `src/main.tsx` to handle any unexpected runtime errors gracefully with instant recovery.
 - **Immediate Next Step:** Production deployment to Google Cloud Run and Cloudflare D1/Worker deployment.

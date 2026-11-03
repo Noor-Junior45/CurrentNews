@@ -1,4 +1,4 @@
-const CACHE_NAME = 'current-news-live-v1';
+const CACHE_NAME = 'current-news-live-v2';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -35,18 +35,46 @@ self.addEventListener('activate', (event) => {
 
 // Fetch Event (Required for PWA installability)
 self.addEventListener('fetch', (event) => {
-  // Let the browser handle external analytics/ads scripts directly
-  if (event.request.url.includes('google-analytics') || event.request.url.includes('doubleclick') || event.request.url.includes('pagead2')) {
+  // Let the browser handle external analytics, ads, and API requests directly
+  if (
+    event.request.url.includes('google-analytics') ||
+    event.request.url.includes('doubleclick') ||
+    event.request.url.includes('pagead2') ||
+    event.request.url.includes('/api/')
+  ) {
     return;
   }
 
+  // Network-First for page navigation requests (guarantees user always gets latest app release)
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const responseClone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, responseClone);
+            });
+          }
+          return networkResponse;
+        })
+        .catch(() => {
+          return caches.match(event.request).then((cached) => {
+            return cached || caches.match('/index.html') || caches.match('/');
+          });
+        })
+    );
+    return;
+  }
+
+  // Cache-First with network fallback for static hashed assets
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
         return cachedResponse;
       }
       return fetch(event.request).catch(() => {
-        // Offline fallback logic can be added here if needed
+        // Offline fallback
       });
     })
   );

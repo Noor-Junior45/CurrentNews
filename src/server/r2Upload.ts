@@ -1,5 +1,5 @@
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
-import { Request, Response } from 'express';
+import type { Request, Response } from 'express';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
@@ -7,24 +7,52 @@ import path from 'path';
 // Lazy initialize S3 Client for Cloudflare R2
 let s3Client: S3Client | null = null;
 
-function getR2Client(): S3Client | null {
-  const accountId = process.env.R2_ACCOUNT_ID;
-  const accessKeyId = process.env.R2_ACCESS_KEY_ID;
-  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
+function getR2Credentials() {
+  const accountId = (process.env.R2_ACCOUNT_ID || '').trim();
+  let accessKeyId = (process.env.R2_ACCESS_KEY_ID || '').trim();
+  let secretAccessKey = (process.env.R2_SECRET_ACCESS_KEY || '').trim();
+  const bucketName = process.env.R2_BUCKET_NAME || 'currentnews-media';
 
-  if (!accountId || !accessKeyId || !secretAccessKey) {
+  // Check if access keys were swapped in environment settings
+  if (accessKeyId.length === 64 && secretAccessKey.length === 32) {
+    const temp = accessKeyId;
+    accessKeyId = secretAccessKey;
+    secretAccessKey = temp;
+  }
+
+  // AWS S3 / Cloudflare R2 S3 protocol requires accessKeyId to be strictly 32 hex characters
+  const isS3Valid = Boolean(
+    accountId &&
+    accessKeyId &&
+    secretAccessKey &&
+    accessKeyId.length === 32 &&
+    secretAccessKey.length >= 32
+  );
+
+  // If user provided a Cloudflare API token (typically 40-60 characters, like length 53)
+  const apiToken =
+    (accessKeyId.length > 32 ? accessKeyId : (secretAccessKey.length > 32 ? secretAccessKey : null)) ||
+    (process.env.CLOUDFLARE_API_TOKEN || '').trim() ||
+    null;
+
+  return { accountId, accessKeyId, secretAccessKey, bucketName, isS3Valid, apiToken };
+}
+
+function getR2Client(): S3Client | null {
+  const creds = getR2Credentials();
+  if (!creds.isS3Valid) {
     return null;
   }
 
   if (!s3Client) {
-    const endpoint = process.env.R2_ENDPOINT || `https://${accountId}.r2.cloudflarestorage.com`;
+    const endpoint = process.env.R2_ENDPOINT || `https://${creds.accountId}.r2.cloudflarestorage.com`;
 
     s3Client = new S3Client({
       region: 'auto',
       endpoint: endpoint,
       credentials: {
-        accessKeyId: accessKeyId,
-        secretAccessKey: secretAccessKey,
+        accessKeyId: creds.accessKeyId,
+        secretAccessKey: creds.secretAccessKey,
       },
     });
   }
@@ -85,13 +113,21 @@ export async function handleR2Upload(req: Request, res: Response): Promise<void>
     let publicUrl = '';
     let fallbackUrl = '';
 
-    // Check if Cloudflare R2 is configured
+    const sanitizeDomain = (val: string | undefined, fallback: string): string => {
+      if (!val) return fallback;
+      let d = val.trim().replace(/^(?:https?[:/]*)+/i, '');
+      d = d.split('/')[0];
+      d = d.replace(/\/+$/, '').trim();
+      return d || fallback;
+    };
+
+    // Check if Cloudflare R2 is configured with valid S3 credentials
+    const creds = getR2Credentials();
     const client = getR2Client();
     if (client) {
       try {
-        const bucketName = process.env.R2_BUCKET_NAME || 'currentnews-media';
         const command = new PutObjectCommand({
-          Bucket: bucketName,
+          Bucket: creds.bucketName,
           Key: key,
           Body: file.buffer,
           ContentType: uploadContentType,
@@ -100,21 +136,37 @@ export async function handleR2Upload(req: Request, res: Response): Promise<void>
 
         await client.send(command);
 
-        const sanitizeDomain = (val: string | undefined, fallback: string): string => {
-          if (!val) return fallback;
-          let d = val.trim().replace(/^(?:https?[:/]*)+/i, '');
-          d = d.split('/')[0];
-          d = d.replace(/\/+$/, '').trim();
-          return d || fallback;
-        };
-
         const customDomain = sanitizeDomain(process.env.R2_PUBLIC_DOMAIN, 'media.currentnews.blog');
         const r2DevDomain = sanitizeDomain(process.env.R2_DEV_DOMAIN, 'pub-03dd1274c4824531a1478f20e0485d75.r2.dev');
 
         publicUrl = `https://${customDomain}/${key}`;
         fallbackUrl = `https://${r2DevDomain}/${key}`;
       } catch (r2Error) {
-        console.warn('R2 storage push failed, smoothly switching to local disk storage:', r2Error);
+        console.warn('R2 S3 storage push notice:', r2Error);
+      }
+    }
+
+    // If S3 was not used or failed, try Cloudflare REST API directly if API token is available
+    if (!publicUrl && creds.accountId && creds.apiToken) {
+      try {
+        const cfUrl = `https://api.cloudflare.com/client/v4/accounts/${creds.accountId}/r2/buckets/${creds.bucketName}/objects/${key}`;
+        const cfRes = await fetch(cfUrl, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${creds.apiToken}`,
+            'Content-Type': uploadContentType,
+          },
+          body: file.buffer,
+        });
+        if (cfRes.ok) {
+          const customDomain = sanitizeDomain(process.env.R2_PUBLIC_DOMAIN, 'media.currentnews.blog');
+          const r2DevDomain = sanitizeDomain(process.env.R2_DEV_DOMAIN, 'pub-03dd1274c4824531a1478f20e0485d75.r2.dev');
+
+          publicUrl = `https://${customDomain}/${key}`;
+          fallbackUrl = `https://${r2DevDomain}/${key}`;
+        }
+      } catch (cfErr) {
+        console.warn('R2 REST API upload notice:', cfErr);
       }
     }
 

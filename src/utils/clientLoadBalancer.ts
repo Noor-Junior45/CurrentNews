@@ -10,7 +10,7 @@
 
 import { Post } from '../types';
 import { sanitizePostImages } from './imageUrl';
-import { getCompressedStory, saveCompressedStory, getCompressedStories, saveCompressedStories } from './compressedStorage';
+import { getCompressedStory, saveCompressedStory, getCompressedStories, saveCompressedStories, getDeletedStoryIds } from './compressedStorage';
 
 export interface OriginNode {
   id: string;
@@ -208,7 +208,10 @@ class ClientLoadBalancer {
           }
 
           if (rawPosts.length > 0) {
-            let sanitized = rawPosts.map(sanitizePostImages);
+            const deletedIds = getDeletedStoryIds();
+            let sanitized = rawPosts
+              .filter(p => p && p.id && !deletedIds.has(p.id))
+              .map(sanitizePostImages);
 
             // If retrieved from static CDN but client has filters, apply client-side filtering
             if (node.type !== 'origin-api' && hasActiveFilters) {
@@ -269,6 +272,9 @@ class ClientLoadBalancer {
    */
   public async fetchArticleById(id: string): Promise<{ post: Post | null; source: string }> {
     if (!id) return { post: null, source: 'Invalid ID' };
+    if (getDeletedStoryIds().has(id)) {
+      return { post: null, source: 'Deleted (Tombstoned)' };
+    }
 
     // Check if a prefetch is already resolving
     if (this.prefetchInFlight.has(id)) {

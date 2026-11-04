@@ -5,24 +5,24 @@ import dotenv from 'dotenv';
 import multer from 'multer';
 
 // Modular route handlers
-import sendAlertHandler from './api/mail/send-alert.js';
-import inboundHandler from './api/mail/inbound.js';
-import rssHandler from './api/rss.xml.js';
-import adsHandler from './api/ads.txt.js';
-import appAdsHandler from './api/app-ads.txt.js';
-import sitemapHandler from './api/sitemap.xml.js';
-import { handleR2Upload } from './src/server/r2Upload.js';
-import { handleSocialPreview } from './src/server/socialPreview.js';
+import sendAlertHandler from './api/mail/send-alert.ts';
+import inboundHandler from './api/mail/inbound.ts';
+import rssHandler from './api/rss.xml.ts';
+import adsHandler from './api/ads.txt.ts';
+import appAdsHandler from './api/app-ads.txt.ts';
+import sitemapHandler from './api/sitemap.xml.ts';
+import { handleR2Upload } from './src/server/r2Upload.ts';
+import { handleSocialPreview } from './src/server/socialPreview.ts';
 import {
   handleGetVapidPublicKey,
   handleSubscribe,
   handleUnsubscribe,
   handleBroadcast,
   handleGetSubscribersCount
-} from './src/server/pushNotifications.js';
-import { handleGetPosts, handleGetPostById, handleGetWriters } from './src/server/postsApi.js';
-import { handleSaveArticle, handleDeleteArticle, handleSyncArticles, handleMigrateImages, ensureR2ArticlesWarmup } from './src/server/r2Articles.js';
-import { handleGetAppVersion, handleUpdateAppVersion } from './src/server/appVersionApi.js';
+} from './src/server/pushNotifications.ts';
+import { handleGetPosts, handleGetPostById, handleGetWriters } from './src/server/postsApi.ts';
+import { handleSaveArticle, handleDeleteArticle, handleSyncArticles, handleMigrateImages, ensureR2ArticlesWarmup, getFeedFromR2, getDeletedArticleIds } from './src/server/r2Articles.ts';
+import { handleGetAppVersion, handleUpdateAppVersion } from './src/server/appVersionApi.ts';
 
 // Load environment variables
 dotenv.config();
@@ -125,6 +125,16 @@ async function startServer() {
   // High-performance Cloudflare R2 articles endpoints (zero Firestore read quota consumption)
   app.get('/api/posts', asyncHandler(handleGetPosts));
   app.get('/api/posts/:id', asyncHandler(handleGetPostById));
+  app.get('/api/articles/feed', asyncHandler(async (_req: express.Request, res: express.Response) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    const feed = await getFeedFromR2();
+    res.json({ success: true, articles: feed });
+  }));
+  app.get('/api/articles/deleted', asyncHandler(async (_req: express.Request, res: express.Response) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    const deleted = Array.from(getDeletedArticleIds());
+    res.json({ success: true, deletedIds: deleted });
+  }));
   app.post('/api/articles/save', asyncHandler(handleSaveArticle));
   app.delete('/api/articles/:id', asyncHandler(handleDeleteArticle));
   app.post('/api/articles/sync', asyncHandler(handleSyncArticles));

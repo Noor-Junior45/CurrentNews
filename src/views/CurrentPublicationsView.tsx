@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuthState } from '../hooks/useAuthState';
 import { Post, slugify } from '../types';
 import { cleanImageUrl, sanitizePostImages } from '../utils/imageUrl';
-import { getCompressedStories } from '../utils/compressedStorage';
+import { getCompressedStories, removeCompressedStory, getDeletedStoryIds } from '../utils/compressedStorage';
 import { safeFormatDate } from '../utils/dateHelper';
 import ProfilePageNavbar from '../components/ProfilePageNavbar';
 import AdminAuthGuard from '../components/AdminAuthGuard';
@@ -45,13 +45,16 @@ export default function CurrentPublicationsView(): React.JSX.Element {
     if (!user) return;
     setFeedLoading(true);
     try {
+      const deletedIds = getDeletedStoryIds();
       let fetched: Post[] = [];
       try {
-        const feedRes = await fetch('/api/articles/feed');
+        const feedRes = await fetch(`/api/articles/feed?t=${Date.now()}`, { cache: 'no-store' });
         if (feedRes.ok) {
           const feedData = await feedRes.json();
           if (Array.isArray(feedData.articles)) {
-            fetched = feedData.articles.map(sanitizePostImages);
+            fetched = feedData.articles
+              .filter((p: any) => p && p.id && !deletedIds.has(p.id))
+              .map(sanitizePostImages);
           }
         }
       } catch (feedErr) {
@@ -61,17 +64,32 @@ export default function CurrentPublicationsView(): React.JSX.Element {
       if (fetched.length === 0) {
         const compressed = getCompressedStories();
         if (compressed && compressed.length > 0) {
-          fetched = compressed.map(sanitizePostImages);
+          fetched = compressed
+            .filter((p: any) => p && p.id && !deletedIds.has(p.id))
+            .map(sanitizePostImages);
         }
       }
 
-      const ownPosts = fetched.filter(p => {
-        if (p.authorEmail) {
-          return p.authorEmail.toLowerCase() === user.email?.toLowerCase();
+      const visiblePosts = fetched.filter(p => {
+        if (!p || !p.id || deletedIds.has(p.id)) return false;
+
+        // All published data and drafts must be visible to admin
+        if (isAdmin) return true;
+
+        // Non-admin writers see their own dispatches
+        if (p.authorEmail && user.email) {
+          return p.authorEmail.toLowerCase() === user.email.toLowerCase();
         }
-        return isAdmin;
+        if (p.authorId && user.uid) {
+          return p.authorId === user.uid;
+        }
+        const penName = (localStorage.getItem(`current_news_pen_name_${user.uid}`) || '').toLowerCase();
+        if (p.authorName && penName && p.authorName.toLowerCase() === penName) {
+          return true;
+        }
+        return false;
       });
-      setPosts(ownPosts);
+      setPosts(visiblePosts);
     } catch (err) {
       console.warn('Publications fetch warning:', err);
     } finally {
@@ -89,15 +107,22 @@ export default function CurrentPublicationsView(): React.JSX.Element {
     setErrorMsg(null);
     setSuccessMsg(null);
     try {
-      // Remove from Cloudflare R2 and local disk mirror
+      // 1. Immediately remove from local compressed memory and mark tombstone
+      removeCompressedStory(id);
+
+      // 2. Remove from backend server and Cloudflare R2
       const res = await fetch(`/api/articles/${id}`, { method: 'DELETE' });
       if (!res.ok) {
         throw new Error(`Failed to delete post: HTTP ${res.status}`);
       }
 
+      // 3. Update view state
       setPosts(prev => prev.filter(p => p.id !== id));
       setSuccessMsg('Story deleted successfully from Cloudflare R2 and feed.');
       setDeleteConfirmId(null);
+
+      // 4. Notify all tabs and home view to remove immediately
+      window.dispatchEvent(new CustomEvent('stories-updated', { detail: { deletedId: id } }));
     } catch (err) {
       console.error(err);
       setErrorMsg('Failed to delete story. Permissions check required.');
@@ -113,22 +138,47 @@ export default function CurrentPublicationsView(): React.JSX.Element {
   return (
     <AdminAuthGuard>
       <div className="min-h-screen bg-white dark:bg-slate-950 font-sans" id="current-publications-view">
+        {/* Persistent Sticky Header (Plus button removed per request) */}
         <ProfilePageNavbar 
           title="Current Publications" 
           fallbackUrl="/profile" 
           onBack={() => navigate('/profile')} 
-          rightAction={
-            <Link
-              to="/admin/draft"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-black dark:bg-indigo-600 dark:hover:bg-indigo-500 text-white text-xs font-bold transition-all shadow-xs"
-            >
-              <PlusCircle className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">New Draft</span>
-            </Link>
-          }
         />
 
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Persistent Sticky Filter Bar (Acts as unified sub-navbar; all page elements scroll underneath) */}
+        <div className="sticky top-14 sm:top-16 z-30 bg-white/95 dark:bg-slate-950/95 backdrop-blur-md border-b border-slate-200/90 dark:border-slate-800/90 shadow-2xs">
+          <div className="max-w-5xl mx-auto px-3 sm:px-6 lg:px-8 py-2.5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+              <div 
+                className="grid grid-cols-3 gap-1 bg-slate-100 dark:bg-slate-800/90 p-1 rounded-xl w-full sm:w-auto sm:flex sm:items-center shadow-inner"
+                id="publications-filter-tabs"
+              >
+                {(['all', 'published', 'drafts'] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setPubListFilter(mode)}
+                    className={`px-1.5 sm:px-4 py-1.5 rounded-lg text-[10px] sm:text-xs font-bold uppercase tracking-tight sm:tracking-wider transition-all cursor-pointer text-center truncate whitespace-nowrap ${
+                      pubListFilter === mode
+                        ? 'bg-slate-950 dark:bg-indigo-600 text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    {mode === 'all' && `All (${posts.length})`}
+                    {mode === 'published' && `Published (${posts.filter(p => p.status === 'published').length})`}
+                    {mode === 'drafts' && `Drafts (${posts.filter(p => p.status === 'draft').length})`}
+                  </button>
+                ))}
+              </div>
+
+              <p className="hidden sm:block text-xs text-slate-500 dark:text-slate-400 font-sans">
+                Manage, edit, or delete your publications and drafts.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           {/* Notifications */}
           {successMsg && (
             <div className="mb-6 p-4 bg-green-50 dark:bg-green-950/40 border-l-4 border-green-500 text-green-800 dark:text-green-200 rounded-lg flex items-center justify-between shadow-xs">
@@ -153,32 +203,6 @@ export default function CurrentPublicationsView(): React.JSX.Element {
               </button>
             </div>
           )}
-
-          {/* Filter Switcher and Description */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-5 mb-6">
-            <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl w-full sm:w-auto">
-              {(['all', 'published', 'drafts'] as const).map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => setPubListFilter(mode)}
-                  className={`flex-1 sm:flex-initial px-4 py-2 sm:py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer text-center ${
-                    pubListFilter === mode
-                      ? 'bg-slate-950 dark:bg-indigo-600 text-white shadow-xs'
-                      : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-                  }`}
-                >
-                  {mode === 'all' && `All (${posts.length})`}
-                  {mode === 'published' && `Published (${posts.filter(p => p.status === 'published').length})`}
-                  {mode === 'drafts' && `Drafts (${posts.filter(p => p.status === 'draft').length})`}
-                </button>
-              ))}
-            </div>
-
-            <p className="text-xs text-slate-500 dark:text-slate-400 font-sans">
-              Manage, edit, or delete your publications and drafts.
-            </p>
-          </div>
 
           {/* Publications List */}
           {feedLoading ? (

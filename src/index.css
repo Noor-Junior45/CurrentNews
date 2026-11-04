@@ -181,9 +181,20 @@ html.dark .ql-toolbar.ql-snow .ql-picker-options {
 
 .ql-container.ql-snow {
   border: none !important;
-  min-height: 240px;
+  min-height: 260px;
+  display: flex !important;
+  flex-direction: column !important;
+  cursor: text !important;
   font-family: var(--font-sans) !important;
   font-size: 1rem !important;
+}
+
+.ql-editor {
+  min-height: 260px !important;
+  height: 100% !important;
+  flex: 1 1 auto !important;
+  cursor: text !important;
+  box-sizing: border-box !important;
 }
 
 html.dark .ql-container.ql-snow {

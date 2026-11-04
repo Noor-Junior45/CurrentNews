@@ -1,4 +1,4 @@
-import { Request, Response } from 'express';
+import type { Request, Response } from 'express';
 import webpush from 'web-push';
 import crypto from 'crypto';
 import fs from 'fs';
@@ -55,15 +55,40 @@ function savePushSubscriptions(map: Map<string, StoredPushSub>) {
   }
 }
 
+const VAPID_FILE = path.join(DATA_DIR, 'vapid_keys.json');
+
 // VAPID credentials for Web Push protocol (RFC 8292 / RFC 8291 standard)
 let resolvedPublicKey = process.env.VAPID_PUBLIC_KEY;
 let resolvedPrivateKey = process.env.VAPID_PRIVATE_KEY;
 
 if (!resolvedPublicKey || !resolvedPrivateKey) {
   try {
+    ensureDataDir();
+    if (fs.existsSync(VAPID_FILE)) {
+      const savedKeys = JSON.parse(fs.readFileSync(VAPID_FILE, 'utf-8'));
+      resolvedPublicKey = resolvedPublicKey || savedKeys.publicKey;
+      resolvedPrivateKey = resolvedPrivateKey || savedKeys.privateKey;
+    }
+  } catch (readErr) {
+    console.warn('[Push Service] Could not read vapid_keys.json:', readErr);
+  }
+}
+
+if (!resolvedPublicKey || !resolvedPrivateKey) {
+  try {
     const generated = webpush.generateVAPIDKeys();
     resolvedPublicKey = resolvedPublicKey || generated.publicKey;
     resolvedPrivateKey = resolvedPrivateKey || generated.privateKey;
+    try {
+      ensureDataDir();
+      fs.writeFileSync(VAPID_FILE, JSON.stringify({
+        publicKey: resolvedPublicKey,
+        privateKey: resolvedPrivateKey,
+      }, null, 2), 'utf-8');
+      console.log('[Push Service] Persisted generated VAPID keys to data/vapid_keys.json');
+    } catch (saveErr) {
+      console.warn('[Push Service] Could not write vapid_keys.json:', saveErr);
+    }
   } catch (genErr) {
     console.warn('[Push Service] Could not generate dynamic VAPID keys:', genErr);
   }

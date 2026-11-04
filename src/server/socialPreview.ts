@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import type { Request, Response, NextFunction } from 'express';
-import { cleanImageUrl, getYoutubeThumbnailUrl } from '../utils/imageUrl.js';
+import { cleanImageUrl, getYoutubeThumbnailUrl } from '../utils/imageUrl.ts';
 
 // Recognized social platform & search web crawlers (including Google AdSense review bots)
 const SOCIAL_BOT_REGEX = /facebookexternalhit|Facebot|Twitterbot|LinkedInBot|WhatsApp|TelegramBot|Discordbot|Slackbot|Pinterest|Applebot|Googlebot|Mediapartners-Google|AdsBot-Google|Google-Adwords-Instant|bingbot|SkypeUriPreview|vkShare|redditbot|YandexBot|DuckDuckBot|Baiduspider/i;

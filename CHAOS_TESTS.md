@@ -123,6 +123,26 @@ curl -s -X POST http://localhost:3000/api/app/version \
     "forceUpdate": false
   }' | jq .
 # Expected: { "success": true, "message": "App version configuration updated successfully" }
+## 7. Push Notifications & FCM Ping All Devices Test Suite
+
+```bash
+# 1. Fetch active VAPID public key
+curl -s http://localhost:3000/api/push/public-key | jq .
+# Expected: { "success": true, "publicKey": "..." }
+
+# 2. Check current push subscriber device count
+curl -s http://localhost:3000/api/push/subscribers-count | jq .
+# Expected: { "success": true, "count": <number> }
+
+# 3. Ping all subscribed devices via Firebase Cloud Messaging / Web Push
+curl -s -X POST http://localhost:3000/api/push/broadcast \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Current News Alert",
+    "body": "Test ping broadcast to all active devices",
+    "url": "/"
+  }' | jq .
+# Expected: { "success": true, "message": "...", "sent": ..., "failed": ..., "purged": ... }
 ```
 
 

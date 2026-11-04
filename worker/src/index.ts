@@ -353,18 +353,39 @@ async function authenticateRequest(request: Request, env: Env): Promise<AuthUser
   return await verifyFirebaseIdToken(token, projectId);
 }
 
+const AUTHORIZED_WRITER_AND_ADMIN_EMAILS = [
+  'mdhassan1738@gmail.com',
+  'mdnoor4860@gmail.com',
+  'alifraja404@gmail.com',
+  'admin@currentnews.blog',
+  'support@guashoomin.resend.app',
+  'inbound@currentnews.blog',
+  'alerts@currentnews.blog',
+  'privacy@currentnews.blog',
+  'contact@currentnews.blog'
+];
+
 /**
- * Check if the authenticated user is an administrator via exact email match
- * Note: Never uses regex or wildcard email patterns.
+ * Check if the authenticated user is an administrator or authorized newsroom writer.
+ * Matches authorized list, domain @currentnews.blog, or env.ADMIN_EMAILS / env.WRITERS.
  */
 function isUserAdmin(email: string | undefined, env: Env): boolean {
   if (!email) return false;
-  const rawAdmins = env.ADMIN_EMAILS || 'mdhassan1738@gmail.com';
-  const adminList = rawAdmins
+  const cleaned = email.trim().toLowerCase();
+  if (cleaned.endsWith('@currentnews.blog')) return true;
+
+  const rawAdmins = [env.ADMIN_EMAILS, (env as any).WRITERS].filter(Boolean).join(',');
+  const dynamicList = rawAdmins
     .split(',')
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
-  return adminList.includes(email.toLowerCase());
+
+  const fullList = [...AUTHORIZED_WRITER_AND_ADMIN_EMAILS, ...dynamicList];
+  return fullList.includes(cleaned);
+}
+
+function isUserAdminOrWriter(email: string | undefined, env: Env): boolean {
+  return isUserAdmin(email, env);
 }
 
 export default {

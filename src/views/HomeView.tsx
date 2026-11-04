@@ -24,7 +24,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Link, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { getRecentInProgressArticles, clearReadingProgress, ReadingProgressRecord } from '../utils/readingProgress';
 import { updateDocumentSEO } from '../utils/seo';
-import { getCompressedStories, saveCompressedStories, saveCompressedStory } from '../utils/compressedStorage';
+import { getCompressedStories, saveCompressedStories, saveCompressedStory, getDeletedStoryIds } from '../utils/compressedStorage';
 import { safeFormatDate } from '../utils/dateHelper';
 import { clientLoadBalancer } from '../utils/clientLoadBalancer';
 
@@ -94,7 +94,10 @@ function BlogPostCardSkeleton() {
 export default function HomeView() {
   const [posts, setPosts] = useState<Post[]>(() => {
     const compressed = getCompressedStories();
-    return compressed && compressed.length > 0 ? compressed : [];
+    const deletedIds = getDeletedStoryIds();
+    return compressed && compressed.length > 0
+      ? compressed.filter(p => p && p.id && !deletedIds.has(p.id))
+      : [];
   });
   const [globalPenName, setGlobalPenName] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(() => {
@@ -224,11 +227,23 @@ export default function HomeView() {
       setInProgressArticles(getRecentInProgressArticles());
     };
     updateProgressList();
+
+    const handleStoriesUpdated = (e: any) => {
+      const deletedId = e?.detail?.deletedId;
+      if (deletedId) {
+        setPosts(prev => prev.filter(p => p && p.id !== deletedId));
+      } else {
+        fetchPosts();
+      }
+    };
+
     window.addEventListener('reading-progress-updated', updateProgressList);
     window.addEventListener('storage', updateProgressList);
+    window.addEventListener('stories-updated', handleStoriesUpdated);
     return () => {
       window.removeEventListener('reading-progress-updated', updateProgressList);
       window.removeEventListener('storage', updateProgressList);
+      window.removeEventListener('stories-updated', handleStoriesUpdated);
     };
   }, []);
 
@@ -274,6 +289,7 @@ export default function HomeView() {
     }
     setError(null);
     const path = 'posts';
+    const deletedIds = getDeletedStoryIds();
     try {
       // 1. Multi-Origin Client Load Balancer (Cloudflare Edge CDN <-> Cloud Run Origin API <-> R2 Mirror)
       const { posts: balancedPosts } = await clientLoadBalancer.fetchArticlesFeed({
@@ -283,7 +299,8 @@ export default function HomeView() {
       });
 
       if (balancedPosts && balancedPosts.length > 0) {
-        setPosts(balancedPosts);
+        const filtered = balancedPosts.filter(p => p && p.id && !deletedIds.has(p.id));
+        setPosts(filtered);
         setLoading(false);
         setIsOfflineCached(false);
         return;
@@ -292,7 +309,8 @@ export default function HomeView() {
       // 2. Local compressed storage fallback (instant offline render)
       const compressedPosts = getCompressedStories();
       if (compressedPosts && compressedPosts.length > 0) {
-        setPosts(compressedPosts.map(sanitizePostImages));
+        const filtered = compressedPosts.filter(p => p && p.id && !deletedIds.has(p.id));
+        setPosts(filtered.map(sanitizePostImages));
         setLoading(false);
         setIsOfflineCached(true);
         return;
@@ -302,7 +320,8 @@ export default function HomeView() {
       try {
         const compressedPosts = getCompressedStories();
         if (compressedPosts && compressedPosts.length > 0) {
-          setPosts(compressedPosts.map(sanitizePostImages));
+          const filtered = compressedPosts.filter(p => p && p.id && !deletedIds.has(p.id));
+          setPosts(filtered.map(sanitizePostImages));
           setIsOfflineCached(true);
           setError(null);
         } else {

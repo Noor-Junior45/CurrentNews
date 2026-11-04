@@ -130,10 +130,48 @@ const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(fun
     }
   }));
 
+  const handleEditorAreaClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    // Do not interfere with toolbar button or picker clicks
+    if (target.closest('.ql-toolbar')) return;
+
+    const editor = quillRef.current?.getEditor();
+    if (!editor) return;
+
+    if (!editor.hasFocus()) {
+      editor.focus();
+    }
+
+    // If clicked on empty space of container or editor root (below text lines)
+    if (
+      target.classList.contains('ql-container') ||
+      target.classList.contains('quill') ||
+      target.id === 'quill-editor-wrapper' ||
+      target.classList.contains('ql-editor')
+    ) {
+      const editorEl = editor.root;
+      if (editorEl) {
+        const lastChild = editorEl.lastElementChild;
+        if (lastChild) {
+          const lastChildRect = lastChild.getBoundingClientRect();
+          if (e.clientY > lastChildRect.bottom) {
+            const length = editor.getLength();
+            editor.setSelection(Math.max(0, length - 1), 0, 'user');
+          }
+        } else {
+          editor.setSelection(0, 0, 'user');
+        }
+      }
+    }
+  };
+
   return (
     <div className="w-full flex flex-col" id="quill-editor-wrapper">
       {/* Main Editor Component */}
-      <div className="bg-white dark:bg-slate-950">
+      <div 
+        className="bg-white dark:bg-slate-950 cursor-text"
+        onClick={handleEditorAreaClick}
+      >
         <QuillComponent
           ref={quillRef}
           theme="snow"

@@ -177,6 +177,14 @@
 - **JSON-LD Schema:** `CollectionPage` with `about: AdministrativeArea (Jharkhand, IN)`
 
 ## 6. Cloudflare R2 Article & Zero-Quota Storage Endpoints
+### `GET /api/articles/feed`
+- **Method:** `GET`
+- **Headers:** `Content-Type: application/json; charset=utf-8`
+- **Action:** Retrieves aggregated articles feed including `authorEmail`, `authorId`, `imageUrls`, and embed links.
+- **Response Shape (200 OK):**
+  ```json
+  { "success": true, "articles": [ /* Array of Post objects */ ] }
+  ```
 
 ### `POST /api/articles/save`
 - **Method:** `POST`

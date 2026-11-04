@@ -387,25 +387,86 @@ export function decompressFromUTF16(compressed: string): string {
   }
 }
 
+const DELETED_STORIES_KEY = 'cn_deleted_articles_v1';
+
+export function getDeletedStoryIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(DELETED_STORIES_KEY);
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) {
+        return new Set(arr.filter(Boolean));
+      }
+    }
+  } catch {
+    // Graceful fallback
+  }
+  return new Set();
+}
+
+export function markStoryDeletedLocally(id: string): void {
+  if (!id) return;
+  try {
+    const set = getDeletedStoryIds();
+    set.add(id);
+    localStorage.setItem(DELETED_STORIES_KEY, JSON.stringify(Array.from(set)));
+  } catch {
+    // Graceful fallback
+  }
+}
+
+/**
+ * Removes an individual article from compressed storage and marks it tombstoned.
+ */
+export function removeCompressedStory(id: string): void {
+  if (!id) return;
+  try {
+    // 1. Mark as tombstoned locally so no cached feed or CDN resurrects it
+    markStoryDeletedLocally(id);
+
+    // 2. Remove single story key
+    localStorage.removeItem(`${COMPRESSED_STORY_PREFIX}${id}`);
+
+    // 3. Update compressed feed in localStorage
+    const currentPosts = getCompressedStories();
+    if (currentPosts && currentPosts.length > 0) {
+      const remaining = currentPosts.filter(p => p && p.id !== id);
+      if (remaining.length > 0) {
+        const raw = JSON.stringify(remaining);
+        const compressed = compressToUTF16(raw);
+        localStorage.setItem(COMPRESSED_FEED_KEY, compressed);
+      } else {
+        localStorage.removeItem(COMPRESSED_FEED_KEY);
+      }
+    }
+  } catch (err) {
+    console.debug('Failed to remove compressed story:', err);
+  }
+}
+
 /**
  * Stores the full stories feed in compressed user storage.
  */
 export function saveCompressedStories(posts: Post[]): void {
   if (!Array.isArray(posts) || posts.length === 0) return;
   try {
-    const raw = JSON.stringify(posts);
+    const deletedIds = getDeletedStoryIds();
+    const cleanPosts = posts.filter(p => p && p.id && !deletedIds.has(p.id));
+    if (cleanPosts.length === 0) return;
+
+    const raw = JSON.stringify(cleanPosts);
     const compressed = compressToUTF16(raw);
     localStorage.setItem(COMPRESSED_FEED_KEY, compressed);
 
     const meta: StorageMeta = {
       savedAt: Date.now(),
-      count: posts.length,
+      count: cleanPosts.length,
       version: 2
     };
     localStorage.setItem(CACHE_METADATA_KEY, JSON.stringify(meta));
 
-    // Also cache individual articles so single page views don't hit Firestore
-    for (const post of posts.slice(0, 30)) {
+    // Also cache individual articles so single page views don't hit backend
+    for (const post of cleanPosts.slice(0, 30)) {
       saveCompressedStory(post);
     }
   } catch (err) {
@@ -424,7 +485,11 @@ export function getCompressedStories(): Post[] | null {
     const decompressed = decompressFromUTF16(compressed);
     if (!decompressed) return null;
     const parsed = JSON.parse(decompressed);
-    return Array.isArray(parsed) && parsed.length > 0 ? (parsed as Post[]) : null;
+    if (!Array.isArray(parsed) || parsed.length === 0) return null;
+
+    const deletedIds = getDeletedStoryIds();
+    const filtered = parsed.filter(p => p && p.id && !deletedIds.has(p.id)) as Post[];
+    return filtered.length > 0 ? filtered : null;
   } catch (err) {
     console.debug('Failed to read from compressed storage:', err);
     return null;
@@ -436,6 +501,8 @@ export function getCompressedStories(): Post[] | null {
  */
 export function saveCompressedStory(post: Post): void {
   if (!post || !post.id) return;
+  const deletedIds = getDeletedStoryIds();
+  if (deletedIds.has(post.id)) return;
   try {
     const raw = JSON.stringify(post);
     const compressed = compressToUTF16(raw);
@@ -450,12 +517,16 @@ export function saveCompressedStory(post: Post): void {
  */
 export function getCompressedStory(id: string): Post | null {
   if (!id) return null;
+  const deletedIds = getDeletedStoryIds();
+  if (deletedIds.has(id)) return null;
   try {
     const compressed = localStorage.getItem(`${COMPRESSED_STORY_PREFIX}${id}`);
     if (!compressed) return null;
     const decompressed = decompressFromUTF16(compressed);
     if (!decompressed) return null;
-    return JSON.parse(decompressed) as Post;
+    const parsed = JSON.parse(decompressed) as Post;
+    if (parsed && parsed.id && deletedIds.has(parsed.id)) return null;
+    return parsed;
   } catch (err) {
     console.debug('Failed to read single compressed article:', err);
     return null;

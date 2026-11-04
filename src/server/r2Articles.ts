@@ -2,27 +2,64 @@ import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } fro
 import fs from 'fs';
 import path from 'path';
 import type { Request, Response } from 'express';
-import { cleanImageUrl } from '../utils/imageUrl.js';
+import { cleanImageUrl } from '../utils/imageUrl.ts';
 
 let s3Client: S3Client | null = null;
 
-function getR2Client(): S3Client | null {
-  const accountId = process.env.R2_ACCOUNT_ID;
-  const accessKeyId = process.env.R2_ACCESS_KEY_ID;
-  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
+export interface R2Credentials {
+  accountId: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  bucket: string;
+  isS3Valid: boolean;
+  apiToken: string | null;
+}
 
-  if (!accountId || !accessKeyId || !secretAccessKey) {
+export function getR2Credentials(): R2Credentials {
+  const accountId = (process.env.R2_ACCOUNT_ID || '').trim();
+  let accessKeyId = (process.env.R2_ACCESS_KEY_ID || '').trim();
+  let secretAccessKey = (process.env.R2_SECRET_ACCESS_KEY || '').trim();
+  const bucket = process.env.R2_BUCKET_NAME || 'currentnews-media';
+
+  // Check if access keys were swapped in environment settings
+  if (accessKeyId.length === 64 && secretAccessKey.length === 32) {
+    const temp = accessKeyId;
+    accessKeyId = secretAccessKey;
+    secretAccessKey = temp;
+  }
+
+  // AWS S3 / Cloudflare R2 S3 protocol requires accessKeyId to be strictly 32 hex characters
+  const isS3Valid = Boolean(
+    accountId &&
+    accessKeyId &&
+    secretAccessKey &&
+    accessKeyId.length === 32 &&
+    secretAccessKey.length >= 32
+  );
+
+  // If user provided a Cloudflare API token (typically 40-60 characters, like length 53)
+  const apiToken =
+    (accessKeyId.length > 32 ? accessKeyId : (secretAccessKey.length > 32 ? secretAccessKey : null)) ||
+    (process.env.CLOUDFLARE_API_TOKEN || '').trim() ||
+    null;
+
+  return { accountId, accessKeyId, secretAccessKey, bucket, isS3Valid, apiToken };
+}
+
+function getR2Client(): S3Client | null {
+  const creds = getR2Credentials();
+  if (!creds.isS3Valid) {
     return null;
   }
 
   if (!s3Client) {
-    const endpoint = process.env.R2_ENDPOINT || `https://${accountId}.r2.cloudflarestorage.com`;
+    const endpoint = process.env.R2_ENDPOINT || `https://${creds.accountId}.r2.cloudflarestorage.com`;
     s3Client = new S3Client({
       region: 'auto',
       endpoint: endpoint,
       credentials: {
-        accessKeyId: accessKeyId.trim(),
-        secretAccessKey: secretAccessKey.trim(),
+        accessKeyId: creds.accessKeyId,
+        secretAccessKey: creds.secretAccessKey,
       },
     });
   }
@@ -31,6 +68,72 @@ function getR2Client(): S3Client | null {
 
 function getR2BucketName(): string {
   return process.env.R2_BUCKET_NAME || 'currentnews-media';
+}
+
+/**
+ * Direct Cloudflare REST API fallback for environments where R2 credentials are provided
+ * as a Cloudflare API Token (e.g. length > 32) rather than an S3 Access Key ID.
+ */
+async function r2RestPut(key: string, body: Buffer | string, contentType: string, cacheControl?: string): Promise<boolean> {
+  const creds = getR2Credentials();
+  if (!creds.accountId || !creds.apiToken) return false;
+  try {
+    const cfUrl = `https://api.cloudflare.com/client/v4/accounts/${creds.accountId}/r2/buckets/${creds.bucket}/objects/${key}`;
+    const headers: Record<string, string> = {
+      'Authorization': `Bearer ${creds.apiToken}`,
+      'Content-Type': contentType,
+    };
+    if (cacheControl) {
+      headers['Cache-Control'] = cacheControl;
+    }
+    const res = await fetch(cfUrl, {
+      method: 'PUT',
+      headers,
+      body: typeof body === 'string' ? Buffer.from(body, 'utf-8') : body,
+    });
+    return res.ok;
+  } catch (err) {
+    console.debug(`[R2 REST API] PUT notice for ${key}:`, err);
+    return false;
+  }
+}
+
+async function r2RestDelete(key: string): Promise<boolean> {
+  const creds = getR2Credentials();
+  if (!creds.accountId || !creds.apiToken) return false;
+  try {
+    const cfUrl = `https://api.cloudflare.com/client/v4/accounts/${creds.accountId}/r2/buckets/${creds.bucket}/objects/${key}`;
+    const res = await fetch(cfUrl, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${creds.apiToken}`,
+      },
+    });
+    return res.ok;
+  } catch (err) {
+    console.debug(`[R2 REST API] DELETE notice for ${key}:`, err);
+    return false;
+  }
+}
+
+async function r2RestGet(key: string): Promise<string | null> {
+  const creds = getR2Credentials();
+  if (!creds.accountId || !creds.apiToken) return null;
+  try {
+    const cfUrl = `https://api.cloudflare.com/client/v4/accounts/${creds.accountId}/r2/buckets/${creds.bucket}/objects/${key}`;
+    const res = await fetch(cfUrl, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${creds.apiToken}`,
+      },
+    });
+    if (res.ok) {
+      return await res.text();
+    }
+    return null;
+  } catch (err) {
+    return null;
+  }
 }
 
 function getLocalDataDir(): string {
@@ -43,6 +146,43 @@ function getLocalDataDir(): string {
     // Graceful fallback
   }
   return dir;
+}
+
+const DELETED_ARTICLES_FILE = path.join(process.cwd(), 'data', 'deleted_articles.json');
+
+export function getDeletedArticleIds(): Set<string> {
+  try {
+    if (fs.existsSync(DELETED_ARTICLES_FILE)) {
+      const raw = fs.readFileSync(DELETED_ARTICLES_FILE, 'utf-8');
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) {
+        return new Set(arr.filter(Boolean));
+      }
+    }
+  } catch (err) {
+    console.debug('[R2 Articles] Read deleted articles notice:', err);
+  }
+  return new Set();
+}
+
+export function markArticleDeleted(postId: string): void {
+  if (!postId) return;
+  try {
+    const set = getDeletedArticleIds();
+    set.add(postId);
+    const dir = path.dirname(DELETED_ARTICLES_FILE);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(DELETED_ARTICLES_FILE, JSON.stringify(Array.from(set), null, 2), 'utf-8');
+  } catch (err) {
+    console.warn('[R2 Articles] Failed to persist deleted article ID:', err);
+  }
+}
+
+let onArticleDeletedHook: (() => void) | null = null;
+export function registerOnArticleDeletedHook(hook: () => void) {
+  onArticleDeletedHook = hook;
 }
 
 // In-memory light feed cache for instantaneous (0ms) responses
@@ -86,9 +226,14 @@ export function toLightArticle(post: any): any {
     title: post.title || '',
     category: post.category || 'General',
     authorName: post.authorName || 'Current News',
+    authorEmail: post.authorEmail || '',
+    authorId: post.authorId || '',
     createdAt: post.createdAt || new Date().toISOString(),
     status: post.status || 'published',
     imageUrl: cleanImg,
+    imageUrls: Array.isArray(post.imageUrls) ? post.imageUrls.map(cleanImageUrl) : [],
+    youtubeUrl: post.youtubeUrl || '',
+    facebookUrl: post.facebookUrl || '',
     hashtags: Array.isArray(post.hashtags) ? post.hashtags : [],
     likes: typeof post.likes === 'number' ? post.likes : 0,
     dislikes: typeof post.dislikes === 'number' ? post.dislikes : 0,
@@ -103,11 +248,25 @@ export function toLightArticle(post: any): any {
 function loadLocalFeed(): any[] {
   try {
     const feedFile = path.join(process.cwd(), 'data', 'feed.json');
+    const localDir = getLocalDataDir();
+    const deletedIds = getDeletedArticleIds();
     if (fs.existsSync(feedFile)) {
       const content = fs.readFileSync(feedFile, 'utf-8');
       const parsed = JSON.parse(content);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed.map(toLightArticle).filter(Boolean);
+        return parsed
+          .filter((p: any) => p && p.id && !deletedIds.has(p.id))
+          .map((p) => {
+            // If local full article exists, merge metadata (authorEmail, imageUrls, etc.)
+            try {
+              const articlePath = path.join(localDir, `${p.id}.json`);
+              if (fs.existsSync(articlePath)) {
+                const fullArticle = JSON.parse(fs.readFileSync(articlePath, 'utf-8'));
+                return toLightArticle({ ...p, ...fullArticle });
+              }
+            } catch (_) {}
+            return toLightArticle(p);
+          }).filter(Boolean);
       }
     }
   } catch (err) {
@@ -146,9 +305,6 @@ export function getPublicBase(): string {
 export async function uploadBase64ImageToR2(base64DataUrl: string, key: string): Promise<string> {
   const client = getR2Client();
   const bucket = getR2BucketName();
-  if (!client) {
-    throw new Error(`R2 client credentials missing (R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY). Cannot upload ${key} to Cloudflare R2.`);
-  }
 
   const match = base64DataUrl.match(/^data:image\/([a-zA-Z0-9+.-]+);base64,(.+)$/);
   if (!match) {
@@ -160,17 +316,34 @@ export async function uploadBase64ImageToR2(base64DataUrl: string, key: string):
   const buffer = Buffer.from(base64Data, 'base64');
   const contentType = key.endsWith('.webp') ? 'image/webp' : (rawFormat === 'png' ? 'image/png' : 'image/jpeg');
 
-  // 1. Upload to Cloudflare R2 with immutable 1-year cache headers (must throw if fails)
-  await client.send(new PutObjectCommand({
-    Bucket: bucket,
-    Key: key,
-    Body: buffer,
-    ContentType: contentType,
-    CacheControl: 'public, max-age=31536000, s-maxage=31536000, immutable',
-  }));
-  console.log(`[R2 Image] Uploaded ${key} (${Math.round(buffer.length / 1024)} KB) to Cloudflare R2`);
+  let uploadedToCloud = false;
 
-  // 2. Also save to local mirror in data/img as fallback
+  // 1. Upload via S3 client if valid S3 credentials exist (strictly 32-char access key)
+  if (client) {
+    try {
+      await client.send(new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Body: buffer,
+        ContentType: contentType,
+        CacheControl: 'public, max-age=31536000, s-maxage=31536000, immutable',
+      }));
+      uploadedToCloud = true;
+      console.log(`[R2 Image] Uploaded ${key} (${Math.round(buffer.length / 1024)} KB) to Cloudflare R2 (S3)`);
+    } catch (s3Err: any) {
+      console.warn(`[R2 Image] S3 PutObject notice for ${key}:`, s3Err?.message || s3Err);
+    }
+  }
+
+  // 2. Fallback to Cloudflare REST API if S3 is not configured or failed
+  if (!uploadedToCloud) {
+    uploadedToCloud = await r2RestPut(key, buffer, contentType, 'public, max-age=31536000, s-maxage=31536000, immutable');
+    if (uploadedToCloud) {
+      console.log(`[R2 Image] Uploaded ${key} (${Math.round(buffer.length / 1024)} KB) to Cloudflare R2 (REST API)`);
+    }
+  }
+
+  // 3. Save to local mirror in data/img as persistent fallback
   try {
     const localImgDir = path.join(process.cwd(), 'data', 'img');
     if (!fs.existsSync(localImgDir)) {
@@ -325,6 +498,7 @@ export async function saveArticleToR2(post: any): Promise<{ success: boolean; ur
   const client = getR2Client();
   const bucket = getR2BucketName();
   const r2Key = `articles/${post.id}.json`;
+  let uploadedArticle = false;
 
   if (client) {
     try {
@@ -336,9 +510,22 @@ export async function saveArticleToR2(post: any): Promise<{ success: boolean; ur
         ContentType: 'application/json; charset=utf-8',
         CacheControl: 'public, max-age=60, s-maxage=300, stale-while-revalidate=86400',
       }));
-      console.log(`[R2 Articles] Successfully saved full article ${post.id} to Cloudflare R2`);
+      uploadedArticle = true;
+      console.log(`[R2 Articles] Successfully saved full article ${post.id} to Cloudflare R2 (S3)`);
     } catch (r2Err: any) {
-      console.warn(`[R2 Articles] S3 PutObject failed for ${post.id}, fallback will serve local mirror:`, r2Err?.message || r2Err);
+      console.warn(`[R2 Articles] S3 PutObject failed for ${post.id}:`, r2Err?.message || r2Err);
+    }
+  }
+
+  if (!uploadedArticle) {
+    uploadedArticle = await r2RestPut(
+      r2Key,
+      JSON.stringify(post),
+      'application/json; charset=utf-8',
+      'public, max-age=60, s-maxage=300, stale-while-revalidate=86400'
+    );
+    if (uploadedArticle) {
+      console.log(`[R2 Articles] Successfully saved full article ${post.id} to Cloudflare R2 (REST API)`);
     }
   }
 
@@ -397,18 +584,31 @@ async function updateFeedIndexInR2(updatedPost: any): Promise<void> {
     // Upload light feed.json to Cloudflare R2
     const client = getR2Client();
     const bucket = getR2BucketName();
+    const feedBody = Buffer.from(JSON.stringify(feed));
+    let feedUploaded = false;
+
     if (client) {
       try {
         await client.send(new PutObjectCommand({
           Bucket: bucket,
           Key: 'articles/feed.json',
-          Body: Buffer.from(JSON.stringify(feed)),
+          Body: feedBody,
           ContentType: 'application/json; charset=utf-8',
           CacheControl: 'public, max-age=30, s-maxage=60, stale-while-revalidate=300',
         }));
+        feedUploaded = true;
       } catch (err) {
-        console.warn('[R2 Articles] Failed to update light articles/feed.json on R2:', err);
+        console.warn('[R2 Articles] Failed to update light articles/feed.json on R2 (S3):', err);
       }
+    }
+
+    if (!feedUploaded) {
+      await r2RestPut(
+        'articles/feed.json',
+        feedBody,
+        'application/json; charset=utf-8',
+        'public, max-age=30, s-maxage=60, stale-while-revalidate=300'
+      );
     }
   } catch (err) {
     console.error('[R2 Articles] Error updating feed index:', err);
@@ -421,7 +621,10 @@ async function updateFeedIndexInR2(updatedPost: any): Promise<void> {
 export async function deleteArticleFromR2(postId: string): Promise<boolean> {
   if (!postId) return false;
 
-  // 1. Delete full article from local mirror
+  // 1. Mark in persistent tombstone registry
+  markArticleDeleted(postId);
+
+  // 2. Delete full article from local mirror
   try {
     const localDir = getLocalDataDir();
     const filePath = path.join(localDir, `${postId}.json`);
@@ -432,37 +635,64 @@ export async function deleteArticleFromR2(postId: string): Promise<boolean> {
     console.warn('[R2 Articles] Error unlinking local file:', err);
   }
 
-  // 2. Delete full article from R2
+  // 3. Delete full article from R2
   const client = getR2Client();
   const bucket = getR2BucketName();
+  const key = `articles/${postId}.json`;
+  let deleted = false;
+
   if (client) {
     try {
       await client.send(new DeleteObjectCommand({
         Bucket: bucket,
-        Key: `articles/${postId}.json`,
+        Key: key,
       }));
-    } catch (err) {
-      console.warn('[R2 Articles] Error deleting S3 object from R2:', err);
+      deleted = true;
+    } catch (err: any) {
+      console.warn('[R2 Articles] Error deleting S3 object from R2:', err?.message || err);
     }
   }
 
-  // 3. Remove from in-memory and R2 light feed
-  inMemoryFeedCache = inMemoryFeedCache.filter(p => p.id !== postId);
+  if (!deleted) {
+    try {
+      await r2RestDelete(key);
+    } catch (restErr) {
+      console.debug('[R2 Articles] REST API delete notice:', restErr);
+    }
+  }
+
+  // 4. Update in-memory and R2 light feed
+  const deletedIds = getDeletedArticleIds();
+  let feed = inMemoryFeedCache.length > 0 ? inMemoryFeedCache : loadLocalFeed();
+  feed = feed.filter((p: any) => p && p.id && p.id !== postId && !deletedIds.has(p.id));
+  inMemoryFeedCache = feed;
+  inMemoryFeedTimestamp = Date.now();
+
   try {
     const feedFile = path.join(process.cwd(), 'data', 'feed.json');
-    fs.writeFileSync(feedFile, JSON.stringify(inMemoryFeedCache), 'utf-8');
+    fs.writeFileSync(feedFile, JSON.stringify(inMemoryFeedCache, null, 2), 'utf-8');
   } catch (e) {}
 
+  // 5. Trigger external caches invalidation (e.g. postsApi)
+  if (onArticleDeletedHook) {
+    try {
+      onArticleDeletedHook();
+    } catch (_) {}
+  }
+
+  const feedBody = Buffer.from(JSON.stringify(inMemoryFeedCache));
   if (client) {
     try {
       await client.send(new PutObjectCommand({
         Bucket: bucket,
         Key: 'articles/feed.json',
-        Body: Buffer.from(JSON.stringify(inMemoryFeedCache)),
+        Body: feedBody,
         ContentType: 'application/json; charset=utf-8',
         CacheControl: 'public, max-age=30, s-maxage=60',
       }));
     } catch (e) {}
+  } else {
+    await r2RestPut('articles/feed.json', feedBody, 'application/json; charset=utf-8', 'public, max-age=30, s-maxage=60');
   }
 
   return true;
@@ -474,6 +704,10 @@ export async function deleteArticleFromR2(postId: string): Promise<boolean> {
  */
 export async function getArticleFromR2(postId: string): Promise<any | null> {
   if (!postId) return null;
+  const deletedIds = getDeletedArticleIds();
+  if (deletedIds.has(postId)) {
+    return null;
+  }
 
   // 1. Check local disk mirror first (contains full post with content)
   try {
@@ -500,7 +734,7 @@ export async function getArticleFromR2(postId: string): Promise<any | null> {
       if (resp.Body) {
         const str = await resp.Body.transformToString();
         const parsed = JSON.parse(str);
-        if (parsed && (parsed.content || parsed.title)) {
+        if (parsed && (parsed.content || parsed.title) && !deletedIds.has(parsed.id)) {
           return parsed;
         }
       }
@@ -521,7 +755,7 @@ export async function getArticleFromR2(postId: string): Promise<any | null> {
       const res = await fetch(cdnUrl, { signal: AbortSignal.timeout(3000) });
       if (res.ok) {
         const data = await res.json();
-        if (data && (data.content || data.title)) {
+        if (data && (data.content || data.title) && !deletedIds.has(data.id)) {
           return data;
         }
       }
@@ -535,9 +769,10 @@ export async function getArticleFromR2(postId: string): Promise<any | null> {
  * Retrieve light published articles feed from Cloudflare R2 (articles/feed.json)
  */
 export async function getFeedFromR2(): Promise<any[]> {
+  const deletedIds = getDeletedArticleIds();
   const now = Date.now();
   if (inMemoryFeedCache.length > 0 && now - inMemoryFeedTimestamp < FEED_CACHE_TTL) {
-    return inMemoryFeedCache;
+    return inMemoryFeedCache.filter(p => p && p.id && !deletedIds.has(p.id));
   }
 
   // 1. Try S3 client GetObject
@@ -553,7 +788,10 @@ export async function getFeedFromR2(): Promise<any[]> {
         const str = await resp.Body.transformToString();
         const parsed = JSON.parse(str);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const lightList = parsed.map(toLightArticle).filter(Boolean);
+          const lightList = parsed
+            .filter((p: any) => p && p.id && !deletedIds.has(p.id))
+            .map(toLightArticle)
+            .filter(Boolean);
           inMemoryFeedCache = lightList;
           inMemoryFeedTimestamp = now;
           return lightList;
@@ -577,7 +815,10 @@ export async function getFeedFromR2(): Promise<any[]> {
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data) && data.length > 0) {
-          const lightList = data.map(toLightArticle).filter(Boolean);
+          const lightList = data
+            .filter((p: any) => p && p.id && !deletedIds.has(p.id))
+            .map(toLightArticle)
+            .filter(Boolean);
           inMemoryFeedCache = lightList;
           inMemoryFeedTimestamp = now;
           return lightList;
@@ -589,12 +830,13 @@ export async function getFeedFromR2(): Promise<any[]> {
   // 3. Fallback to local disk feed
   const localFeed = loadLocalFeed();
   if (localFeed.length > 0) {
-    inMemoryFeedCache = localFeed;
+    const lightList = localFeed.filter(p => p && p.id && !deletedIds.has(p.id));
+    inMemoryFeedCache = lightList;
     inMemoryFeedTimestamp = now;
-    return localFeed;
+    return lightList;
   }
 
-  return inMemoryFeedCache;
+  return inMemoryFeedCache.filter(p => p && p.id && !deletedIds.has(p.id));
 }
 
 /**
@@ -750,18 +992,29 @@ export async function handleMigrateImages(_req: Request, res: Response) {
       fs.writeFileSync(filePath, JSON.stringify(cleanedPost, null, 2), 'utf-8');
 
       // Upload full article to R2
+      let articleUploaded = false;
+      const articleBody = Buffer.from(JSON.stringify(cleanedPost));
       if (client) {
         try {
           await client.send(new PutObjectCommand({
             Bucket: bucket,
             Key: `articles/${cleanedPost.id}.json`,
-            Body: Buffer.from(JSON.stringify(cleanedPost)),
+            Body: articleBody,
             ContentType: 'application/json; charset=utf-8',
             CacheControl: 'public, max-age=60, s-maxage=300, stale-while-revalidate=86400',
           }));
+          articleUploaded = true;
         } catch (r2Err) {
-          console.warn(`[Migrate] Failed to upload articles/${cleanedPost.id}.json:`, r2Err);
+          console.warn(`[Migrate] Failed to upload articles/${cleanedPost.id}.json (S3):`, r2Err);
         }
+      }
+      if (!articleUploaded) {
+        await r2RestPut(
+          `articles/${cleanedPost.id}.json`,
+          articleBody,
+          'application/json; charset=utf-8',
+          'public, max-age=60, s-maxage=300, stale-while-revalidate=86400'
+        );
       }
 
       processedArticles.push(cleanedPost);
@@ -781,18 +1034,29 @@ export async function handleMigrateImages(_req: Request, res: Response) {
     const newFeedSize = fs.statSync(feedFile).size;
 
     // Upload light feed.json to R2
+    let feedUploaded = false;
+    const feedBody = Buffer.from(JSON.stringify(lightFeed));
     if (client) {
       try {
         await client.send(new PutObjectCommand({
           Bucket: bucket,
           Key: 'articles/feed.json',
-          Body: Buffer.from(JSON.stringify(lightFeed)),
+          Body: feedBody,
           ContentType: 'application/json; charset=utf-8',
           CacheControl: 'public, max-age=30, s-maxage=60, stale-while-revalidate=300',
         }));
+        feedUploaded = true;
       } catch (r2Err) {
-        console.warn('[Migrate] Failed to upload light articles/feed.json to R2:', r2Err);
+        console.warn('[Migrate] Failed to upload light articles/feed.json to R2 (S3):', r2Err);
       }
+    }
+    if (!feedUploaded) {
+      await r2RestPut(
+        'articles/feed.json',
+        feedBody,
+        'application/json; charset=utf-8',
+        'public, max-age=30, s-maxage=60, stale-while-revalidate=300'
+      );
     }
 
     return res.status(200).json({

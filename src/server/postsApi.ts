@@ -1,8 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import type { Request, Response } from 'express';
-import { cleanImageUrl, getFallbackImageUrl } from '../utils/imageUrl.js';
-import { getFeedFromR2, getArticleFromR2 } from './r2Articles.js';
+import { cleanImageUrl, getFallbackImageUrl } from '../utils/imageUrl.ts';
+import { getFeedFromR2, getArticleFromR2, getDeletedArticleIds, registerOnArticleDeletedHook } from './r2Articles.ts';
 
 interface CachedPost {
   id: string;
@@ -35,12 +35,26 @@ let inMemoryPostsCache: CachedPost[] = [];
 let lastCacheTimestamp = 0;
 const CACHE_TTL_MS = 60 * 1000; // 60 seconds cache TTL
 
+// Register observer hook to invalidate cache when an article is deleted
+registerOnArticleDeletedHook(() => {
+  inMemoryPostsCache = [];
+  lastCacheTimestamp = 0;
+});
+
+export function invalidatePostsCache(): void {
+  inMemoryPostsCache = [];
+  lastCacheTimestamp = 0;
+}
+
 function getDiskFeed(): CachedPost[] {
   try {
-    const feedFile = path.join(process.cwd(), 'data', 'articles', 'feed.json');
+    const feedFile = path.join(process.cwd(), 'data', 'feed.json');
     if (fs.existsSync(feedFile)) {
       const data = JSON.parse(fs.readFileSync(feedFile, 'utf-8'));
-      if (Array.isArray(data)) return data;
+      if (Array.isArray(data)) {
+        const deletedIds = getDeletedArticleIds();
+        return data.filter(p => p && p.id && !deletedIds.has(p.id));
+      }
     }
   } catch (e) {
     console.warn('[Posts API] Failed to read disk feed fallback:', e);
@@ -97,7 +111,8 @@ export async function handleGetPosts(req: Request, res: Response) {
     }
   }
 
-  let posts = [...inMemoryPostsCache];
+  const deletedIds = getDeletedArticleIds();
+  let posts = inMemoryPostsCache.filter(p => p && p.id && !deletedIds.has(p.id));
 
   // Apply category filtering
   const category = (req.query.category as string || '').trim().toLowerCase();
@@ -145,6 +160,11 @@ export async function handleGetPostById(req: Request, res: Response) {
     return res.status(400).json({ error: 'Post ID is required' });
   }
 
+  const deletedIds = getDeletedArticleIds();
+  if (deletedIds.has(id)) {
+    return res.status(404).json({ success: false, error: 'Article not found or deleted' });
+  }
+
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
 
@@ -154,7 +174,7 @@ export async function handleGetPostById(req: Request, res: Response) {
     // 2. Fetch full article from Cloudflare R2
     try {
       const r2Post = await getArticleFromR2(id);
-      if (r2Post) {
+      if (r2Post && !deletedIds.has(r2Post.id)) {
         post = r2Post;
       }
     } catch (e) {
@@ -165,12 +185,12 @@ export async function handleGetPostById(req: Request, res: Response) {
   // 3. Fallback to local disk file if missing from R2
   if (!post || !post.content) {
     const diskPost = getDiskArticle(id);
-    if (diskPost) {
+    if (diskPost && !deletedIds.has(diskPost.id)) {
       post = diskPost;
     }
   }
 
-  if (!post) {
+  if (!post || deletedIds.has(post.id)) {
     return res.status(404).json({ error: 'Article not found' });
   }
 

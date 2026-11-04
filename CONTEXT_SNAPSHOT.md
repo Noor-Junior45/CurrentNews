@@ -163,4 +163,38 @@
   - Targeted Selected Element (`form > div:nth-of-type(1) > input#post-title`): Replaced fixed single-line input with full-width (`w-full box-border`) auto-expanding `<textarea id="post-title">`.
   - Added text-wrapping and scrollHeight auto-height adjustment so long headlines wrap cleanly across multiple lines without horizontal cutoff, allowing writers to view and edit the entire title with ease.
   - Added real-time character counter (`{title.length}/200`), Enter-key form submission guard, and `resize-y` handle.
+- [x] **Phase 37 (Manuscript Box Full-Height Typing & Tap-to-Focus Activation):** [COMPLETED]
+  - Targeted Selected Element (`div#quill-editor-wrapper > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1)` / `.ql-editor`): Resolved issue where tapping or clicking in the manuscript box required aiming specifically at the first line.
+  - Set `.ql-container.ql-snow` with `display: flex !important; flex-direction: column !important; cursor: text !important; min-height: 260px;` and `.ql-editor` with `min-height: 260px !important; height: 100% !important; flex: 1 1 auto !important; cursor: text !important; box-sizing: border-box !important;`.
+  - Added `handleEditorAreaClick` in `src/components/RichTextEditor.tsx` that intercepts clicks/taps across the full box area (with toolbar exclusion), immediately focusing the editor and placing the typing caret at the end of content so mobile soft keyboards and desktop typing activate anywhere inside the box.
+- [x] **Phase 38 (Current Publications Persistent Sticky Navbar & Single-Line Phone Filter Buttons):** [COMPLETED]
+  - Targeted Selected Element 1 (`header > div > div:nth-of-type(2) > a`): Removed plus button from `ProfilePageNavbar` in `src/views/CurrentPublicationsView.tsx`.
+  - Targeted Selected Element 2 (`div#publications-filter-tabs`): Fitted all three filter buttons (`All (XX)`, `Published (XX)`, `Drafts (XX)`) into a single row on phone screens via `grid grid-cols-3 gap-1` with compact typography (`text-[10px] sm:text-xs font-bold uppercase tracking-tight sm:tracking-wider px-1.5 sm:px-4 py-1.5 truncate whitespace-nowrap`).
+  - Persistent Dual-Tier Sticky Navbar: Unified `ProfilePageNavbar` (`sticky top-0 z-40`) and the filter switcher (`sticky top-14 sm:top-16 z-30 bg-white/95 dark:bg-slate-950/95 backdrop-blur-md border-b`) so both act as an immovable persistent navbar while all publications cards, tables, and notices scroll smoothly underneath.
+- [x] **Phase 40 (Audience Registry 3-Box Hierarchy & Compact Inline Badge):** [COMPLETED]
+  - Targeted Selected Element 1 (`div#audience-registry-view > div:nth-of-type(1) > div:nth-of-type(1) > h2`): Removed the top "Audience & Alert Console" header and subtitle text from `src/views/AudienceRegistryView.tsx`.
+  - Re-ordered console sections starting immediately below navbar in exact requested 3-box hierarchy:
+    1. Box 1: Push Notifications (`Push Notifications`)
+    2. Box 2: Email Test (`Email Test`)
+    3. Box 3: All User Email List (`All User Email List`)
+  - Targeted Selected Element 2 (`div#audience-registry-view > div > div:nth-of-type(2) > div:nth-of-type(1) > div > div`): Redesigned Push Notification heading:
+    - Positioned active device indicator badge directly adjacent to the `Push Notifications` heading.
+    - Stripped "Active Device(s)" text completely, displaying strictly the alert logo (`Bell`), the device count number, and an inline refresh button (`RefreshCw`).
+    - Maintained exact pill styling (`bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-800 px-2.5 py-1 rounded-xl shadow-xs`).
+    - Retained all broadcast input logic, "Ping All Devices" action, and feedback banner.
+- [x] **Phase 42 (Admin Dashboard Redesign & Author-Isolated Image/Story Metrics):** [COMPLETED]
+  - Removed the top Cloudflare R2 / High-Throughput Global Edge Mirror box and the 3 quick action navigation cards (`Draft New Publication`, `Current Publications`, `Audience Registry`).
+  - Positioned the **Editorial Author Byline** box at the very top of the page, displaying `Active pen name : <writer_name>`.
+  - Removed the description copy below the pen name and added a pill-shaped button (`rounded-full`) for editing and saving pen names directly inline with D1 synchronization and local caching.
+  - Positioned the metrics cards below in a 5-box responsive grid:
+    1. `Live Active Dispatches`: strictly counting published stories by the authenticated author.
+    2. `Draft Manuscripts`: counting saved drafts by the author.
+    3. `Media Broadcasts`: counting stories with attached YouTube/Facebook video broadcasts by the author.
+    4. `Audience Subscribers`: registered citizen subscribers.
+    5. `Published Image`: newly introduced metric displaying the exact count of photos attached and posted across published stories exclusively by that author.
+- [x] **Phase 44 (Login Flow, Cloudflare Worker Permissions & Newsroom Published Data Visibility):** [COMPLETED]
+  - Audited full login flow (Firebase Web Google Sign-In & Native Android Play Services Google Account Chooser via `NativeGoogleAuthPlugin`).
+  - Resolved Cloudflare Worker authorization gap in `/worker/src/index.ts`: added `AUTHORIZED_WRITER_AND_ADMIN_EMAILS` (including `mdnoor4860@gmail.com`, `mdhassan1738@gmail.com`, `alifraja404@gmail.com`, and `@currentnews.blog` domains) so `GET /subscribers` and admin endpoints succeed for all authorized newsroom writers and admins instead of returning 403.
+  - Resolved publications filtering in `CurrentPublicationsView.tsx` and `AdminDashboardView.tsx`: verified that all published newsroom data across the ledger is fully visible to administrators while preserving author-specific filtering for non-admin writers.
+  - Verified subscriber metrics and subscriber directory visibility for all writers.
 - **Immediate Next Step:** Production deployment to Google Cloud Run and Cloudflare D1/Worker deployment.

@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { auth } from '../firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { api, PostStats } from '../utils/api';
+import { reactionStore } from '../utils/reactionStore';
 import { Post, slugify } from '../types';
 import { sanitizePostImages, cleanImageUrl } from '../utils/imageUrl';
 import BlogPostCard from '../components/BlogPostCard';
@@ -20,22 +21,32 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Link, useSearchParams, useNavigate } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { getRecentInProgressArticles, clearReadingProgress, ReadingProgressRecord } from '../utils/readingProgress';
 import { updateDocumentSEO } from '../utils/seo';
-import { getCompressedStories, saveCompressedStories } from '../utils/compressedStorage';
+import { getCompressedStories, saveCompressedStories, saveCompressedStory } from '../utils/compressedStorage';
 import { safeFormatDate } from '../utils/dateHelper';
 import { clientLoadBalancer } from '../utils/clientLoadBalancer';
 
 function getHtmlTextPreview(htmlString: string, maxLength: number = 160): string {
   if (!htmlString) return '';
   // Strip [fig. N] or [figure N] markers before previewing
-  const cleaned = htmlString.replace(/\[fig(?:ure)?(?:\.|\s+)?\s*\d+[^\]]*\]/gi, '');
-  const tempDiv = document.createElement('div');
-  tempDiv.innerHTML = cleaned;
-  const excerpt = tempDiv.textContent || tempDiv.innerText || '';
-  if (excerpt.length <= maxLength) return excerpt;
-  return excerpt.substring(0, maxLength).trim() + '...';
+  let text = htmlString.replace(/\[fig(?:ure)?(?:\.|\s+)?\s*\d+[^\]]*\]/gi, '');
+  text = text.replace(/<[^>]*>/g, ' ');
+  text = text.replace(/data:image\/[a-zA-Z0-9+.-]+;base64,[^"'\s]+/g, '');
+  text = text
+    .replace(/&nbsp;?/gi, ' ')
+    .replace(/&#160;?/gi, ' ')
+    .replace(/\u00a0/g, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&[a-z0-9#]{1,7};?/gi, ' ');
+  text = text.replace(/\s+/g, ' ').trim();
+  if (text.length <= maxLength) return text;
+  return text.substring(0, maxLength).trim() + '...';
 }
 
 function getPaginationRange(current: number, total: number): (number | string)[] {
@@ -53,7 +64,7 @@ function getPaginationRange(current: number, total: number): (number | string)[]
 
 function BlogPostCardSkeleton() {
   return (
-    <div className="bg-white dark:bg-slate-900 border-0 border-b border-black dark:border-black sm:border sm:border-slate-200/80 dark:sm:border-slate-800 rounded-none sm:rounded-xl overflow-hidden shadow-none sm:shadow-3xs p-4 sm:p-6 flex flex-col justify-between h-[255px] animate-pulse">
+    <div className="bg-white dark:bg-slate-900 border-0 border-b border-black dark:border-black sm:border sm:border-slate-200/80 dark:sm:border-slate-800 rounded-none sm:rounded-xl overflow-hidden shadow-none sm:shadow-3xs p-4 sm:p-5 flex flex-col justify-between h-auto sm:h-[265px] animate-pulse">
       <div>
         <div className="flex items-center justify-between mb-4">
           <div className="h-4 bg-slate-100 dark:bg-slate-800 rounded-md w-24"></div>
@@ -99,6 +110,7 @@ export default function HomeView() {
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const selectedCategory = searchParams.get('category') || 'All';
 
   // Support opening posts via legacy query parameters with history replacement
@@ -401,16 +413,16 @@ export default function HomeView() {
   const totalPages = Math.max(1, Math.ceil(filteredPosts.length / postsPerPage));
   const paginatedPosts = filteredPosts.slice((currentPage - 1) * postsPerPage, currentPage * postsPerPage);
 
-  // Batch stats for all visible cards in ONE GET /stats?ids=... call
+  // Batch stats for all visible cards with 3-minute localStorage cache
   const [statsMap, setStatsMap] = useState<Record<string, PostStats>>({});
   const [userLikedIds, setUserLikedIds] = useState<Set<string>>(new Set());
 
-  // Fetch the user's own reactions once via /my-reactions, not per card
+  // Fetch the user's own reactions once per session via reactionStore (10-min cache)
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       if (user) {
         try {
-          const liked = await api.getMyReactions();
+          const liked = await reactionStore.loadMyReactions();
           setUserLikedIds(new Set(liked));
         } catch (e) {
           console.debug('Failed to load user reactions:', e);
@@ -419,20 +431,73 @@ export default function HomeView() {
         setUserLikedIds(new Set());
       }
     });
-    return () => unsubscribe();
+
+    // Subscribe to reactionStore updates to keep card hearts instantly in sync
+    const unsubscribeStore = reactionStore.subscribe(() => {
+      setUserLikedIds(new Set(reactionStore.getLikedIds()));
+    });
+
+    return () => {
+      unsubscribeAuth();
+      unsubscribeStore();
+    };
   }, []);
 
-  // Fetch likes/dislikes/views for all visible cards with ONE query
+  // Fetch likes/dislikes/views for visible cards: cache in localStorage for 3 min, request ONLY missing/stale IDs
   useEffect(() => {
     if (paginatedPosts.length === 0) return;
-    const ids = paginatedPosts.map(p => p.id);
-    api.getPostStats(ids).then(newStats => {
-      if (newStats && Object.keys(newStats).length > 0) {
-        setStatsMap(prev => ({ ...prev, ...newStats }));
+    const postIds = paginatedPosts.map(p => p.id);
+    const STATS_CACHE_KEY = 'cn_stats_cache';
+    const CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutes
+    const now = Date.now();
+
+    // 1. Read existing cache from localStorage
+    let cachedStatsMap: Record<string, { stats: PostStats; timestamp: number }> = {};
+    try {
+      const stored = localStorage.getItem(STATS_CACHE_KEY);
+      if (stored) {
+        cachedStatsMap = JSON.parse(stored);
       }
-    }).catch(err => {
-      console.debug('Failed to batch load post stats:', err);
-    });
+    } catch (_) {
+      cachedStatsMap = {};
+    }
+
+    // 2. Identify which IDs are already fresh in cache vs which are missing or stale (> 3 min)
+    const freshStats: Record<string, PostStats> = {};
+    const idsToFetch: string[] = [];
+
+    for (const id of postIds) {
+      const entry = cachedStatsMap[id];
+      if (entry && entry.stats && (now - (entry.timestamp || 0) < CACHE_TTL_MS)) {
+        freshStats[id] = entry.stats;
+      } else {
+        idsToFetch.push(id);
+      }
+    }
+
+    // Immediately populate state with fresh cached stats
+    if (Object.keys(freshStats).length > 0) {
+      setStatsMap(prev => ({ ...prev, ...freshStats }));
+    }
+
+    // 3. If there are missing or stale IDs, fetch ONLY those IDs
+    if (idsToFetch.length > 0) {
+      api.getPostStats(idsToFetch).then(newStats => {
+        if (newStats && Object.keys(newStats).length > 0) {
+          setStatsMap(prev => ({ ...prev, ...newStats }));
+
+          // Update localStorage cache with newly fetched stats
+          for (const [id, stats] of Object.entries(newStats)) {
+            cachedStatsMap[id] = { stats, timestamp: Date.now() };
+          }
+          try {
+            localStorage.setItem(STATS_CACHE_KEY, JSON.stringify(cachedStatsMap));
+          } catch (_) {}
+        }
+      }).catch(err => {
+        console.debug('Failed to batch load post stats:', err);
+      });
+    }
   }, [currentPage, filteredPosts.length, selectedCategory, searchTerm]);
 
   return (
@@ -525,6 +590,16 @@ export default function HomeView() {
                 >
                   <Link
                     to={`/post/${activePoster.id}/${slugify(activePoster.title)}`}
+                    onClick={() => {
+                      try {
+                        const currentSearch = location.search || '';
+                        sessionStorage.setItem('current_news_return_search', currentSearch);
+                        sessionStorage.setItem('current_news_return_scroll', String(window.scrollY));
+                        saveCompressedStory(activePoster);
+                      } catch (err) {
+                        console.debug('Failed to cache return position', err);
+                      }
+                    }}
                     className="block w-full h-full cursor-pointer relative"
                     id={`hero-poster-slide-${activePoster.id}`}
                   >
@@ -728,7 +803,20 @@ export default function HomeView() {
                     isLikedByUser={userLikedIds.has(post.id)} 
                   />
                 </motion.div>
-                {(idx === 2 || idx === 5) && paginatedPosts.length > idx + 1 && (
+                {/* First native ad: after 3 cards on mobile & desktop (idx 2) */}
+                {idx === 2 && paginatedPosts.length > idx + 1 && (
+                  <div className="col-span-1 sm:hidden lg:block lg:col-span-3 px-4 sm:px-0 my-2">
+                    <AdMobNativeAd slotKey={`feed-card-${currentPage}-0`} />
+                  </div>
+                )}
+                {/* First native ad on tablet: after 4 cards (idx 3), completing 2 full rows on 2-col grid */}
+                {idx === 3 && paginatedPosts.length > idx + 1 && (
+                  <div className="hidden sm:block lg:hidden sm:col-span-2 px-4 sm:px-0 my-2">
+                    <AdMobNativeAd slotKey={`feed-card-${currentPage}-tab`} />
+                  </div>
+                )}
+                {/* Middle native ads at multiples of 6 (complete rows on mobile 1-col, tablet 2-col, and desktop 3-col) */}
+                {(idx === 5 || idx === 11) && paginatedPosts.length > idx + 1 && (
                   <div className="col-span-1 sm:col-span-2 lg:col-span-3 px-4 sm:px-0 my-2">
                     <AdMobNativeAd slotKey={`feed-card-${currentPage}-${idx}`} />
                   </div>
@@ -749,11 +837,11 @@ export default function HomeView() {
               <button
                 disabled={currentPage <= 1}
                 onClick={() => handlePageChange(currentPage - 1)}
-                className="min-h-[44px] px-3.5 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed font-semibold text-xs transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+                aria-label="Previous Page"
+                className="min-h-[44px] min-w-[44px] px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed font-semibold text-xs transition-colors cursor-pointer flex items-center justify-center shadow-xs"
                 id="pagination-prev-btn"
               >
                 <ChevronLeft className="h-4 w-4" />
-                <span>Prev</span>
               </button>
 
               {getPaginationRange(currentPage, totalPages).map((item, idx) => {
@@ -788,10 +876,10 @@ export default function HomeView() {
               <button
                 disabled={currentPage >= totalPages}
                 onClick={() => handlePageChange(currentPage + 1)}
-                className="min-h-[44px] px-3.5 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed font-semibold text-xs transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+                aria-label="Next Page"
+                className="min-h-[44px] min-w-[44px] px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed font-semibold text-xs transition-colors cursor-pointer flex items-center justify-center shadow-xs"
                 id="pagination-next-btn"
               >
-                <span>Next</span>
                 <ChevronRight className="h-4 w-4" />
               </button>
             </div>

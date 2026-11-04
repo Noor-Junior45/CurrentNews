@@ -19,23 +19,47 @@ interface BlogPostCardProps {
 }
 
 /**
- * Strips HTML tags and returns a truncated plain text snippet for elegant card previews.
+ * Strips HTML tags, removes raw &nbsp / HTML entities, and returns a truncated plain text snippet for elegant card previews.
  */
-function getHtmlTextPreview(htmlString: string, maxLength: number = 160): string {
-  if (!htmlString) return '';
-  // Strip [fig. N] or [figure N] markers before previewing
-  const cleaned = htmlString.replace(/\[fig(?:ure)?(?:\.|\s+)?\s*\d+[^\]]*\]/gi, '');
-  const tempDiv = document.createElement('div');
-  tempDiv.innerHTML = cleaned;
-  const excerpt = tempDiv.textContent || tempDiv.innerText || '';
-  if (excerpt.length <= maxLength) return excerpt;
-  return excerpt.substring(0, maxLength).trim() + '...';
+function cleanPreviewText(htmlOrText: string, maxLength: number = 160): string {
+  if (!htmlOrText) return '';
+  // 1. Strip [fig. N] or [figure N] markers before previewing
+  let text = htmlOrText.replace(/\[fig(?:ure)?(?:\.|\s+)?\s*\d+[^\]]*\]/gi, '');
+  // 2. Strip HTML tags
+  text = text.replace(/<[^>]*>/g, ' ');
+  // 3. Strip base64 data URLs if any leaked
+  text = text.replace(/data:image\/[a-zA-Z0-9+.-]+;base64,[^"'\s]+/g, '');
+  // 4. Decode &nbsp, &#160, \u00a0, and common HTML entities
+  text = text
+    .replace(/&nbsp;?/gi, ' ')
+    .replace(/&#160;?/gi, ' ')
+    .replace(/\u00a0/g, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&[a-z0-9#]{1,7};?/gi, ' ');
+  // 5. Clean up duplicate whitespace
+  text = text.replace(/\s+/g, ' ').trim();
+  if (text.length <= maxLength) return text;
+  return text.substring(0, maxLength).trim() + '...';
 }
 
 export default function BlogPostCard({ post, globalPenName, cardStats, isLikedByUser }: BlogPostCardProps): React.JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
-  const previewText = post.excerpt || getHtmlTextPreview(post.content || '');
+  const rawPreview = post.excerpt || post.content || '';
+  const previewText = cleanPreviewText(rawPreview, 160);
+  const cleanTitle = (post.title || '')
+    .replace(/&nbsp;?/gi, ' ')
+    .replace(/&#160;?/gi, ' ')
+    .replace(/\u00a0/g, ' ')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/\s+/g, ' ')
+    .trim();
   const displayedAuthor = post.authorName || globalPenName || 'Current News';
   const postUrl = `/post/${post.id}/${slugify(post.title)}`;
 
@@ -147,37 +171,37 @@ export default function BlogPostCard({ post, globalPenName, cardStats, isLikedBy
       }}
       tabIndex={0}
       role="link"
-      className="group newspaper-paper border-0 border-b border-black dark:border-slate-700 sm:border sm:border-slate-200 dark:sm:border-slate-700 sm:hover:border-slate-300 dark:sm:hover:border-slate-600 rounded-none sm:rounded-xl overflow-hidden shadow-none sm:shadow-xs sm:hover:shadow-md transition-all duration-300 flex flex-col justify-between cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+      className="group newspaper-paper border-0 border-b border-black dark:border-slate-700 sm:border sm:border-slate-200 dark:sm:border-slate-700 sm:hover:border-slate-300 dark:sm:hover:border-slate-600 rounded-none sm:rounded-xl overflow-hidden shadow-none sm:shadow-xs sm:hover:shadow-md transition-all duration-300 flex flex-col justify-between cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/50 sm:h-[265px] sm:max-h-[265px]"
       id={`post-card-${post.id}`}
     >
-      <div className="p-4 sm:p-6 flex flex-col flex-1 justify-between select-text">
+      <div className="p-4 sm:p-5 flex flex-col flex-1 justify-between select-text sm:h-full">
         
-        <div>
+        <div className="flex flex-col">
           {/* Heading of article */}
-          <h3 className="font-display font-bold text-lg sm:text-xl text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 tracking-tight leading-snug mb-2 transition-colors">
-            <span onClick={handleOpenPost} className="text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-              {post.title}
+          <h3 className="font-display font-bold text-lg sm:text-[15px] lg:text-base text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 tracking-tight leading-snug mb-1.5 sm:mb-2 transition-colors sm:line-clamp-2 sm:h-[2.75rem]">
+            <span onClick={handleOpenPost} className="text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors line-clamp-2 sm:line-clamp-2">
+              {cleanTitle}
             </span>
           </h3>
 
           {/* Writer name (no avatar), Date, Tag badge, YouTube & Facebook icons in the same line */}
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs mb-3 font-sans">
-            <span className="font-semibold text-slate-800 dark:text-slate-200">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs mb-2 sm:mb-2.5 font-sans shrink-0">
+            <span className="font-semibold text-slate-800 dark:text-slate-200 truncate max-w-[120px] sm:max-w-[130px]">
               {displayedAuthor}
             </span>
             <span className="text-slate-300 dark:text-slate-600 select-none">•</span>
-            <span className="text-slate-500 dark:text-slate-400 font-mono text-[11px] sm:text-xs">
+            <span className="text-slate-500 dark:text-slate-400 font-mono text-[11px] sm:text-xs shrink-0">
               {publishDate}
             </span>
 
             {/* Tag text between date and social media logos without background box */}
             <span className="text-slate-300 dark:text-slate-600 select-none">•</span>
-            <span className="card-category-tag text-xs font-semibold text-indigo-600 dark:text-indigo-400 capitalize">
+            <span className="card-category-tag text-xs font-semibold text-indigo-600 dark:text-indigo-400 capitalize truncate max-w-[85px]">
               {post.category || 'General'}
             </span>
 
             {(hasYt || hasFb) && (
-              <div className="flex items-center space-x-1.5 ml-0.5">
+              <div className="flex items-center space-x-1.5 ml-0.5 shrink-0">
                 {hasYt && (
                   <span className="flex items-center justify-center" title="YouTube video attached">
                     <svg className="h-3.5 w-3.5 fill-[#FF0000]" viewBox="0 0 24 24" aria-hidden="true">
@@ -197,40 +221,54 @@ export default function BlogPostCard({ post, globalPenName, cardStats, isLikedBy
           </div>
 
           {/* Excerpt / Summary Description */}
-          <p className="text-sm text-slate-600 dark:text-slate-300 line-clamp-3 leading-relaxed mb-4">
+          <p className="text-sm sm:text-xs lg:text-[13px] text-slate-600 dark:text-slate-300 line-clamp-3 sm:line-clamp-2 sm:h-[2.35rem] leading-relaxed mb-3 sm:mb-2 overflow-hidden">
             {previewText || <span className="italic text-slate-400 dark:text-slate-500">No text preview available.</span>}
           </p>
         </div>
 
         {/* Bottom bar: Liked & Disliked buttons, Views, and Read full article */}
-        <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-700 mt-auto" id="card-reactions">
+        <div className="flex items-center justify-between pt-2.5 sm:pt-3 border-t border-slate-100 dark:border-slate-700 mt-auto shrink-0" id="card-reactions">
           <div className="flex items-center gap-2 sm:gap-4">
             <button
               onClick={(e) => handleReaction('liked', e)}
               className={`reaction-btn-clean min-h-[44px] min-w-[44px] -ml-2 sm:ml-0 inline-flex items-center justify-center gap-1.5 px-2 text-xs font-sans font-medium transition-colors cursor-pointer bg-transparent border-0 rounded-lg hover:bg-slate-100/70 dark:hover:bg-slate-800/60 ${
-                myReaction === 'liked'
+                currentReaction === 'like'
                   ? 'text-emerald-600 dark:text-emerald-400 font-semibold'
                   : 'text-slate-500 hover:text-slate-800 dark:text-slate-300 dark:hover:text-white'
               }`}
               title="Like this dispatch"
               type="button"
             >
-              <ThumbsUp className={`h-4 w-4 ${myReaction === 'liked' ? 'fill-emerald-600 text-emerald-600 dark:fill-emerald-400 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-300'}`} />
-              <span className="font-sans text-xs">{likes}</span>
+              <ThumbsUp
+                className={`h-4 w-4 transition-transform duration-150 ease-out ${
+                  isHeartPopping ? 'scale-125' : 'scale-100'
+                } ${
+                  currentReaction === 'like'
+                    ? 'fill-emerald-600 text-emerald-600 dark:fill-emerald-400 dark:text-emerald-400'
+                    : 'text-slate-400 dark:text-slate-300'
+                }`}
+              />
+              <span className="font-sans text-xs">{displayedLikes}</span>
             </button>
 
             <button
               onClick={(e) => handleReaction('disliked', e)}
               className={`reaction-btn-clean min-h-[44px] min-w-[44px] inline-flex items-center justify-center gap-1.5 px-2 text-xs font-sans font-medium transition-colors cursor-pointer bg-transparent border-0 rounded-lg hover:bg-slate-100/70 dark:hover:bg-slate-800/60 ${
-                myReaction === 'disliked'
+                currentReaction === 'dislike'
                   ? 'text-rose-600 dark:text-rose-400 font-semibold'
                   : 'text-slate-500 hover:text-slate-800 dark:text-slate-300 dark:hover:text-white'
               }`}
               title="Dislike this dispatch"
               type="button"
             >
-              <ThumbsDown className={`h-4 w-4 ${myReaction === 'disliked' ? 'fill-rose-600 text-rose-600 dark:fill-rose-400 dark:text-rose-400' : 'text-slate-400 dark:text-slate-300'}`} />
-              <span className="font-sans text-xs">{dislikes}</span>
+              <ThumbsDown
+                className={`h-4 w-4 ${
+                  currentReaction === 'dislike'
+                    ? 'fill-rose-600 text-rose-600 dark:fill-rose-400 dark:text-rose-400'
+                    : 'text-slate-400 dark:text-slate-300'
+                }`}
+              />
+              <span className="font-sans text-xs">{displayedDislikes}</span>
             </button>
 
             {/* Views counter */}

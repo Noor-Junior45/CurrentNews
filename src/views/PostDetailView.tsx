@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useLayoutEffect } from 'react';
 import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { auth } from '../firebase';
 import { api } from '../utils/api';
@@ -16,17 +16,27 @@ import { safeFormatDate, safeToIsoString } from '../utils/dateHelper';
 import { getCanonicalPostUrl } from '../utils/shareUrl';
 import { getCompressedStory, getCompressedStories, saveCompressedStory } from '../utils/compressedStorage';
 import { clientLoadBalancer } from '../utils/clientLoadBalancer';
+import { reactionStore } from '../utils/reactionStore';
 
 function getHtmlTextPreview(htmlString: string, maxLength: number = 160): string {
   if (!htmlString) return '';
   // Strip [fig. N] or [figure N] markers before previewing
-  const cleaned = htmlString.replace(/\[fig(?:ure)?(?:\.|\s+)?\s*\d+[^\]]*\]/gi, '');
-  const tempDiv = document.createElement('div');
-  tempDiv.innerHTML = cleaned;
-  const excerpt = tempDiv.textContent || tempDiv.innerText || '';
-  const clean = excerpt.replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
-  if (clean.length <= maxLength) return clean;
-  return clean.substring(0, maxLength).trim() + '...';
+  let text = htmlString.replace(/\[fig(?:ure)?(?:\.|\s+)?\s*\d+[^\]]*\]/gi, '');
+  text = text.replace(/<[^>]*>/g, ' ');
+  text = text.replace(/data:image\/[a-zA-Z0-9+.-]+;base64,[^"'\s]+/g, '');
+  text = text
+    .replace(/&nbsp;?/gi, ' ')
+    .replace(/&#160;?/gi, ' ')
+    .replace(/\u00a0/g, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&[a-z0-9#]{1,7};?/gi, ' ');
+  text = text.replace(/\s+/g, ' ').trim();
+  if (text.length <= maxLength) return text;
+  return text.substring(0, maxLength).trim() + '...';
 }
 
 export default function PostDetailView() {
@@ -81,10 +91,23 @@ export default function PostDetailView() {
     }
   };
 
-  // Reactions Local States
-  const [likes, setLikes] = useState(0);
-  const [dislikes, setDislikes] = useState(0);
-  const [myReaction, setMyReaction] = useState<'liked' | 'disliked' | null>(null);
+  // Reactions State using reactionStore
+  const [baseLikes, setBaseLikes] = useState(0);
+  const [baseDislikes, setBaseDislikes] = useState(0);
+  const [isHeartPopping, setIsHeartPopping] = useState(false);
+  const [, setTick] = useState(0);
+
+  // Subscribe to reactionStore for instant updates across the app
+  useEffect(() => {
+    return reactionStore.subscribe(() => {
+      setTick((t) => t + 1);
+    });
+  }, []);
+
+  // Always reset reader viewport to top whenever an article is opened or switched before paint
+  useLayoutEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, [id]);
 
   // Resume Reading & Cache State
   const [savedResumeProgress, setSavedResumeProgress] = useState<ReadingProgressRecord | null>(null);
@@ -183,47 +206,47 @@ export default function PostDetailView() {
     fetchRelatedPosts();
   }, [post?.id, post?.category]);
 
+  // Record view count only if cn_viewed_${postId} is missing or older than 24h
+  useEffect(() => {
+    if (!post?.id) return;
+    const viewKey = `cn_viewed_${post.id}`;
+    const lastViewed = localStorage.getItem(viewKey);
+    const now = Date.now();
+    const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
+    if (!lastViewed || now - Number(lastViewed) > ONE_DAY_MS) {
+      localStorage.setItem(viewKey, String(now));
+      api.recordPostView(post.id).catch((err) => {
+        console.debug('Failed to record post view:', err);
+      });
+    }
+  }, [post?.id]);
+
   useEffect(() => {
     if (post) {
-      setLikes(post.likes || 0);
-      setDislikes(post.dislikes || 0);
-      const saved = localStorage.getItem(`react_${post.id}`) as 'liked' | 'disliked' | null;
-      setMyReaction(saved);
+      if (!reactionStore.hasPendingOrRecentChange(post.id)) {
+        setBaseLikes(post.likes || 0);
+        setBaseDislikes(post.dislikes || 0);
+      }
 
       // Refresh real-time stats from Cloudflare Worker D1
-      api.getPostStats([post.id]).then(statsMap => {
+      api.getPostStats([post.id]).then((statsMap) => {
         const currentStats = statsMap[post.id];
         if (currentStats) {
-          if (currentStats.likes !== undefined) setLikes(currentStats.likes);
-          if (currentStats.dislikes !== undefined) setDislikes(currentStats.dislikes);
+          if (!reactionStore.hasPendingOrRecentChange(post.id)) {
+            if (currentStats.likes !== undefined) setBaseLikes(currentStats.likes);
+            if (currentStats.dislikes !== undefined) setBaseDislikes(currentStats.dislikes);
+          }
           if (currentStats.views !== undefined && post) {
-            setPost(prev => prev ? { ...prev, views: currentStats.views } : null);
+            setPost((prev) => (prev ? { ...prev, views: currentStats.views } : null));
           }
         }
       }).catch(() => {});
-
-      const unsubscribe = onAuthStateChanged(auth, async (user) => {
-        if (user) {
-          try {
-            const serverType = await api.getUserReaction(post.id);
-            setMyReaction(serverType);
-            if (serverType) {
-              localStorage.setItem(`react_${post.id}`, serverType);
-            } else {
-              localStorage.removeItem(`react_${post.id}`);
-            }
-          } catch (err) {
-            console.debug('Failed to load user reaction from Worker D1:', err);
-          }
-        } else {
-          // Keep local state for guests, but if they logged out reset
-          setMyReaction(null);
-        }
-      });
-
-      return () => unsubscribe();
     }
   }, [post?.id]);
+
+  const { likes: displayedLikes, dislikes: displayedDislikes, myReaction: currentReaction } =
+    post ? reactionStore.getCalculatedCounts(post.id, baseLikes, baseDislikes) : { likes: 0, dislikes: 0, myReaction: null };
 
   useEffect(() => {
     if (!post) {
@@ -487,55 +510,17 @@ export default function PostDetailView() {
       return;
     }
 
-    let newLikes = likes;
-    let newDislikes = dislikes;
-    let nextReaction: 'liked' | 'disliked' | null = null;
+    const targetType: 'like' | 'dislike' | null =
+      type === 'liked'
+        ? (currentReaction === 'like' ? null : 'like')
+        : (currentReaction === 'dislike' ? null : 'dislike');
 
-    if (myReaction === type) {
-      // Undo
-      if (type === 'liked') {
-        newLikes = Math.max(0, likes - 1);
-      } else {
-        newDislikes = Math.max(0, dislikes - 1);
-      }
-      localStorage.removeItem(`react_${post.id}`);
-      nextReaction = null;
-    } else {
-      // Apply
-      if (type === 'liked') {
-        newLikes = likes + 1;
-        if (myReaction === 'disliked') {
-          newDislikes = Math.max(0, dislikes - 1);
-        }
-      } else {
-        newDislikes = dislikes + 1;
-        if (myReaction === 'liked') {
-          newLikes = Math.max(0, likes - 1);
-        }
-      }
-      localStorage.setItem(`react_${post.id}`, type);
-      nextReaction = type;
+    if (targetType === 'like') {
+      setIsHeartPopping(true);
+      setTimeout(() => setIsHeartPopping(false), 150);
     }
 
-    setLikes(newLikes);
-    setDislikes(newDislikes);
-    setMyReaction(nextReaction);
-
-    try {
-      const apiType = nextReaction === 'liked' ? 'like' : nextReaction === 'disliked' ? 'dislike' : null;
-      await api.setUserReaction(post.id, apiType);
-    } catch (err) {
-      console.error('Failed to write reaction to Worker D1', err);
-      // Rollback on failure
-      setLikes(likes);
-      setDislikes(dislikes);
-      setMyReaction(myReaction);
-      if (myReaction === null) {
-        localStorage.removeItem(`react_${post.id}`);
-      } else {
-        localStorage.setItem(`react_${post.id}`, myReaction);
-      }
-    }
+    reactionStore.setReaction(post.id, targetType);
   };
 
   const getCanonicalPostShareUrl = () => {
@@ -953,26 +938,40 @@ export default function PostDetailView() {
             <button
               onClick={() => handleReaction('liked')}
               className={`inline-flex items-center gap-1.5 text-xs font-bold transition-colors cursor-pointer bg-transparent border-0 p-0 shadow-none ${
-                myReaction === 'liked' ? 'text-emerald-700 dark:text-emerald-400' : 'text-black dark:text-slate-100 hover:text-emerald-800 dark:hover:text-white'
+                currentReaction === 'like' ? 'text-emerald-700 dark:text-emerald-400' : 'text-black dark:text-slate-100 hover:text-emerald-800 dark:hover:text-white'
               }`}
               title="Like this dispatch"
               id="article-like-btn"
             >
-              <ThumbsUp className={`h-4 w-4 ${myReaction === 'liked' ? 'fill-emerald-600 text-emerald-600 dark:fill-emerald-400 dark:text-emerald-400' : 'text-black dark:text-slate-200'}`} />
-              <span className="font-sans text-black dark:text-slate-100 font-bold">{likes} Likes</span>
+              <ThumbsUp
+                className={`h-4 w-4 transition-transform duration-150 ease-out ${
+                  isHeartPopping ? 'scale-125' : 'scale-100'
+                } ${
+                  currentReaction === 'like'
+                    ? 'fill-emerald-600 text-emerald-600 dark:fill-emerald-400 dark:text-emerald-400'
+                    : 'text-black dark:text-slate-200'
+                }`}
+              />
+              <span className="font-sans text-black dark:text-slate-100 font-bold">{displayedLikes} Likes</span>
             </button>
 
             {/* Dislike Button without background box */}
             <button
               onClick={() => handleReaction('disliked')}
               className={`inline-flex items-center gap-1.5 text-xs font-bold transition-colors cursor-pointer bg-transparent border-0 p-0 shadow-none ${
-                myReaction === 'disliked' ? 'text-rose-700 dark:text-rose-400' : 'text-black dark:text-slate-100 hover:text-rose-800 dark:hover:text-white'
+                currentReaction === 'dislike' ? 'text-rose-700 dark:text-rose-400' : 'text-black dark:text-slate-100 hover:text-rose-800 dark:hover:text-white'
               }`}
               title="Dislike this dispatch"
               id="article-dislike-btn"
             >
-              <ThumbsDown className={`h-4 w-4 ${myReaction === 'disliked' ? 'fill-rose-600 text-rose-600 dark:fill-rose-400 dark:text-rose-400' : 'text-black dark:text-slate-200'}`} />
-              <span className="font-sans text-black dark:text-slate-100 font-bold">{dislikes} Dislikes</span>
+              <ThumbsDown
+                className={`h-4 w-4 ${
+                  currentReaction === 'dislike'
+                    ? 'fill-rose-600 text-rose-600 dark:fill-rose-400 dark:text-rose-400'
+                    : 'text-black dark:text-slate-200'
+                }`}
+              />
+              <span className="font-sans text-black dark:text-slate-100 font-bold">{displayedDislikes} Dislikes</span>
             </button>
 
             {/* Views */}
@@ -1144,29 +1143,43 @@ export default function PostDetailView() {
             <button
               onClick={() => handleReaction('liked')}
               className={`min-h-[44px] inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer border shadow-xs ${
-                myReaction === 'liked'
+                currentReaction === 'like'
                   ? 'bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
                   : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-700 border-slate-200 dark:border-slate-700'
               }`}
               title="Like this dispatch"
               id="bottom-like-btn"
             >
-              <ThumbsUp className={`h-4 w-4 ${myReaction === 'liked' ? 'fill-emerald-600 text-emerald-600 dark:fill-emerald-400 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-300'}`} />
-              <span className="font-sans">{likes} Likes</span>
+              <ThumbsUp
+                className={`h-4 w-4 transition-transform duration-150 ease-out ${
+                  isHeartPopping ? 'scale-125' : 'scale-100'
+                } ${
+                  currentReaction === 'like'
+                    ? 'fill-emerald-600 text-emerald-600 dark:fill-emerald-400 dark:text-emerald-400'
+                    : 'text-slate-500 dark:text-slate-300'
+                }`}
+              />
+              <span className="font-sans">{displayedLikes} Likes</span>
             </button>
 
             <button
               onClick={() => handleReaction('disliked')}
               className={`min-h-[44px] inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer border shadow-xs ${
-                myReaction === 'disliked'
+                currentReaction === 'dislike'
                   ? 'bg-rose-100 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-700'
                   : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-700 border-slate-200 dark:border-slate-700'
               }`}
               title="Dislike this dispatch"
               id="bottom-dislike-btn"
             >
-              <ThumbsDown className={`h-4 w-4 ${myReaction === 'disliked' ? 'fill-rose-600 text-rose-600 dark:fill-rose-400 dark:text-rose-400' : 'text-slate-500 dark:text-slate-300'}`} />
-              <span className="font-sans">{dislikes} Dislikes</span>
+              <ThumbsDown
+                className={`h-4 w-4 ${
+                  currentReaction === 'dislike'
+                    ? 'fill-rose-600 text-rose-600 dark:fill-rose-400 dark:text-rose-400'
+                    : 'text-slate-500 dark:text-slate-300'
+                }`}
+              />
+              <span className="font-sans">{displayedDislikes} Dislikes</span>
             </button>
           </div>
         </div>
@@ -1205,6 +1218,7 @@ export default function PostDetailView() {
                 <div key={relatedPost.id} id={`related-article-item-${relatedPost.id}`}>
                   <Link
                     to={`/post/${relatedPost.id}/${slugify(relatedPost.title)}`}
+                    onClick={() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' })}
                     className="group block bg-transparent border-0 p-0 transition-colors"
                   >
                     <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1 mb-1.5">

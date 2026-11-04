@@ -186,6 +186,13 @@ class ReactionStore {
   }
 
   /**
+   * Return array of all post IDs the current user has liked
+   */
+  public getLikedIds(): string[] {
+    return Object.keys(this.localReactions).filter((id) => this.localReactions[id] === 'like');
+  }
+
+  /**
    * Calculates displayed counts using the formula:
    *   displayedLikes = serverLikes + (localMine === 'like' ? 1 : 0) - (confirmedMine === 'like' ? 1 : 0)
    *   displayedDislikes = serverDislikes + (localMine === 'dislike' ? 1 : 0) - (confirmedMine === 'dislike' ? 1 : 0)

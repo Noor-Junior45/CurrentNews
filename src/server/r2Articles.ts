@@ -59,6 +59,15 @@ export function extractPlainExcerpt(htmlOrText: string, maxLength = 200): string
     .replace(/<[^>]*>/g, ' ')
     .replace(/\[fig(?:ure)?(?:\.|\s+)?\s*\d+[^\]]*\]/gi, '')
     .replace(/data:image\/[a-zA-Z0-9+.-]+;base64,[^"'\s]+/g, '')
+    .replace(/&nbsp;?/gi, ' ')
+    .replace(/&#160;?/gi, ' ')
+    .replace(/\u00a0/g, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&[a-z0-9#]{1,7};?/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
   return stripped.length > maxLength ? stripped.slice(0, maxLength).trim() + '...' : stripped;

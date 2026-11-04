@@ -392,7 +392,15 @@ export default function Header() {
         
         {/* Brand Name & Newsroom Navigation */}
         <div className="flex items-center space-x-5 sm:space-x-8 min-w-0">
-          <Link to="/" className="flex items-center text-slate-900 dark:text-white hover:opacity-90 transition-opacity min-w-0" id="header-brand-link">
+          <Link 
+            to="/" 
+            onClick={() => {
+              sessionStorage.removeItem('current_news_return_scroll');
+              window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+            }}
+            className="flex items-center text-slate-900 dark:text-white hover:opacity-90 transition-opacity min-w-0" 
+            id="header-brand-link"
+          >
             <div className="flex flex-col min-w-0">
               <span className="font-display font-bold text-base sm:text-lg md:text-xl tracking-tight leading-none uppercase text-slate-950 dark:text-white">
                 Current News

@@ -312,6 +312,30 @@
 - **Body:** `{ "posts_stats": [...], "reactions": [...], "subscribers": [...], "push_subscriptions": [...], "users": [...] }`
 - **Response Shape (200 OK):** `{ "success": true, "imported": { "posts_stats": 41, "reactions": 10, "subscribers": 5, "push_subscriptions": 2, "users": 1 } }`
 
+### `POST /admin/recount` (Admin Only)
+- **Method:** `POST`
+- **Headers:** `Authorization: Bearer <Firebase_ID_Token>` (exact email match in `ADMIN_EMAILS`)
+- **Action:** Recomputes aggregate likes and dislikes across the entire `reactions` table in ONE atomic D1 `INSERT ... ON CONFLICT(post_id) DO UPDATE ... GROUP BY post_id` query, reconciling any count drift.
+- **Response Shape (200 OK):**
+  ```json
+  { "success": true, "message": "Reactions recounted and posts_stats updated successfully" }
+  ```
+
+## 7. Client Reaction Architecture (`src/utils/reactionStore.ts`)
+- **Storage Keys:**
+  - `cn_react_${uid}`: Optimistic local reaction per post (`like` | `dislike` | `null`)
+  - `cn_confirmed_${uid}`: Last server-confirmed reaction per post
+  - `cn_react_queue_${uid}`: Persisted retry queue with exponential backoff
+  - `cn_my_reactions_${uid}`: Session cache of user reactions (10-minute TTL)
+  - `cn_stats_cache`: 3-minute local cache for `/stats` responses in HomeView
+- **Debounce:** 1500 ms trailing debounce after the LAST tap
+- **No-op Cancellation:** If final state equals confirmed state, network request is cancelled
+- **Count Calculation Formula:**
+  - `displayedLikes = serverLikes + (localMine === 'like' ? 1 : 0) - (confirmedMine === 'like' ? 1 : 0)`
+  - `displayedDislikes = serverDislikes + (localMine === 'dislike' ? 1 : 0) - (confirmedMine === 'dislike' ? 1 : 0)`
+- **Auto-Flush Lifecycle:** Triggers on `visibilitychange`, `pagehide` (with `fetch` `keepalive: true`), `online`, and app start.
+
+
 
 
 

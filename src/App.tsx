@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useLayoutEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Header from './components/Header';
 import Footer from './components/Footer';
@@ -67,6 +67,33 @@ function AdSenseRouteWatcher() {
   return null;
 }
 
+function ScrollToTop() {
+  const { pathname, search, hash } = useLocation();
+
+  useLayoutEffect(() => {
+    // If returning to home feed with saved return scroll position, let HomeView handle restoration
+    if (pathname === '/' && sessionStorage.getItem('current_news_return_scroll')) {
+      return;
+    }
+    // If on homepage changing pagination via search params (?page=), pagination handler smoothly scrolls to grid
+    if (pathname === '/' && search.includes('page=')) {
+      return;
+    }
+    // If an anchor hash exists, allow scrolling to hash target
+    if (hash) {
+      const element = document.querySelector(hash);
+      if (element) {
+        element.scrollIntoView();
+        return;
+      }
+    }
+    // Otherwise, ensure every route navigation starts at the very top of the window before browser paints
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, [pathname, search, hash]);
+
+  return null;
+}
+
 export default function App() {
   useEffect(() => {
     // Register PWA service worker for notifications and offline support
@@ -86,6 +113,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <ScrollToTop />
       <AdSenseRouteWatcher />
       <div className="flex flex-col min-h-screen bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 overflow-x-hidden" id="app-root-container">
         

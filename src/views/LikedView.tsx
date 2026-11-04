@@ -11,6 +11,7 @@ import { updateDocumentSEO } from '../utils/seo';
 import { api } from '../utils/api';
 import { clientLoadBalancer } from '../utils/clientLoadBalancer';
 import { getCompressedStory } from '../utils/compressedStorage';
+import { reactionStore } from '../utils/reactionStore';
 
 export default function LikedView() {
   const navigate = useNavigate();
@@ -36,14 +37,41 @@ export default function LikedView() {
 
         if (user) {
           try {
-            likedIds = await api.getMyReactions();
+            const likedFromStore = await reactionStore.loadMyReactions();
+            likedIds = [...likedFromStore];
           } catch (e) {
-            console.debug('Failed to fetch user liked posts from Worker D1:', e);
+            console.debug('Failed to fetch user liked posts from reactionStore:', e);
           }
+          // Also check local reactions for user
+          try {
+            const stored = localStorage.getItem(`cn_react_${user.uid}`);
+            if (stored) {
+              const parsed = JSON.parse(stored);
+              for (const [id, type] of Object.entries(parsed)) {
+                if (type === 'like' && !likedIds.includes(id)) {
+                  likedIds.push(id);
+                }
+              }
+            }
+          } catch (_) {}
         }
 
         // Fallback to localStorage if the user is a guest or we didn't find any liked posts yet
         if (likedIds.length === 0) {
+          // Check cn_react_guest
+          try {
+            const guestStored = localStorage.getItem('cn_react_guest');
+            if (guestStored) {
+              const parsed = JSON.parse(guestStored);
+              for (const [id, type] of Object.entries(parsed)) {
+                if (type === 'like' && !likedIds.includes(id)) {
+                  likedIds.push(id);
+                }
+              }
+            }
+          } catch (_) {}
+
+          // Legacy react_ keys
           for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
             if (key && key.startsWith('react_')) {

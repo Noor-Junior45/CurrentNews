@@ -108,9 +108,59 @@
   - Removed "Method 1" heading and subtitle; the interface directly displays user login credentials, Permanent Action Notice, confirmation checklist/input, and deletion trigger.
 - **Phase 22 (One-Click Copy Confirmation Pill):** [COMPLETED]
   - Styled confirmation label to match reference image: light gray pill badge (`Type [DELETE ❐] to confirm:`) with icon-only copy trigger, smooth active states, clipboard copying with fallback, and subtle check indicator.
-- **Phase 23 (R2 Image URL Sanitization & Standalone Migration Tool):** [COMPLETED]
+- [x] **Phase 23 (R2 Image URL Sanitization & Standalone Migration Tool):** [COMPLETED]
   - Added `getPublicBase()` in `src/server/r2Articles.ts` to strictly sanitize the hostname from `R2_PUBLIC_DOMAIN` (stripping protocol, path, and query params) and always return `https://${host}` (fallback: `https://media.currentnews.blog`).
   - Strict atomic upload: `uploadBase64ImageToR2` throws a fatal error if credentials or PutObject fail, guaranteeing articles can never point to unverified image links.
   - Added self-healing URL sanitization in `imageUrl.ts` and `processAndExtractBase64Images` repairing accidental `/uploads/.../img/` paths.
   - Created standalone CLI tool `scripts/migrate-from-r2.mjs` (and `npm run migrate:r2`): downloads all bucket articles, decodes base64 images into `img/{postId}-{n}.webp`, sends mandatory `HEAD` requests to verify HTTP 200 before writing, updates full articles, rebuilds light 37 KB `feed.json`, supports `--dry-run`, and outputs a comprehensive migration summary.
+- [x] **Phase 24 (Instagram-Style Optimistic Reactions & Durable Object Write Coalescing):** [COMPLETED]
+  - Verified `src/server/r2Articles.ts` public URL builder using `getPublicBase()`; added `--fix-urls` mode to `scripts/migrate-from-r2.mjs` with HEAD checks, broken URL correction, missing image alerts, and `--dry-run` metrics.
+  - Client-side reaction store (`src/utils/reactionStore.ts`): optimistic local state with 1500ms trailing debounce after last tap, no-op cancellation if reverted, exponential backoff retry queue (`cn_react_queue_${uid}`), automatic flush on visibilitychange/pagehide/online, HTTP 401 handling, 10-minute session caching on `/my-reactions`, and count formula preventing stale count overwrites.
+  - Shared UI integration: Heart-pop animation (scale 1.25, 150ms) on `BlogPostCard.tsx` and `PostDetailView.tsx`. 24h deduplicated view count reporting via `cn_viewed_${postId}`.
+  - HomeView 3-minute `/stats` cache (`cn_stats_cache`), fetching only missing or stale IDs from the edge Worker.
+  - Cloudflare Worker Durable Object write coalescing (`StatsAggregator` in `worker/src/index.ts`): 30s alarm timer merges pending reaction/view deltas into a single D1 batch update (`ON CONFLICT(post_id) DO UPDATE SET likes=MAX(0, likes+excluded.likes)...`), direct D1 fallback on failure, edge caching on `GET /stats` (`s-maxage=60`), and admin `POST /admin/recount`.
+- [x] **Phase 25 (Preview Entity Stripping & Uniform Desktop/Tablet Card Grid):** [COMPLETED]
+  - Entity Sanitization: Implemented `cleanPreviewText` across `BlogPostCard.tsx`, `HomeView.tsx`, `PostDetailView.tsx`, and `extractPlainExcerpt` in `src/server/r2Articles.ts` and `scripts/migrate-from-r2.mjs`, stripping `&nbsp;?`, `&#160;?`, `\u00a0`, and all raw HTML entities into clean single whitespace. Deep cleaned local `data/feed.json`.
+  - Big Screen & Tablet Uniform Card Dimensions: Enforced `sm:h-[265px] sm:max-h-[265px]` on `BlogPostCard` with reduced 2-line heading slots (`sm:text-[15px] lg:text-base sm:line-clamp-2 sm:h-[2.75rem]`), reduced 2-line description slots (`sm:text-xs lg:text-[13px] sm:line-clamp-2 sm:h-[2.35rem]`), and pinned bottom reaction bar. Mobile phone screen layout (`< sm`) is 100% preserved.
+- [x] **Phase 26 (20 Articles per Page & Responsive Grid Ad Alignment):** [COMPLETED]
+  - Verified 20 articles per page pagination on the home feed (`postsPerPage = 20`) with smooth numeric and prev/next page navigation.
+  - Verified 100% operational status of all application routes (`/post/:id`, `/profile`, `/signin`, `/liked`, `/settings`, `/delete-account`, `/about`, `/contact`, `/editorial-policy`, `/privacy`, `/terms`, `/admin`).
+  - Fixed empty gap on tablet screens after the 3rd card: On 2-column tablet screens, ads are aligned after 4 cards (`idx === 3`) completing 2 full rows, while desktop 3-column ads trigger at `idx === 2` and common multiples of 6 (`idx === 5`, `idx === 11`), eliminating all holes.
+- [x] **Phase 27 (Icon-Only Tailless Pagination Buttons):** [COMPLETED]
+  - Streamlined `#pagination-prev-btn` and `#pagination-next-btn` in `HomeView.tsx`: removed text spans (`Prev` and `Next`), leaving clean tailless chevron arrow icons (`ChevronLeft` and `ChevronRight`).
+  - Formatted buttons as uniform 44x44px square touch targets (`min-h-[44px] min-w-[44px] flex items-center justify-center`) matching the adjacent numeric page pills, with explicit `aria-label` tags for accessibility.
+- [x] **Phase 28 (Universal Scroll Management & Top Article Opening):** [COMPLETED]
+  - Root Cause Fixed: In React Router SPA, navigating to an article (`/post/:id`) from a scrolled position on the feed retained the window scroll offset (e.g. 1200px), dropping the user straight to "Related Coverage" at the bottom of the article.
+  - Implemented top-level `ScrollToTop` router component inside `<BrowserRouter>` in `src/App.tsx` that resets window scroll to `top: 0` on every forward route change.
+  - Preserved feed scroll restoration: When returning from an article back to the home feed, `current_news_return_scroll` is preserved and `HomeView.tsx` smoothly restores the reader's exact previous reading position. Homepage pagination (`?page=`) continues smooth-scrolling to `#posts-grid`.
+- [x] **Phase 29 (Eliminate Pre-Navigation Scroll Flashes via useLayoutEffect):** [COMPLETED]
+  - Root Cause Fixed: Synchronous `window.scrollTo(0, 0)` calls inside `onClick` handlers (`handleOpenPost` on cards and hero poster in `HomeView.tsx`) yanked the current homepage to the top before navigation occurred, causing the top hero carousel poster to flash on screen for a split second before the article rendered.
+  - Removed all pre-navigation `window.scrollTo` calls from click handlers in `BlogPostCard.tsx` and `HomeView.tsx`.
+  - Upgraded `ScrollToTop` in `src/App.tsx` and the `[id]` scroll watcher in `src/views/PostDetailView.tsx` from `useEffect` to `useLayoutEffect`. This guarantees the browser resets the window scroll to `0px` synchronously *before* the new article paints to the screen, completely eliminating the hero poster flash and ensuring seamless 0ms top-of-article rendering.
+- [x] **Phase 30 (Draft Composer Optimization & Photo Workflow Reorganization):** [COMPLETED]
+  - Removed "Editorial Byline / Writer *" input box from `/admin/draft`: authorName is automatically populated from the logged-in user or active pen name (`user?.displayName || 'Current News'`), eliminating unnecessary redundant fields.
+  - Rearranged section order: Photo Attachment Section (`PhotoAttachmentSection`) moved directly ABOVE the Manuscript section (`RichTextEditor`), allowing writers to upload photos first and reference/insert them seamlessly into the manuscript.
+  - Display Size Responsive Fit: Upgraded container width to `w-full max-w-5xl lg:max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8` with fluid `w-full min-w-0 box-border` styling across all inputs, category selectors, photo rows, and editors to comfortably fill laptop and desktop screens without cramped constraints or horizontal overflow on mobile.
+  - End of Story Photos Default: Configured all uploaded primary and gallery photos in `PhotoAttachmentSection.tsx` and `DraftPublicationView.tsx` to default to `'bottom'` ("End of Story"), rendering photos neatly at the conclusion of the article body.
+- [x] **Phase 31 (Draft Labels, Reference Link Redesign & Smart Hashtags):** [COMPLETED]
+  - Form Label Refinement: Renamed labels to clean, concise names: `Title *`, `Category *`, `Manuscript *`, and `Reference Link`.
+  - Reference Link Redesign: Rebuilt section with header, an empty container box space (`min-h-[64px]`), and a below-box pill button titled "Add hyperlink". Clicking "Add hyperlink" appends rows formatted precisely as `<no.> <link input> <delete button>`. Links render seamlessly at the end of articles via `EmbedHandler.tsx`.
+  - Context-Aware Suggested & Popular Hashtags: Integrated category-aware hashtag suggestions mapped to the selected `category` (`Jharkhand`, `Politics`, `Tech`, `Sports`, `Business`, `Health`, `World`, `Opinion`, `General`) alongside global trending/popular tags (`#BreakingNews`, `#LiveUpdates`, `#CurrentNews`, `#India`, etc.). One-tap chip clicks toggle/append tags cleanly with duplicate prevention.
+- [x] **Phase 32 (Manuscript Writing Assistant & Design Preset Removal):** [COMPLETED]
+  - Targeted Selected Element (`div#quill-editor-wrapper > div:nth-of-type(1)`): Removed the entire "Writing Assistant & Design Presets" panel from the top of `RichTextEditor.tsx`.
+  - Removed all associated template buttons: Alert Banner, Editorial Note, Key Takeaways, Highlight Quote, and Interview Q&A.
+  - Retained clean standard Quill WYSIWYG toolbar and editor controls, keeping full imperative handle compatibility for direct photo embedding.
+- [x] **Phase 33 (Enlarge & Center "Add Hyperlink" Action):** [COMPLETED]
+  - Targeted Selected Element (`div:nth-of-type(6) > div:nth-of-type(2) > button:nth-of-type(1)`): Placed the "Add hyperlink" action button in a centered flex container (`flex justify-center mt-3.5`).
+  - Increased button footprint: expanded padding to `px-6 py-2.5 sm:px-8 sm:py-3`, enlarged text to `text-sm font-bold tracking-wide`, scaled icon to `w-4.5 h-4.5`, and added subtle interactive hover/active transitions (`hover:scale-[1.02] active:scale-[0.98]`).
+- [x] **Phase 34 (Full-Width Add Hyperlink Pill Button with Title Case):** [COMPLETED]
+  - Targeted Selected Element (`div:nth-of-type(6) > div:nth-of-type(2) > button:nth-of-type(1)`): Expanded the button length to span full width (`w-full`) touching both sides within the container's margins (`box-border py-3 sm:py-3.5 px-6 rounded-full`).
+  - Updated button text and placeholder copy to proper capital & small letter Title Case: `Add Hyperlink`.
+- [x] **Phase 35 (Add Hyperlink Height Ratio & Font Matched to Discard Draft):** [COMPLETED]
+  - Height & Font Ratio Match: Scaled vertical padding to `py-2.5 px-5` and font typography to `text-xs font-bold`, identical to the Discard Draft action button (`div:nth-of-type(9) > button:nth-of-type(1)`).
+  - Kept full-width layout (`w-full box-border`) touching both margins of the form container with `h-4 w-4` icon and rounded-full pill outline.
+- [x] **Phase 36 (Title Box Auto-Wrapping & Adaptive Expansion):** [COMPLETED]
+  - Targeted Selected Element (`form > div:nth-of-type(1) > input#post-title`): Replaced fixed single-line input with full-width (`w-full box-border`) auto-expanding `<textarea id="post-title">`.
+  - Added text-wrapping and scrollHeight auto-height adjustment so long headlines wrap cleanly across multiple lines without horizontal cutoff, allowing writers to view and edit the entire title with ease.
+  - Added real-time character counter (`{title.length}/200`), Enter-key form submission guard, and `resize-y` handle.
 - **Immediate Next Step:** Production deployment to Google Cloud Run and Cloudflare D1/Worker deployment.

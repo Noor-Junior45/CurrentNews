@@ -162,17 +162,27 @@ export default function PhotoAttachmentSection({
         if (onPrimaryImageUrlFallbackChange) {
           onPrimaryImageUrlFallbackChange(uploadedFallbackUrls[0]);
         }
+        onImagePositionChange('bottom');
         if (uploadedUrls.length > 1) {
           onGalleryUrlsChange([...galleryUrls, ...uploadedUrls.slice(1)]);
           if (onGalleryUrlsFallbackChange) {
             onGalleryUrlsFallbackChange([...galleryUrlsFallback, ...uploadedFallbackUrls.slice(1)]);
           }
+          if (onGalleryPositionsChange) {
+            const extraCount = uploadedUrls.length - 1;
+            const newPos: ('gallery' | 'top' | 'middle' | 'bottom' | 'inline')[] = Array(extraCount).fill('bottom');
+            onGalleryPositionsChange([...(galleryPositions || []), ...newPos]);
+          }
         }
       } else {
-        // If primary already exists, append all newly uploaded to gallery
+        // If primary already exists, append all newly uploaded to gallery with bottom position
         onGalleryUrlsChange([...galleryUrls, ...uploadedUrls]);
         if (onGalleryUrlsFallbackChange) {
           onGalleryUrlsFallbackChange([...galleryUrlsFallback, ...uploadedFallbackUrls]);
+        }
+        if (onGalleryPositionsChange) {
+          const newPos: ('gallery' | 'top' | 'middle' | 'bottom' | 'inline')[] = Array(uploadedUrls.length).fill('bottom');
+          onGalleryPositionsChange([...(galleryPositions || []), ...newPos]);
         }
       }
     }
@@ -234,7 +244,7 @@ export default function PhotoAttachmentSection({
     if (onGalleryPositionsChange) {
       const updated = [...galleryPositions];
       while (updated.length < galleryUrls.length) {
-        updated.push('gallery');
+        updated.push('bottom');
       }
       updated[idx] = newFlow;
       onGalleryPositionsChange(updated);
@@ -364,7 +374,7 @@ export default function PhotoAttachmentSection({
                     Position:
                   </label>
                   <select
-                    value={imagePosition}
+                    value={imagePosition || 'bottom'}
                     onChange={(e) => {
                       const val = e.target.value as any;
                       if (val === 'inline') {
@@ -380,9 +390,9 @@ export default function PhotoAttachmentSection({
                     }}
                     className="text-xs font-semibold text-slate-800 dark:text-slate-200 bg-transparent focus:outline-hidden cursor-pointer"
                   >
+                    <option value="bottom" className="dark:bg-slate-900">End of Story (Default)</option>
                     <option value="top" className="dark:bg-slate-900">Top of Story</option>
                     <option value="middle" className="dark:bg-slate-900">Middle of Story</option>
-                    <option value="bottom" className="dark:bg-slate-900">End of Story</option>
                     <option value="inline" className="dark:bg-slate-900">Inside Article Body</option>
                   </select>
                 </div>
@@ -419,7 +429,7 @@ export default function PhotoAttachmentSection({
           {/* Additional Photos (Gallery) Rows with Flow Selection Box */}
           {galleryUrls.map((url, idx) => {
             const figNum = idx + 2;
-            const currentFlow = galleryPositions?.[idx] || 'gallery';
+            const currentFlow = galleryPositions?.[idx] || 'bottom';
             return (
               <div key={idx} className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex items-center gap-3 min-w-0">
@@ -474,15 +484,15 @@ export default function PhotoAttachmentSection({
                       Position:
                     </label>
                     <select
-                      value={currentFlow}
+                      value={currentFlow || 'bottom'}
                       onChange={(e) => handleGalleryFlowChange(idx, e.target.value as any)}
                       className="text-xs font-semibold text-slate-800 dark:text-slate-200 bg-transparent focus:outline-hidden cursor-pointer"
                     >
-                      <option value="gallery" className="dark:bg-slate-900">Bottom Photo Gallery</option>
-                      <option value="inline" className="dark:bg-slate-900">Inside Article Body</option>
+                      <option value="bottom" className="dark:bg-slate-900">End of Story (Default)</option>
                       <option value="top" className="dark:bg-slate-900">Top of Story</option>
                       <option value="middle" className="dark:bg-slate-900">Middle of Story</option>
-                      <option value="bottom" className="dark:bg-slate-900">End of Story</option>
+                      <option value="gallery" className="dark:bg-slate-900">Bottom Photo Gallery</option>
+                      <option value="inline" className="dark:bg-slate-900">Inside Article Body</option>
                     </select>
                   </div>
 

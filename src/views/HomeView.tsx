@@ -295,7 +295,7 @@ export default function HomeView() {
       const { posts: balancedPosts } = await clientLoadBalancer.fetchArticlesFeed({
         category: selectedCategory,
         search: searchTerm,
-        limit: 30,
+        limit: 100,
       });
 
       if (balancedPosts && balancedPosts.length > 0) {

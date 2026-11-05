@@ -133,7 +133,10 @@ export async function handleGetPosts(req: Request, res: Response) {
 
   // Parse chunk / pagination parameters
   const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
-  const limit = Math.max(1, Math.min(50, parseInt(req.query.limit as string, 10) || 10)); // Default 10 per chunk on mobile
+  const limitParam = req.query.limit as string;
+  const limit = limitParam === 'all'
+    ? (posts.length || 100)
+    : Math.max(1, Math.min(200, parseInt(limitParam, 10) || 100));
   const offset = (page - 1) * limit;
 
   const chunk = posts.slice(offset, offset + limit);

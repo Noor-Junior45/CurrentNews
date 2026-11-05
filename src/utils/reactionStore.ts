@@ -63,6 +63,29 @@ class ReactionStore {
       this.currentUid = user ? user.uid : null;
 
       if (this.currentUid !== prevUid) {
+        // If guest had local reactions, migrate them to logged-in user
+        if (user) {
+          try {
+            const guestStored = localStorage.getItem('cn_react_guest');
+            if (guestStored) {
+              const guestReactions = JSON.parse(guestStored);
+              const userKey = this.getStorageKey('cn_react');
+              const existingUserStored = localStorage.getItem(userKey);
+              const existingUserReactions = existingUserStored ? JSON.parse(existingUserStored) : {};
+              for (const [id, r] of Object.entries(guestReactions)) {
+                if (!existingUserReactions[id]) {
+                  existingUserReactions[id] = r;
+                  if (r === 'like') {
+                    this.enqueueReaction(id, 'like');
+                  }
+                }
+              }
+              localStorage.setItem(userKey, JSON.stringify(existingUserReactions));
+              localStorage.removeItem('cn_react_guest');
+            }
+          } catch (_) {}
+        }
+
         this.loadFromStorage();
         this.myReactionsLoadedForSession = false;
         if (user) {
@@ -75,13 +98,6 @@ class ReactionStore {
   }
 
   private loadFromStorage() {
-    if (!this.currentUid) {
-      this.localReactions = {};
-      this.confirmedReactions = {};
-      this.retryQueue = [];
-      return;
-    }
-
     try {
       const storedLocal = localStorage.getItem(this.getStorageKey('cn_react'));
       this.localReactions = storedLocal ? JSON.parse(storedLocal) : {};
@@ -96,6 +112,11 @@ class ReactionStore {
       this.confirmedReactions = {};
     }
 
+    if (!this.currentUid) {
+      this.retryQueue = [];
+      return;
+    }
+
     try {
       const storedQueue = localStorage.getItem(this.getStorageKey('cn_react_queue'));
       this.retryQueue = storedQueue ? JSON.parse(storedQueue) : [];
@@ -105,11 +126,12 @@ class ReactionStore {
   }
 
   private saveToStorage() {
-    if (!this.currentUid) return;
     try {
       localStorage.setItem(this.getStorageKey('cn_react'), JSON.stringify(this.localReactions));
       localStorage.setItem(this.getStorageKey('cn_confirmed'), JSON.stringify(this.confirmedReactions));
-      localStorage.setItem(this.getStorageKey('cn_react_queue'), JSON.stringify(this.retryQueue));
+      if (this.currentUid) {
+        localStorage.setItem(this.getStorageKey('cn_react_queue'), JSON.stringify(this.retryQueue));
+      }
     } catch (_) {}
   }
 
@@ -240,6 +262,26 @@ class ReactionStore {
     this.localReactions[postId] = targetType;
     this.recentChangeTimestamps.set(postId, Date.now());
     this.saveToStorage();
+
+    // Synchronize cn_my_reactions cache immediately so LikedView reflects the change
+    try {
+      const cacheKey = this.getStorageKey('cn_my_reactions');
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && Array.isArray(parsed.likedPostIds)) {
+          let list: string[] = parsed.likedPostIds;
+          if (targetType === 'like') {
+            if (!list.includes(postId)) list.push(postId);
+          } else {
+            list = list.filter((id) => id !== postId);
+          }
+          parsed.likedPostIds = list;
+          localStorage.setItem(cacheKey, JSON.stringify(parsed));
+        }
+      }
+    } catch (_) {}
+
     this.notify();
 
     // 2. Clear existing debounce timer for this post

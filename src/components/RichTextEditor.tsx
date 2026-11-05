@@ -130,7 +130,7 @@ const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(fun
     }
   }));
 
-  const handleEditorAreaClick = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleFocusEditor = (e: React.MouseEvent | React.TouchEvent) => {
     const target = e.target as HTMLElement;
     // Do not interfere with toolbar button or picker clicks
     if (target.closest('.ql-toolbar')) return;
@@ -142,25 +142,20 @@ const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(fun
       editor.focus();
     }
 
-    // If clicked on empty space of container or editor root (below text lines)
-    if (
-      target.classList.contains('ql-container') ||
-      target.classList.contains('quill') ||
-      target.id === 'quill-editor-wrapper' ||
-      target.classList.contains('ql-editor')
-    ) {
-      const editorEl = editor.root;
-      if (editorEl) {
-        const lastChild = editorEl.lastElementChild;
-        if (lastChild) {
-          const lastChildRect = lastChild.getBoundingClientRect();
-          if (e.clientY > lastChildRect.bottom) {
-            const length = editor.getLength();
-            editor.setSelection(Math.max(0, length - 1), 0, 'user');
-          }
-        } else {
-          editor.setSelection(0, 0, 'user');
+    const editorEl = editor.root;
+    if (editorEl) {
+      const length = editor.getLength();
+      const lastChild = editorEl.lastElementChild;
+      if (lastChild) {
+        const clientY = 'touches' in e && e.touches.length > 0 
+          ? e.touches[0].clientY 
+          : ('clientY' in e ? (e as React.MouseEvent).clientY : 0);
+        const lastChildRect = lastChild.getBoundingClientRect();
+        if (clientY > lastChildRect.bottom || target === editorEl || target.classList.contains('ql-container') || target.classList.contains('quill')) {
+          editor.setSelection(Math.max(0, length - 1), 0, 'user');
         }
+      } else {
+        editor.setSelection(0, 0, 'user');
       }
     }
   };
@@ -169,8 +164,9 @@ const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(fun
     <div className="w-full flex flex-col" id="quill-editor-wrapper">
       {/* Main Editor Component */}
       <div 
-        className="bg-white dark:bg-slate-950 cursor-text"
-        onClick={handleEditorAreaClick}
+        className="bg-white dark:bg-slate-950 cursor-text min-h-[280px]"
+        onClick={handleFocusEditor}
+        onTouchEnd={handleFocusEditor}
       >
         <QuillComponent
           ref={quillRef}

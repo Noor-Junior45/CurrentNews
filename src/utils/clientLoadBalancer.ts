@@ -186,7 +186,7 @@ class ClientLoadBalancer {
           const queryParams = new URLSearchParams();
           if (params?.category && params.category !== 'All') queryParams.set('category', params.category);
           if (params?.search) queryParams.set('search', params.search);
-          queryParams.set('limit', String(params?.limit || 30));
+          queryParams.set('limit', String(params?.limit || 100));
           requestUrl = `${node.baseUrl}/posts?${queryParams.toString()}`;
         } else {
           // Cloudflare CDN or Mirror feed JSON

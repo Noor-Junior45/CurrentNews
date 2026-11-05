@@ -29,78 +29,98 @@ export default function LikedView() {
     // Scroll to top
     window.scrollTo({ top: 0, behavior: 'instant' });
 
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    let isMounted = true;
+
+    const refreshLikedPosts = async () => {
       setLoading(true);
       setError(null);
       try {
-        let likedIds: string[] = [];
+        const user = auth.currentUser;
+        const likedIdSet = new Set<string>();
 
+        // 1. Live in-memory liked IDs from reactionStore (instant zero-delay)
+        reactionStore.getLikedIds().forEach(id => likedIdSet.add(id));
+
+        // 2. Fetch server-confirmed reactions if logged in
         if (user) {
           try {
-            const likedFromStore = await reactionStore.loadMyReactions();
-            likedIds = [...likedFromStore];
+            const serverLiked = await reactionStore.loadMyReactions();
+            serverLiked.forEach(id => likedIdSet.add(id));
           } catch (e) {
             console.debug('Failed to fetch user liked posts from reactionStore:', e);
           }
-          // Also check local reactions for user
+
+          // Also check persistent user storage
           try {
             const stored = localStorage.getItem(`cn_react_${user.uid}`);
             if (stored) {
               const parsed = JSON.parse(stored);
               for (const [id, type] of Object.entries(parsed)) {
-                if (type === 'like' && !likedIds.includes(id)) {
-                  likedIds.push(id);
+                if (type === 'like') {
+                  likedIdSet.add(id);
                 }
               }
             }
           } catch (_) {}
         }
 
-        // Fallback to localStorage if the user is a guest or we didn't find any liked posts yet
-        if (likedIds.length === 0) {
-          // Check cn_react_guest
-          try {
-            const guestStored = localStorage.getItem('cn_react_guest');
-            if (guestStored) {
-              const parsed = JSON.parse(guestStored);
-              for (const [id, type] of Object.entries(parsed)) {
-                if (type === 'like' && !likedIds.includes(id)) {
-                  likedIds.push(id);
-                }
+        // 3. Check guest storage for any liked posts
+        try {
+          const guestStored = localStorage.getItem('cn_react_guest');
+          if (guestStored) {
+            const parsed = JSON.parse(guestStored);
+            for (const [id, type] of Object.entries(parsed)) {
+              if (type === 'like') {
+                likedIdSet.add(id);
               }
             }
-          } catch (_) {}
+          }
+        } catch (_) {}
 
-          // Legacy react_ keys
-          for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (key && key.startsWith('react_')) {
-              const val = localStorage.getItem(key);
-              if (val === 'liked') {
-                const id = key.replace('react_', '');
-                if (!likedIds.includes(id)) {
-                  likedIds.push(id);
-                }
-              }
+        // 4. Legacy react_ keys
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith('react_')) {
+            const val = localStorage.getItem(key);
+            if (val === 'liked') {
+              const id = key.replace('react_', '');
+              likedIdSet.add(id);
             }
           }
         }
 
-        if (likedIds.length === 0) {
-          setLikedPosts([]);
-          setLoading(false);
+        // 5. Exclude any post that was unliked or disliked locally
+        const finalLikedIds: string[] = [];
+        for (const id of Array.from(likedIdSet)) {
+          const currentReaction = reactionStore.getReaction(id);
+          // If explicitly set to dislike or null after tap, skip it
+          if (currentReaction === 'dislike') continue;
+          if (currentReaction === null && reactionStore.hasPendingOrRecentChange(id)) continue;
+          finalLikedIds.push(id);
+        }
+
+        if (finalLikedIds.length === 0) {
+          if (isMounted) {
+            setLikedPosts([]);
+            setLoading(false);
+          }
           return;
         }
 
         // Fetch articles using light feed and client load balancer
-        const { posts: feedPosts } = await clientLoadBalancer.fetchArticlesFeed({ limit: 100 });
+        let feedPosts: Post[] = [];
+        try {
+          const res = await clientLoadBalancer.fetchArticlesFeed({ limit: 100 });
+          feedPosts = res.posts || [];
+        } catch (_) {}
+
         const feedMap = new Map<string, Post>();
         for (const p of feedPosts) {
           feedMap.set(p.id, p);
         }
 
         const list: Post[] = [];
-        for (const id of likedIds) {
+        for (const id of finalLikedIds) {
           if (feedMap.has(id)) {
             list.push(sanitizePostImages(feedMap.get(id)!));
           } else {
@@ -118,16 +138,36 @@ export default function LikedView() {
           }
         }
 
-        setLikedPosts(list);
+        if (isMounted) {
+          setLikedPosts(list);
+        }
       } catch (err) {
         console.error('Failed to fetch liked posts', err);
-        setError('Unable to load your liked dispatches. Make sure your network connection is active.');
+        if (isMounted) {
+          setError('Unable to load your liked dispatches. Make sure your network connection is active.');
+        }
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
+    };
+
+    refreshLikedPosts();
+
+    const unsubscribeAuth = onAuthStateChanged(auth, () => {
+      refreshLikedPosts();
     });
 
-    return () => unsubscribe();
+    const unsubscribeReaction = reactionStore.subscribe(() => {
+      refreshLikedPosts();
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribeAuth();
+      unsubscribeReaction();
+    };
   }, []);
 
   return (

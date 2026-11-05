@@ -2,6 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useAuthState } from '../hooks/useAuthState';
 import { api } from '../utils/api';
+import { db } from '../firebase';
+import { doc, setDoc } from 'firebase/firestore';
+import { saveCompressedStory, getCompressedStories, saveCompressedStories } from '../utils/compressedStorage';
 import { Post, slugify } from '../types';
 import { cleanImageUrl, sanitizePostImages } from '../utils/imageUrl';
 import RichTextEditor, { RichTextEditorHandle } from '../components/RichTextEditor';
@@ -244,9 +247,46 @@ export default function DraftPublicationView(): React.JSX.Element {
         views: editingPost?.views || 0,
       };
 
+      // 1. Immediately cache in client-side compressed storage for instant offline persistence
+      try {
+        saveCompressedStory(fullPostToSave);
+        const currentFeed = getCompressedStories() || [];
+        const existingIdx = currentFeed.findIndex(p => p.id === publishedPostId);
+        let updatedFeed: Post[];
+        if (existingIdx >= 0) {
+          updatedFeed = [...currentFeed];
+          updatedFeed[existingIdx] = fullPostToSave;
+        } else {
+          updatedFeed = [fullPostToSave, ...currentFeed];
+        }
+        saveCompressedStories(updatedFeed);
+      } catch (cacheErr) {
+        console.debug('Local storage cache notice:', cacheErr);
+      }
+
+      // 2. Direct Firestore persistence: guarantees durability across Cloud Run container scale-downs
+      try {
+        await setDoc(doc(db, 'posts', publishedPostId), fullPostToSave);
+      } catch (firestoreErr) {
+        console.warn('Firestore direct write notice:', firestoreErr);
+      }
+
+      // 3. Save to server repository with Bearer token authentication
+      let idToken: string | undefined = undefined;
+      if (user) {
+        try {
+          idToken = await user.getIdToken();
+        } catch (_) {}
+      }
+
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (idToken) {
+        headers['Authorization'] = `Bearer ${idToken}`;
+      }
+
       const saveRes = await fetch('/api/articles/save', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(fullPostToSave)
       });
 
@@ -305,26 +345,10 @@ export default function DraftPublicationView(): React.JSX.Element {
         } catch {}
       }
 
-      // Mirror article to Cloudflare R2 for instant zero-quota delivery
+      // Notify all tabs and home view immediately
       try {
-        const fullPostToSave = {
-          id: publishedPostId,
-          ...postPayload,
-          status: targetStatus,
-          createdAt: isEditing ? (editingPost?.createdAt || new Date().toISOString()) : new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          likes: editingPost?.likes || 0,
-          dislikes: editingPost?.dislikes || 0,
-          views: editingPost?.views || 0,
-        };
-        await fetch('/api/articles/save', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(fullPostToSave)
-        });
-      } catch (r2Err) {
-        console.warn('R2 mirror notice:', r2Err);
-      }
+        window.dispatchEvent(new CustomEvent('stories-updated', { detail: { newPost: fullPostToSave } }));
+      } catch (_) {}
 
       handleResetForm();
       navigate('/admin/publications');

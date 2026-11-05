@@ -230,8 +230,15 @@ export default function HomeView() {
 
     const handleStoriesUpdated = (e: any) => {
       const deletedId = e?.detail?.deletedId;
+      const newPost = e?.detail?.newPost;
       if (deletedId) {
         setPosts(prev => prev.filter(p => p && p.id !== deletedId));
+      } else if (newPost && newPost.id) {
+        setPosts(prev => {
+          const exists = prev.some(p => p.id === newPost.id);
+          if (exists) return prev.map(p => p.id === newPost.id ? newPost : p);
+          return [newPost, ...prev];
+        });
       } else {
         fetchPosts();
       }
@@ -299,8 +306,20 @@ export default function HomeView() {
       });
 
       if (balancedPosts && balancedPosts.length > 0) {
-        const filtered = balancedPosts.filter(p => p && p.id && !deletedIds.has(p.id));
-        setPosts(filtered);
+        const compressedPosts = getCompressedStories() || [];
+        const mergedMap = new Map<string, Post>();
+        for (const p of balancedPosts) {
+          if (p && p.id && !deletedIds.has(p.id)) mergedMap.set(p.id, sanitizePostImages(p));
+        }
+        for (const p of compressedPosts) {
+          if (p && p.id && !deletedIds.has(p.id) && !mergedMap.has(p.id)) {
+            mergedMap.set(p.id, sanitizePostImages(p));
+          }
+        }
+        const merged = Array.from(mergedMap.values()).sort((a, b) => {
+          return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+        });
+        setPosts(merged);
         setLoading(false);
         setIsOfflineCached(false);
         return;

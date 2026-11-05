@@ -243,37 +243,169 @@ export function toLightArticle(post: any): any {
 }
 
 /**
- * Load light feed from local disk cache on startup
+ * Converts Firestore REST API document fields into a plain JavaScript object
  */
-function loadLocalFeed(): any[] {
+export function parseFirestoreFields(fields: any): any {
+  if (!fields) return {};
+  const res: any = {};
+  for (const [key, val] of Object.entries(fields)) {
+    if (!val || typeof val !== 'object') continue;
+    const v = val as any;
+    if ('stringValue' in v) res[key] = v.stringValue;
+    else if ('integerValue' in v) res[key] = parseInt(v.integerValue, 10);
+    else if ('doubleValue' in v) res[key] = parseFloat(v.doubleValue);
+    else if ('booleanValue' in v) res[key] = v.booleanValue;
+    else if ('arrayValue' in v) {
+      res[key] = (v.arrayValue?.values || []).map((item: any) => {
+        if ('stringValue' in item) return item.stringValue;
+        return item;
+      });
+    } else if ('mapValue' in v) {
+      res[key] = parseFirestoreFields(v.mapValue?.fields);
+    }
+  }
+  return res;
+}
+
+/**
+ * Converts a plain JavaScript object into Firestore REST API document fields
+ */
+export function toFirestoreFields(obj: any): any {
+  const fields: any = {};
+  for (const [key, val] of Object.entries(obj)) {
+    if (val === undefined || val === null) continue;
+    if (typeof val === 'string') {
+      fields[key] = { stringValue: val };
+    } else if (typeof val === 'number') {
+      fields[key] = { integerValue: String(Math.round(val)) };
+    } else if (typeof val === 'boolean') {
+      fields[key] = { booleanValue: val };
+    } else if (Array.isArray(val)) {
+      fields[key] = {
+        arrayValue: {
+          values: val.map((item) => ({ stringValue: String(item) }))
+        }
+      };
+    }
+  }
+  return fields;
+}
+
+/**
+ * Reads single article from Firestore REST API
+ */
+export async function getArticleFromFirestoreRest(postId: string): Promise<any | null> {
+  if (!postId) return null;
+  try {
+    const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+    if (!fs.existsSync(configPath)) return null;
+    const cfg = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    if (!cfg.projectId || !cfg.apiKey) return null;
+    const dbId = cfg.firestoreDatabaseId || '(default)';
+    const url = `https://firestore.googleapis.com/v1/projects/${cfg.projectId}/databases/${dbId}/documents/posts/${postId}?key=${cfg.apiKey}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(3500) });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data || !data.fields) return null;
+    const post = parseFirestoreFields(data.fields);
+    post.id = post.id || postId;
+    return post;
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
+ * Saves article to Firestore REST API with provided ID token
+ */
+export async function saveArticleToFirestoreRest(post: any, authHeader: string): Promise<boolean> {
+  if (!post || !post.id || !authHeader) return false;
+  try {
+    const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+    if (!fs.existsSync(configPath)) return false;
+    const cfg = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    if (!cfg.projectId) return false;
+    const dbId = cfg.firestoreDatabaseId || '(default)';
+    const url = `https://firestore.googleapis.com/v1/projects/${cfg.projectId}/databases/${dbId}/documents/posts/${post.id}`;
+    const fields = toFirestoreFields(post);
+    const res = await fetch(url, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': authHeader
+      },
+      body: JSON.stringify({ fields })
+    });
+    return res.ok;
+  } catch (e) {
+    console.debug('[Firestore Server Sync Error]:', e);
+    return false;
+  }
+}
+
+/**
+ * Load light feed from all local disk sources: data/feed.json and any individual articles
+ */
+export function loadLocalFeed(): any[] {
+  const map = new Map<string, any>();
+  const deletedIds = getDeletedArticleIds();
+  const localDir = getLocalDataDir();
+
+  // 1. Read data/feed.json
   try {
     const feedFile = path.join(process.cwd(), 'data', 'feed.json');
-    const localDir = getLocalDataDir();
-    const deletedIds = getDeletedArticleIds();
     if (fs.existsSync(feedFile)) {
       const content = fs.readFileSync(feedFile, 'utf-8');
       const parsed = JSON.parse(content);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed
-          .filter((p: any) => p && p.id && !deletedIds.has(p.id))
-          .map((p) => {
-            // If local full article exists, merge metadata (authorEmail, imageUrls, etc.)
-            try {
-              const articlePath = path.join(localDir, `${p.id}.json`);
-              if (fs.existsSync(articlePath)) {
-                const fullArticle = JSON.parse(fs.readFileSync(articlePath, 'utf-8'));
-                return toLightArticle({ ...p, ...fullArticle });
-              }
-            } catch (_) {}
-            return toLightArticle(p);
-          }).filter(Boolean);
+        for (const p of parsed) {
+          if (p && p.id && !deletedIds.has(p.id)) {
+            map.set(p.id, toLightArticle(p));
+          }
+        }
       }
     }
   } catch (err) {
     console.debug('[R2 Articles] Local feed cache read error:', err);
   }
-  return [];
+
+  // 2. Scan data/articles/ directory for any individual articles not yet in feed.json
+  try {
+    if (fs.existsSync(localDir)) {
+      const files = fs.readdirSync(localDir).filter(f => f.endsWith('.json'));
+      for (const file of files) {
+        const id = file.replace(/\.json$/, '');
+        if (deletedIds.has(id)) continue;
+        try {
+          const articlePath = path.join(localDir, file);
+          const fullArticle = JSON.parse(fs.readFileSync(articlePath, 'utf-8'));
+          if (fullArticle && fullArticle.id && !deletedIds.has(fullArticle.id)) {
+            const light = toLightArticle(fullArticle);
+            if (light) {
+              if (map.has(fullArticle.id)) {
+                // Merge enriched fields like authorEmail, authorId
+                const existing = map.get(fullArticle.id);
+                map.set(fullArticle.id, {
+                  ...existing,
+                  authorEmail: existing.authorEmail || light.authorEmail || '',
+                  authorId: existing.authorId || light.authorId || '',
+                  authorName: existing.authorName || light.authorName || 'Current News',
+                });
+              } else {
+                map.set(fullArticle.id, light);
+              }
+            }
+          }
+        } catch (_) {}
+      }
+    }
+  } catch (_) {}
+
+  return Array.from(map.values())
+    .filter(Boolean)
+    .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
 }
+
 
 /**
  * Safely extracts the canonical public base URL from process.env.R2_PUBLIC_DOMAIN.
@@ -699,7 +831,7 @@ export async function deleteArticleFromR2(postId: string): Promise<boolean> {
 }
 
 /**
- * Retrieve FULL article JSON from R2 with local fallback.
+ * Retrieve FULL article JSON from local disk, R2, or Firestore.
  * Guarantees that returned object includes full article content.
  */
 export async function getArticleFromR2(postId: string): Promise<any | null> {
@@ -762,11 +894,71 @@ export async function getArticleFromR2(postId: string): Promise<any | null> {
     } catch (e) {}
   }
 
+  // 4. Firestore REST API fallback: ensures article is found across Cloud Run container scale-downs
+  try {
+    const firestorePost = await getArticleFromFirestoreRest(postId);
+    if (firestorePost && (firestorePost.content || firestorePost.title) && !deletedIds.has(firestorePost.id)) {
+      // Cache locally to container disk
+      try {
+        const localDir = getLocalDataDir();
+        fs.writeFileSync(path.join(localDir, `${postId}.json`), JSON.stringify(firestorePost, null, 2), 'utf-8');
+      } catch (_) {}
+      return firestorePost;
+    }
+  } catch (_) {}
+
   return null;
 }
 
 /**
- * Retrieve light published articles feed from Cloudflare R2 (articles/feed.json)
+ * Merges remote CDN articles with local disk and memory cache so newly posted articles
+ * are NEVER wiped out by stale CDN responses.
+ */
+function mergeFeedWithLocalAndCache(remoteArticles: any[]): any[] {
+  const deletedIds = getDeletedArticleIds();
+  const localArticles = loadLocalFeed();
+  const currentInMem = inMemoryFeedCache.filter(p => p && p.id && !deletedIds.has(p.id));
+
+  const postMap = new Map<string, any>();
+
+  // 1. Add remote CDN articles
+  if (Array.isArray(remoteArticles)) {
+    for (const p of remoteArticles) {
+      if (p && p.id && !deletedIds.has(p.id)) {
+        postMap.set(p.id, toLightArticle(p));
+      }
+    }
+  }
+
+  // 2. Merge local disk articles and in-memory cache
+  // Any article present locally that is not in the CDN is preserved!
+  for (const p of [...currentInMem, ...localArticles]) {
+    if (!p || !p.id || deletedIds.has(p.id)) continue;
+    const light = toLightArticle(p);
+    if (!light) continue;
+
+    if (!postMap.has(p.id)) {
+      postMap.set(p.id, light);
+    } else {
+      // Enrich existing CDN item with authorEmail and authorId if CDN had stripped them
+      const existing = postMap.get(p.id);
+      postMap.set(p.id, {
+        ...existing,
+        authorEmail: existing.authorEmail || light.authorEmail || '',
+        authorId: existing.authorId || light.authorId || '',
+        authorName: existing.authorName || light.authorName || 'Current News',
+      });
+    }
+  }
+
+  return Array.from(postMap.values())
+    .filter(Boolean)
+    .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+}
+
+/**
+ * Retrieve light published articles feed from Cloudflare R2 and merge with local disk.
+ * Guaranteed never to overwrite newly posted local articles with stale CDN data.
  */
 export async function getFeedFromR2(): Promise<any[]> {
   const deletedIds = getDeletedArticleIds();
@@ -788,13 +980,10 @@ export async function getFeedFromR2(): Promise<any[]> {
         const str = await resp.Body.transformToString();
         const parsed = JSON.parse(str);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const lightList = parsed
-            .filter((p: any) => p && p.id && !deletedIds.has(p.id))
-            .map(toLightArticle)
-            .filter(Boolean);
-          inMemoryFeedCache = lightList;
+          const merged = mergeFeedWithLocalAndCache(parsed);
+          inMemoryFeedCache = merged;
           inMemoryFeedTimestamp = now;
-          return lightList;
+          return merged;
         }
       }
     } catch (err) {
@@ -815,13 +1004,10 @@ export async function getFeedFromR2(): Promise<any[]> {
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data) && data.length > 0) {
-          const lightList = data
-            .filter((p: any) => p && p.id && !deletedIds.has(p.id))
-            .map(toLightArticle)
-            .filter(Boolean);
-          inMemoryFeedCache = lightList;
+          const merged = mergeFeedWithLocalAndCache(data);
+          inMemoryFeedCache = merged;
           inMemoryFeedTimestamp = now;
-          return lightList;
+          return merged;
         }
       }
     } catch (e) {}
@@ -830,10 +1016,10 @@ export async function getFeedFromR2(): Promise<any[]> {
   // 3. Fallback to local disk feed
   const localFeed = loadLocalFeed();
   if (localFeed.length > 0) {
-    const lightList = localFeed.filter(p => p && p.id && !deletedIds.has(p.id));
-    inMemoryFeedCache = lightList;
+    const merged = mergeFeedWithLocalAndCache(localFeed);
+    inMemoryFeedCache = merged;
     inMemoryFeedTimestamp = now;
-    return lightList;
+    return merged;
   }
 
   return inMemoryFeedCache.filter(p => p && p.id && !deletedIds.has(p.id));
@@ -858,7 +1044,7 @@ export async function syncArticlesToR2(posts: any[]): Promise<{ synced: number; 
   }
 
   // Update in-memory light feed
-  inMemoryFeedCache = posts.filter(p => p.status !== 'draft').map(toLightArticle).filter(Boolean);
+  inMemoryFeedCache = mergeFeedWithLocalAndCache(posts.filter(p => p.status !== 'draft'));
   inMemoryFeedTimestamp = Date.now();
 
   return { synced: count, total: posts.length };
@@ -883,6 +1069,22 @@ export async function handleSaveArticle(req: Request, res: Response) {
     post.updatedAt = new Date().toISOString();
 
     const result = await saveArticleToR2(post);
+
+    // Sync to Firestore via REST API if Authorization header is provided
+    const authHeader = req.headers.authorization;
+    if (authHeader) {
+      saveArticleToFirestoreRest(post, authHeader).catch(err => {
+        console.debug('[Firestore REST Sync notice]:', err);
+      });
+    }
+
+    // Trigger external caches invalidation so /api/posts reflects new article
+    if (onArticleDeletedHook) {
+      try {
+        onArticleDeletedHook();
+      } catch (_) {}
+    }
+
     return res.status(200).json({
       success: true,
       post,

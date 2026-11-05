@@ -46,5 +46,9 @@
    - **Exploit Vector:** Aggressive floating subscription prompts (push notification sheets, newsletter modals) triggering high bounce rates and risking Google Search Core Web Vitals penalties for intrusive interstitials.
    - **Defense:** Permanently removed `NotificationBanner.tsx` and `NewsletterPopup.tsx` from the codebase and DOM, guaranteeing a distraction-free, zero-interruption reading environment.
 
-
-
+12. **Vulnerability: Stateless Container Disk Evaporation & Cache Invalidation Race on Cloud Run**
+   - **Exploit Vector / Failure Mode:** In Google Cloud Run, container filesystems are ephemeral. If an application stores writes only on local disk (`data/articles/`), those files vanish whenever the container scales down or restarts. Furthermore, an external CDN polling mechanism fetching from an un-synced bucket overwrote server RAM cache with stale data, causing user articles to disappear 30 seconds after publishing.
+   - **Defense:**
+     - Enforced Dual-Persistence: Published articles are immediately committed to Cloud Firestore (`posts/{postId}`) via client SDK with Firebase Auth and server-side REST API sync.
+     - Implemented `mergeFeedWithLocalAndCache()`: Whenever the server queries remote CDN or S3, it merges the remote list with all local disk and memory articles. CDN polls are mathematically forbidden from overwriting or deleting articles present in local storage.
+     - Added 0ms Client Cache: In `DraftPublicationView.tsx`, articles are saved to `compressedStorage` (`cn_compressed_stories_v2` and single-article keys) and dispatched via `stories-updated` events, guaranteeing articles are immediately and permanently visible to the author.

@@ -57,9 +57,11 @@ graph TD
         Client -->|Express Proxy Cache| PostsApi[GET /api/posts & /api/posts/:id in server.ts]
         PostsApi --> R2Feed
         AdminUI[AdminView / Editorial Desk] -->|Firebase Auth Sign-In ONLY| FirebaseAuth[Firebase Auth / Google Sign-In]
-        AdminUI -->|Publish / Edit Article| R2Save[POST /api/articles/save -> Cloudflare R2]
-        AdminUI -->|Delete Article| R2Delete[DELETE /api/articles/:id -> Cloudflare R2]
-        AdminUI -->|Background Backup / Offline Fallback| FirestoreDB[(Firebase Firestore: Admin Backup Store)]
+        AdminUI -->|1. Direct Cloud Persistence| FirestoreDB[(Cloud Firestore: posts/postId via Client SDK & REST)]
+        AdminUI -->|2. Instant Client Cache| LocalLZW[Client LZW UTF-16 compressedStorage: cn_compressed_stories_v2]
+        AdminUI -->|3. Server Save & R2 Mirror| R2Save[POST /api/articles/save -> data/articles/ + Memory + Cloudflare R2]
+        AdminUI -->|Delete Article| R2Delete[DELETE /api/articles/:id -> data/deleted_articles.json + Firestore + R2]
+        EdgeRouter -->|getFeedFromR2| MergeFeed[mergeFeedWithLocalAndCache: Merges CDN with Local/Firestore so newly posted articles NEVER vanish]
         AdminUI -->|One-Click Sync| R2Sync[POST /api/articles/sync -> Mirrors All to R2]
     end
 ```

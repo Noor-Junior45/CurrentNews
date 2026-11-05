@@ -111,7 +111,17 @@
     4. Client-side `clientLoadBalancer.ts` fetched from static CDN and wrote the deleted article back into `localStorage`.
   - **Permanent Guardrail:** Implemented a unified **Server and Client Tombstone Architecture**:
     - **Server:** Created persistent registry `data/deleted_articles.json` via `getDeletedArticleIds()` and `markArticleDeleted(postId)`. All feed endpoints (`/api/articles/feed`, `/api/posts`, `getFeedFromR2`, `loadLocalFeed`) strictly filter out any tombstoned IDs, and single post endpoint (`/api/posts/:id`, `getArticleFromR2`) immediately returns 404 for tombstoned IDs. An observer hook invalidates `postsApi` in-memory cache on deletion.
-    - **Client:** Implemented `removeCompressedStory(id)` and `getDeletedStoryIds()` in `src/utils/compressedStorage.ts` to purge deleted articles from local cache, remove individual article keys, and record local tombstones in `cn_deleted_articles_v1`. `clientLoadBalancer` and `HomeView` filter out any tombstoned IDs, and `CurrentPublicationsView` dispatches `stories-updated` events on delete to update all views instantaneously.
+- [x] **Bug ID & Summary:** BUG-030 — Newly posted articles temporarily appeared in "My Publications" for ~30 seconds, then disappeared as if they never existed.
+  - **Root Cause:**
+    1. Missing Cloudflare R2 write credentials in server environment caused `saveArticleToR2` to fail when uploading to R2. The article was saved only in server RAM and local container disk.
+    2. In `src/server/r2Articles.ts`, `getFeedFromR2()` had a 30-second TTL (`FEED_CACHE_TTL = 30000`). After 30s, it fetched `https://media.currentnews.blog/articles/feed.json` from the public CDN. Because the new article wasn't in R2, the CDN returned the older feed, and `getFeedFromR2()` directly assigned `inMemoryFeedCache = lightList`, overwriting in-memory cache and wiping out the newly created article.
+    3. On Google Cloud Run container restarts or scale-downs, ephemeral disk storage (`data/articles/`) was wiped because articles were never persisted to Cloud Firestore.
+    4. On the client, `DraftPublicationView.tsx` never cached the post in `compressedStorage`, and `CurrentPublicationsView.tsx` bypassed local storage whenever the CDN returned articles.
+  - **Permanent Guardrail:**
+    1. In `src/server/r2Articles.ts`, implemented `mergeFeedWithLocalAndCache()`: whenever remote CDN or S3 returns a feed, all locally saved articles (`data/articles/*.json`, `data/feed.json`, and `inMemoryFeedCache`) not present in the CDN are merged and preserved. CDN polls can NEVER overwrite or drop local articles.
+    2. Dual-Layer Persistence: In `DraftPublicationView.tsx`, articles are directly saved to Cloud Firestore (`posts/{postId}`) via client SDK (authenticated by Firebase Auth) AND cached in client compressed storage (`saveCompressedStory` & `saveCompressedStories`).
+    3. In `CurrentPublicationsView.tsx`, `fetchAdminPosts` merges `/api/articles/feed`, Firestore `posts` collection, and local compressed stories, deduplicating by ID so newly created articles are immediately and permanently visible.
+    4. In `HomeView.tsx`, `balancedPosts` are merged with local compressed stories, and `stories-updated` events ensure instantaneous cross-view updates.
 
 
 

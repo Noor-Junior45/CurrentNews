@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuthState } from '../hooks/useAuthState';
+import { db } from '../firebase';
+import { collection, getDocs, doc, deleteDoc } from 'firebase/firestore';
 import { Post, slugify } from '../types';
 import { cleanImageUrl, sanitizePostImages } from '../utils/imageUrl';
 import { getCompressedStories, removeCompressedStory, getDeletedStoryIds } from '../utils/compressedStorage';
@@ -46,31 +48,71 @@ export default function CurrentPublicationsView(): React.JSX.Element {
     setFeedLoading(true);
     try {
       const deletedIds = getDeletedStoryIds();
-      let fetched: Post[] = [];
+      const postMap = new Map<string, Post>();
+
+      // 1. Fetch from backend API / feed
       try {
         const feedRes = await fetch(`/api/articles/feed?t=${Date.now()}`, { cache: 'no-store' });
         if (feedRes.ok) {
           const feedData = await feedRes.json();
           if (Array.isArray(feedData.articles)) {
-            fetched = feedData.articles
-              .filter((p: any) => p && p.id && !deletedIds.has(p.id))
-              .map(sanitizePostImages);
+            for (const p of feedData.articles) {
+              if (p && p.id && !deletedIds.has(p.id)) {
+                postMap.set(p.id, sanitizePostImages(p));
+              }
+            }
           }
         }
       } catch (feedErr) {
-        console.debug('Feed fetch notice, checking local cache:', feedErr);
+        console.debug('Feed fetch notice, checking local and Firestore caches:', feedErr);
       }
 
-      if (fetched.length === 0) {
+      // 2. Query Firestore directly: guarantees newly published articles are never lost
+      try {
+        const snap = await getDocs(collection(db, 'posts'));
+        snap.forEach(docSnap => {
+          const data = docSnap.data() as Post;
+          if (data && docSnap.id && !deletedIds.has(docSnap.id)) {
+            data.id = data.id || docSnap.id;
+            if (!postMap.has(data.id)) {
+              postMap.set(data.id, sanitizePostImages(data));
+            } else {
+              // Enrich existing with metadata
+              const existing = postMap.get(data.id)!;
+              postMap.set(data.id, {
+                ...existing,
+                authorEmail: existing.authorEmail || data.authorEmail || '',
+                authorId: existing.authorId || data.authorId || '',
+                authorName: existing.authorName || data.authorName || 'Current News',
+              });
+            }
+          }
+        });
+      } catch (fsErr) {
+        console.debug('Firestore admin query notice:', fsErr);
+      }
+
+      // 3. Merge locally compressed stories (guarantees 0ms visibility after publishing)
+      try {
         const compressed = getCompressedStories();
         if (compressed && compressed.length > 0) {
-          fetched = compressed
-            .filter((p: any) => p && p.id && !deletedIds.has(p.id))
-            .map(sanitizePostImages);
+          for (const p of compressed) {
+            if (p && p.id && !deletedIds.has(p.id)) {
+              if (!postMap.has(p.id)) {
+                postMap.set(p.id, sanitizePostImages(p));
+              }
+            }
+          }
         }
+      } catch (compErr) {
+        console.debug('Compressed cache read notice:', compErr);
       }
 
-      const visiblePosts = fetched.filter(p => {
+      const allFetched = Array.from(postMap.values()).sort((a, b) => {
+        return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+      });
+
+      const visiblePosts = allFetched.filter(p => {
         if (!p || !p.id || deletedIds.has(p.id)) return false;
 
         // All published data and drafts must be visible to admin
@@ -101,6 +143,13 @@ export default function CurrentPublicationsView(): React.JSX.Element {
     if (user && isAdmin) {
       fetchAdminPosts();
     }
+    const handleStoriesUpdated = () => {
+      fetchAdminPosts();
+    };
+    window.addEventListener('stories-updated', handleStoriesUpdated);
+    return () => {
+      window.removeEventListener('stories-updated', handleStoriesUpdated);
+    };
   }, [user, isAdmin]);
 
   const handleDeletePost = async (id: string) => {
@@ -116,12 +165,19 @@ export default function CurrentPublicationsView(): React.JSX.Element {
         throw new Error(`Failed to delete post: HTTP ${res.status}`);
       }
 
-      // 3. Update view state
+      // 3. Remove from Firestore
+      try {
+        await deleteDoc(doc(db, 'posts', id));
+      } catch (fsDelErr) {
+        console.debug('Firestore delete notice:', fsDelErr);
+      }
+
+      // 4. Update view state
       setPosts(prev => prev.filter(p => p.id !== id));
-      setSuccessMsg('Story deleted successfully from Cloudflare R2 and feed.');
+      setSuccessMsg('Story deleted successfully from storage repository.');
       setDeleteConfirmId(null);
 
-      // 4. Notify all tabs and home view to remove immediately
+      // 5. Notify all tabs and home view to remove immediately
       window.dispatchEvent(new CustomEvent('stories-updated', { detail: { deletedId: id } }));
     } catch (err) {
       console.error(err);

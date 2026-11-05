@@ -206,4 +206,13 @@
   - Root Cause Diagnosed: Database and feed data were 100% consistent (41 published articles). The home page showed only 30 articles because `HomeView.tsx` requested `limit: 30`, `clientLoadBalancer.ts` defaulted origin queries to `limit=30`, and `postsApi.ts` clamped queries to `Math.min(50, limit)`.
   - Resolution: Updated `HomeView.tsx` to request `limit: 100`, updated `clientLoadBalancer.ts` to default to 100, and updated `postsApi.ts` to allow up to 200 or all (`limit=all`).
   - Result: The home page now receives all 41 published articles. With 20 articles per page, Page 1 displays 1–20, Page 2 displays 21–40, and Page 3 displays 41 (`Showing 1–20 of 41 articles (Page 1 of 3)`), perfectly matching the admin published count of 41.
+- [x] **Phase 47 (Post Persistence Architecture & CDN Overwrite Prevention):** [COMPLETED]
+  - Root Cause Diagnosed: Newly posted articles temporarily appeared for ~30 seconds because `saveArticleToR2` stored them in RAM/ephemeral disk while R2 write credentials were unset; exactly 30s later, `getFeedFromR2()` polled `media.currentnews.blog/articles/feed.json` and directly assigned `inMemoryFeedCache = lightList`, overwriting server memory with stale CDN data and wiping the new article.
+  - Multi-Layer Solution Implemented:
+    1. Server Cache Guard: Implemented `mergeFeedWithLocalAndCache()` in `src/server/r2Articles.ts` so CDN polls NEVER overwrite local articles (`data/articles/*.json`, `data/feed.json`, RAM cache); local articles not yet present on CDN are preserved.
+    2. Cloud Firestore Dual-Write: Exported `db` in `src/firebase.ts` and connected `setDoc(doc(db, 'posts', publishedPostId), fullPostToSave)` in `DraftPublicationView.tsx` (authenticated by Firebase Auth admin permissions) and server-side REST API sync.
+    3. Client 0ms Offline Cache: In `DraftPublicationView.tsx`, immediately cached posts in `saveCompressedStory` and `saveCompressedStories`.
+    4. Admin Publications Resilient Hydration: In `CurrentPublicationsView.tsx`, merged `/api/articles/feed`, Firestore `posts` collection, and local compressed stories into a unified list.
+    5. Home View Sync: In `HomeView.tsx`, merged `balancedPosts` with local compressed stories and connected `stories-updated` event handler for instantaneous cross-view updates.
 - **Immediate Next Step:** Production deployment to Google Cloud Run and Cloudflare D1/Worker deployment.
+

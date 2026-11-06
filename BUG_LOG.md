@@ -121,7 +121,10 @@
     1. In `src/server/r2Articles.ts`, implemented `mergeFeedWithLocalAndCache()`: whenever remote CDN or S3 returns a feed, all locally saved articles (`data/articles/*.json`, `data/feed.json`, and `inMemoryFeedCache`) not present in the CDN are merged and preserved. CDN polls can NEVER overwrite or drop local articles.
     2. Dual-Layer Persistence: In `DraftPublicationView.tsx`, articles are directly saved to Cloud Firestore (`posts/{postId}`) via client SDK (authenticated by Firebase Auth) AND cached in client compressed storage (`saveCompressedStory` & `saveCompressedStories`).
     3. In `CurrentPublicationsView.tsx`, `fetchAdminPosts` merges `/api/articles/feed`, Firestore `posts` collection, and local compressed stories, deduplicating by ID so newly created articles are immediately and permanently visible.
-    4. In `HomeView.tsx`, `balancedPosts` are merged with local compressed stories, and `stories-updated` events ensure instantaneous cross-view updates.
+- [x] **Bug ID & Summary:** BUG-031 — Hardcoded Admin Email Lists & Insecure Client-Side Admin Elevation Vulnerability.
+  - **Root Cause:** Admin access was previously evaluated using client-side hardcoded email arrays (`AUTHORIZED_ADMIN_EMAILS`, `VITE_ADMIN_EMAILS`, `AUTHORIZED_ADMIN_DOMAINS`) in `src/hooks/useAuthState.ts` and `src/utils/writers.ts`. Any user spoofing client state or modifying environment variables could access admin views, and write endpoints lacked server-side token and role verification.
+  - **Permanent Guardrail:** Enforce server-side role validation via Firebase Custom Claims (`admin`, `writer`, `none`) with `requireRole` middleware on Express routes (`/api/admin/*`, `/api/articles/save`, `/api/upload`, `/api/mail/send-alert`, `/api/push/broadcast`). In `src/hooks/useAuthState.ts`, role is extracted exclusively from `user.getIdTokenResult(true).claims.role`. All hardcoded admin/writer email lists have been deleted. Neon Postgres acts as the editorial source of truth, and `firestore.rules` is locked down with `allow read, write: if false;`.
+
 
 
 

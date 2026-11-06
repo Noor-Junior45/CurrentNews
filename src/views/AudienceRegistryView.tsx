@@ -128,9 +128,17 @@ export default function AudienceRegistryView(): React.JSX.Element {
     setTestEmailFeedback({ status: 'idle', message: '' });
 
     try {
+      let idToken: string | null = null;
+      try {
+        idToken = await user?.getIdToken() || null;
+      } catch (_) {}
+
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (idToken) headers['Authorization'] = `Bearer ${idToken}`;
+
       const response = await fetch('/api/mail/send-alert', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           email: targetEmail,
           title: 'Test Circular: Newsroom Alert Dispatch',
@@ -170,9 +178,17 @@ export default function AudienceRegistryView(): React.JSX.Element {
     setPingFeedback({ status: 'idle', message: '' });
 
     try {
+      let idToken: string | null = null;
+      try {
+        idToken = await user?.getIdToken() || null;
+      } catch (_) {}
+
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (idToken) headers['Authorization'] = `Bearer ${idToken}`;
+
       const response = await fetch('/api/push/broadcast', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           title: 'Current News Alert',
           body: pingMessage.trim() || 'A new editorial dispatch has just been published.',

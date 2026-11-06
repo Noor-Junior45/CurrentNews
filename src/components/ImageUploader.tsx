@@ -10,6 +10,7 @@ import {
   Copy
 } from 'lucide-react';
 import { cleanImageUrl, getFallbackImageUrl } from '../utils/imageUrl';
+import { auth } from '../firebase';
 
 interface ImageUploaderProps {
   onImageUploaded: (url: string, fallbackUrl?: string) => void;
@@ -61,13 +62,23 @@ export default function ImageUploader({
       let fallbackUrl = '';
 
       try {
+        let idToken: string | null = null;
+        try {
+          idToken = await auth.currentUser?.getIdToken();
+        } catch (_) {}
+
+        const uploadHeaders: Record<string, string> = {
+          'Accept': 'application/json',
+        };
+        if (idToken) {
+          uploadHeaders['Authorization'] = `Bearer ${idToken}`;
+        }
+
         const response = await fetch('/api/upload', {
           method: 'POST',
           body: formData,
           credentials: 'include',
-          headers: {
-            'Accept': 'application/json',
-          },
+          headers: uploadHeaders,
         });
 
         const rawText = await response.text();

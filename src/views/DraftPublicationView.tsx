@@ -2,8 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useAuthState } from '../hooks/useAuthState';
 import { api } from '../utils/api';
-import { db } from '../firebase';
-import { doc, setDoc } from 'firebase/firestore';
 import { saveCompressedStory, getCompressedStories, saveCompressedStories } from '../utils/compressedStorage';
 import { Post, slugify } from '../types';
 import { cleanImageUrl, sanitizePostImages } from '../utils/imageUrl';
@@ -264,14 +262,7 @@ export default function DraftPublicationView(): React.JSX.Element {
         console.debug('Local storage cache notice:', cacheErr);
       }
 
-      // 2. Direct Firestore persistence: guarantees durability across Cloud Run container scale-downs
-      try {
-        await setDoc(doc(db, 'posts', publishedPostId), fullPostToSave);
-      } catch (firestoreErr) {
-        console.warn('Firestore direct write notice:', firestoreErr);
-      }
-
-      // 3. Save to server repository with Bearer token authentication
+      // 2. Save to server repository (Neon Postgres + R2 dual-write) with Bearer token authentication
       let idToken: string | undefined = undefined;
       if (user) {
         try {
@@ -284,14 +275,20 @@ export default function DraftPublicationView(): React.JSX.Element {
         headers['Authorization'] = `Bearer ${idToken}`;
       }
 
-      const saveRes = await fetch('/api/articles/save', {
+      const saveRes = await fetch('/api/admin/articles', {
         method: 'POST',
         headers,
         body: JSON.stringify(fullPostToSave)
       });
 
       if (!saveRes.ok) {
-        throw new Error('Failed to save article to storage repository.');
+        const errJson = await saveRes.json().catch(() => ({}));
+        throw new Error(errJson.error || 'Failed to save article to storage repository.');
+      }
+
+      const savedData = await saveRes.json().catch(() => null);
+      if (savedData?.syncWarning) {
+        console.warn('Storage sync warning:', savedData.syncWarning);
       }
 
       setSuccessMsg(targetStatus === 'draft' ? 'Draft saved successfully!' : (isEditing ? 'Story updated and published successfully!' : 'Story published successfully!'));
@@ -307,7 +304,7 @@ export default function DraftPublicationView(): React.JSX.Element {
             const emailPromises = emails.map(emailAddr => 
               fetch('/api/mail/send-alert', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers,
                 body: JSON.stringify({
                   email: emailAddr,
                   title: `Breaking News: ${title.trim()}`,
@@ -332,7 +329,7 @@ export default function DraftPublicationView(): React.JSX.Element {
 
           fetch('/api/push/broadcast', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers,
             body: JSON.stringify({
               title: notifTitle,
               body: notifBody,

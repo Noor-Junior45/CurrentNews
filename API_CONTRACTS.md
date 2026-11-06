@@ -341,7 +341,83 @@
 - **Count Calculation Formula:**
   - `displayedLikes = serverLikes + (localMine === 'like' ? 1 : 0) - (confirmedMine === 'like' ? 1 : 0)`
   - `displayedDislikes = serverDislikes + (localMine === 'dislike' ? 1 : 0) - (confirmedMine === 'dislike' ? 1 : 0)`
-- **Auto-Flush Lifecycle:** Triggers on `visibilitychange`, `pagehide` (with `fetch` `keepalive: true`), `online`, and app start.
+## 8. Neon Editorial & Admin API Contracts (`/api/admin/*`)
+
+All `/api/admin/*` endpoints strictly require `Authorization: Bearer <ID_TOKEN>` verified via Firebase Custom Claims with `email_verified === true`.
+
+### `POST /api/admin/articles`
+- **Method:** `POST`
+- **Access:** Roles `admin`, `writer`
+- **Headers:** `Authorization: Bearer <ID_TOKEN>`, `Content-Type: application/json`
+- **Body:**
+  - `id`: string (optional, generated if omitted)
+  - `title`: string (1-200 chars)
+  - `content`: string (HTML, max 500KB, sanitized server-side)
+  - `category`: string (from allowed categories list)
+  - `status`: `'draft' | 'published' | 'archived'` (default: `'draft'`)
+  - `excerpt`, `hashtags`, `youtubeUrl`, `facebookUrl`, `customLinks`, `imageUrl`, etc.
+- **Rules:**
+  - Writers may only update articles where `author_uid == req.user.uid`. Admins may update any.
+  - `author_uid` and `author_email` are server-enforced from `req.user`.
+  - Neon Postgres is written first; if `status === 'published'`, dual-writes to Cloudflare R2.
+- **Response Shape (200 OK):**
+  ```json
+  {
+    "success": true,
+    "article": { /* Article row mapped to frontend Post shape */ },
+    "syncWarning": null
+  }
+  ```
+
+### `GET /api/admin/articles`
+- **Method:** `GET`
+- **Access:** Roles `admin`, `writer`
+- **Query Params:**
+  - `status`: `'draft' | 'published' | 'archived'` (optional)
+  - `cursor`: string (ISO timestamp for cursor-based pagination)
+  - `limit`: number (default: 20, max: 50)
+- **Rules:**
+  - Writers see only their own drafts and dispatches.
+  - Admins see all newsroom dispatches.
+- **Response Shape (200 OK):**
+  ```json
+  {
+    "success": true,
+    "articles": [ /* Array of Post objects */ ],
+    "nextCursor": "2026-11-06T04:00:00.000Z"
+  }
+  ```
+
+### `DELETE /api/admin/articles/:id`
+- **Method:** `DELETE`
+- **Access:** Roles `admin`, `writer`
+- **Params:** `id` (article identifier)
+- **Rules:**
+  - Writers may only delete their own drafts. Published articles require admin role to archive/delete.
+  - Soft deletes in Neon (`status = 'archived'`), removes from R2 feed, records in `audit_log`.
+- **Response Shape (200 OK):**
+  ```json
+  {
+    "success": true,
+    "message": "Article successfully deleted and removed from feed."
+  }
+  ```
+
+### `GET /api/admin/me`
+- **Method:** `GET`
+- **Access:** Roles `admin`, `writer`
+- **Response Shape (200 OK):**
+  ```json
+  {
+    "success": true,
+    "user": {
+      "uid": "...",
+      "email": "mdhassan1738@gmail.com",
+      "role": "admin"
+    }
+  }
+  ```
+
 
 
 

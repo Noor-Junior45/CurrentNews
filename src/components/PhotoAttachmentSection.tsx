@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { compressImage } from '../utils/imageCompressor';
 import { cleanImageUrl, getFallbackImageUrl } from '../utils/imageUrl';
+import { auth } from '../firebase';
 
 interface PhotoAttachmentSectionProps {
   primaryImageUrl: string;
@@ -91,13 +92,23 @@ export default function PhotoAttachmentSection({
         let cleanFallback = '';
 
         try {
+          let idToken: string | null = null;
+          try {
+            idToken = await auth.currentUser?.getIdToken();
+          } catch (_) {}
+
+          const uploadHeaders: Record<string, string> = {
+            'Accept': 'application/json',
+          };
+          if (idToken) {
+            uploadHeaders['Authorization'] = `Bearer ${idToken}`;
+          }
+
           const res = await fetch('/api/upload', {
             method: 'POST',
             body: formData,
             credentials: 'include',
-            headers: {
-              'Accept': 'application/json',
-            },
+            headers: uploadHeaders,
           });
 
           const rawText = await res.text();

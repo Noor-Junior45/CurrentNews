@@ -53,6 +53,26 @@ async function sendResendEmail(toEmail: string, subject: string, htmlContent: st
   return await response.json();
 }
 
+function escapeHtml(str: string): string {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function isValidSingleEmail(email: string): boolean {
+  if (!email || typeof email !== 'string') return false;
+  const trimmed = email.trim();
+  // Disallow any whitespace, commas, semicolons, linebreaks
+  if (/[\s,;\r\n]/.test(trimmed)) return false;
+  // Strict RFC-compliant single email validation
+  const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
+  return emailRegex.test(trimmed);
+}
+
 export default async function handler(req: Request, res: Response) {
   // Support both POST (standard) and OPTIONS (for preflight if needed)
   if (req.method === 'OPTIONS') {
@@ -69,12 +89,22 @@ export default async function handler(req: Request, res: Response) {
     return res.status(400).json({ success: false, message: 'Recipient email and subject title are required.' });
   }
 
-  console.log(`\n==================================================`);
-  console.log(`[VERCEL SERVERLESS RESEND API] Dispatch initiated`);
-  console.log(`Target Recipient : ${email}`);
-  console.log(`Alert Subject    : ${title}`);
-  console.log(`Access Link      : ${link || 'N/A'}`);
-  console.log(`==================================================\n`);
+  const trimmedEmail = String(email).trim().toLowerCase();
+  if (!isValidSingleEmail(trimmedEmail)) {
+    return res.status(400).json({ success: false, message: 'Invalid recipient email address format.' });
+  }
+
+  // Validate and sanitize link URL
+  let safeLink = 'https://currentnews.blog';
+  if (link && typeof link === 'string') {
+    const rawLink = link.trim();
+    if (/^https?:\/\//i.test(rawLink)) {
+      safeLink = rawLink;
+    }
+  }
+
+  const safeTitle = escapeHtml(String(title).trim());
+  const safeLinkEscaped = escapeHtml(safeLink);
 
   try {
     const htmlContent = `<!DOCTYPE html>
@@ -82,7 +112,7 @@ export default async function handler(req: Request, res: Response) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title}</title>
+  <title>${safeTitle}</title>
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -183,12 +213,12 @@ export default async function handler(req: Request, res: Response) {
         <p>Independent Ledger &amp; Alerts</p>
       </div>
       <div class="content">
-        <h2>${title}</h2>
+        <h2>${safeTitle}</h2>
         <p>Hello,</p>
         <p>We are pleased to bring you the latest verified update from Current News. Stay ahead of the curve with our independent journalism and real-time dispatches.</p>
         <p>Click the button below to access the live story or explore our coverage immediately.</p>
         <div class="btn-container">
-          <a href="${link || 'https://currentnews.blog'}" class="btn" target="_blank">Access Live Story</a>
+          <a href="${safeLinkEscaped}" class="btn" target="_blank">Access Live Story</a>
         </div>
       </div>
       <div class="footer">
@@ -196,7 +226,7 @@ export default async function handler(req: Request, res: Response) {
         <p>Serving the public interest with transparent, accurate, and autonomous journalism.</p>
         <p style="margin-top: 12px; color: #94a3b8;">
           You received this email because you subscribed to our breaking news alerts.<br>
-          If you wish to stop receiving these dispatches, you can <a href="${link || 'https://currentnews.blog'}/unsubscribe">unsubscribe</a> at any time.
+          If you wish to stop receiving these dispatches, you can <a href="${safeLinkEscaped}/unsubscribe">unsubscribe</a> at any time.
         </p>
       </div>
     </div>

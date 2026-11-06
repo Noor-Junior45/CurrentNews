@@ -23,6 +23,13 @@ import {
 import { handleGetPosts, handleGetPostById, handleGetWriters } from './src/server/postsApi.ts';
 import { handleSaveArticle, handleDeleteArticle, handleSyncArticles, handleMigrateImages, ensureR2ArticlesWarmup, getFeedFromR2, getDeletedArticleIds } from './src/server/r2Articles.ts';
 import { handleGetAppVersion, handleUpdateAppVersion } from './src/server/appVersionApi.ts';
+import { requireRole } from './server/auth/requireRole.ts';
+import {
+  handleAdminCreateOrUpdateArticle,
+  handleAdminGetArticles,
+  handleAdminDeleteArticle,
+  handleAdminGetMe
+} from './server/api/adminArticles.ts';
 
 // Load environment variables
 dotenv.config();
@@ -77,9 +84,80 @@ async function startServer() {
     });
   });
 
-  // Enable JSON and URL-encoded request body parsing (up to 25MB for bulk article sync)
-  app.use(express.json({ limit: '25mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '25mb' }));
+  // Multi-Host Routing & Admin Segregation (admin.currentnews.blog vs reader apex/www)
+  app.use((req, res, next) => {
+    const rawHost = (req.headers['x-forwarded-host'] as string) || req.headers.host || '';
+    const host = rawHost.split(':')[0].trim().toLowerCase();
+    const pathName = req.path || '';
+
+    // Development & Cloud Run test URL bypass (localhost, 127.0.0.1, ::1, and *.run.app)
+    const isDevOrPreview = !host ||
+      host === 'localhost' ||
+      host === '127.0.0.1' ||
+      host === '::1' ||
+      host.endsWith('.run.app');
+
+    if (isDevOrPreview) {
+      return next();
+    }
+
+    // 1. Host: admin.currentnews.blog (Dedicated Admin Workspace)
+    if (host === 'admin.currentnews.blog') {
+      // Inject X-Robots-Tag to ensure zero indexing of the administrative portal
+      res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+
+      // Allow admin paths, admin API calls, static assets, and system health probes
+      const isAllowedAdminPath = 
+        pathName === '/admin' ||
+        pathName.startsWith('/admin/') ||
+        pathName === '/api/admin' ||
+        pathName.startsWith('/api/admin/') ||
+        pathName.startsWith('/assets') ||
+        pathName.startsWith('/@vite') ||
+        pathName.startsWith('/@fs') ||
+        pathName.startsWith('/@id') ||
+        pathName.startsWith('/src') ||
+        pathName.startsWith('/img') ||
+        pathName.startsWith('/uploads') ||
+        pathName.startsWith('/.well-known') ||
+        pathName === '/favicon.ico' ||
+        pathName === '/robots.txt' ||
+        pathName === '/healthz' ||
+        pathName === '/readyz';
+
+      if (!isAllowedAdminPath) {
+        return res.redirect(302, '/admin');
+      }
+
+      return next();
+    }
+
+    // 2. Host: currentnews.blog or www.currentnews.blog (Public Reader Site)
+    if (host === 'currentnews.blog' || host === 'www.currentnews.blog') {
+      // Redirect all admin panel visits (301 permanent) to the dedicated admin host
+      if (pathName === '/admin' || pathName.startsWith('/admin/')) {
+        const targetUrl = `https://admin.currentnews.blog${req.originalUrl || '/admin'}`;
+        return res.redirect(301, targetUrl);
+      }
+
+      // Shield admin API endpoints: return 404 JSON if called on public reader host
+      if (pathName === '/api/admin' || pathName.startsWith('/api/admin/')) {
+        return res.status(404).json({
+          success: false,
+          error: 'Not found'
+        });
+      }
+    }
+
+    return next();
+  });
+
+  // Enable JSON and URL-encoded request body parsing
+  // Dedicated 25MB parser exclusively for bulk article sync
+  app.use('/api/articles/sync', express.json({ limit: '25mb' }));
+  // Strict 1MB body limit for admin and all other routes to thwart DoS memory exhaustion
+  app.use(express.json({ limit: '1mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
   // Configure Multer for Cloudflare R2 image upload (20MB max, flexible image types and extensions)
   const upload = multer({
@@ -104,8 +182,8 @@ async function startServer() {
     },
   });
 
-  // Cloudflare R2 image upload endpoint with explicit JSON error interception
-  app.post('/api/upload', (req, res) => {
+  // Cloudflare R2 image upload endpoint (Protected with requireRole)
+  app.post('/api/upload', requireRole('admin', 'writer'), (req, res) => {
     upload.single('image')(req, res, (err: any) => {
       if (err) {
         console.error('[Upload Middleware Error]:', err);
@@ -122,6 +200,12 @@ async function startServer() {
     });
   });
 
+  // Admin API endpoints (Neon Postgres editorial source of truth + audit log)
+  app.post('/api/admin/articles', requireRole('admin', 'writer'), asyncHandler(handleAdminCreateOrUpdateArticle));
+  app.get('/api/admin/articles', requireRole('admin', 'writer'), asyncHandler(handleAdminGetArticles));
+  app.delete('/api/admin/articles/:id', requireRole('admin', 'writer'), asyncHandler(handleAdminDeleteArticle));
+  app.get('/api/admin/me', requireRole('admin', 'writer'), asyncHandler(handleAdminGetMe));
+
   // High-performance Cloudflare R2 articles endpoints (zero Firestore read quota consumption)
   app.get('/api/posts', asyncHandler(handleGetPosts));
   app.get('/api/posts/:id', asyncHandler(handleGetPostById));
@@ -135,19 +219,21 @@ async function startServer() {
     const deleted = Array.from(getDeletedArticleIds());
     res.json({ success: true, deletedIds: deleted });
   }));
-  app.post('/api/articles/save', asyncHandler(handleSaveArticle));
-  app.delete('/api/articles/:id', asyncHandler(handleDeleteArticle));
-  app.post('/api/articles/sync', asyncHandler(handleSyncArticles));
-  app.post('/api/articles/migrate-images', asyncHandler(handleMigrateImages));
+
+  // Protected write endpoints for articles
+  app.post('/api/articles/save', requireRole('admin', 'writer'), asyncHandler(handleSaveArticle));
+  app.delete('/api/articles/:id', requireRole('admin', 'writer'), asyncHandler(handleDeleteArticle));
+  app.post('/api/articles/sync', requireRole('admin', 'writer'), asyncHandler(handleSyncArticles));
+  app.post('/api/articles/migrate-images', requireRole('admin', 'writer'), asyncHandler(handleMigrateImages));
   app.get('/api/writers', asyncHandler(handleGetWriters));
   app.use('/img', express.static(path.join(process.cwd(), 'data', 'img'), { maxAge: '1y', immutable: true }));
 
   // Server-driven App Update endpoints (Google Play Store / Cloud Run dynamic update triggers)
   app.get('/api/app/version', asyncHandler(handleGetAppVersion));
-  app.post('/api/app/version', asyncHandler(handleUpdateAppVersion));
+  app.post('/api/app/version', requireRole('admin'), asyncHandler(handleUpdateAppVersion));
 
-  // Backend mail endpoint for automated subscriber alerting
-  app.post('/api/mail/send-alert', asyncHandler(sendAlertHandler));
+  // Backend mail endpoint for automated subscriber alerting (Protected with requireRole)
+  app.post('/api/mail/send-alert', requireRole('admin', 'writer'), asyncHandler(sendAlertHandler));
 
   // Inbound mail endpoint for webhook notifications and recipient autofill
   app.all('/api/mail/inbound', asyncHandler(inboundHandler));
@@ -178,7 +264,7 @@ async function startServer() {
   app.get('/api/push/public-key', handleGetVapidPublicKey);
   app.post('/api/push/subscribe', handleSubscribe);
   app.post('/api/push/unsubscribe', handleUnsubscribe);
-  app.post('/api/push/broadcast', handleBroadcast);
+  app.post('/api/push/broadcast', requireRole('admin'), handleBroadcast);
   app.get('/api/push/subscribers-count', handleGetSubscribersCount);
 
   // Fallback 404 handler for any unmatched /api/* route so it NEVER returns HTML to API clients

@@ -147,3 +147,36 @@ curl -s -X POST http://localhost:3000/api/push/broadcast \
 
 
 
+
+## 6. Role Authorization & Host Segregation Chaos Tests
+
+```bash
+# 1. Verify 401 Unauthorized when calling /api/admin/articles without Bearer token
+curl -s -i -X POST http://localhost:3000/api/admin/articles \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Unauthorized Test"}'
+# Expected: HTTP/1.1 401 Unauthorized {"success":false,"error":"Unauthorized: Missing or invalid Authorization header"}
+
+# 2. Verify 401 Unauthorized when Bearer token is invalid or expired
+curl -s -i -X GET http://localhost:3000/api/admin/articles \
+  -H "Authorization: Bearer invalid-token-12345"
+# Expected: HTTP/1.1 401 Unauthorized {"success":false,"error":"Unauthorized: Invalid authentication credentials"}
+
+# 3. Verify 401 Unauthorized on write endpoint (/api/upload) without Bearer token
+curl -s -i -X POST http://localhost:3000/api/upload
+# Expected: HTTP/1.1 401 Unauthorized
+
+# 4. Verify host redirection on production reader host
+curl -s -I -H "Host: currentnews.blog" http://localhost:3000/admin
+# (In production behind GCLB):
+# Expected: HTTP/1.1 301 Moved Permanently
+# Location: https://admin.currentnews.blog/admin
+
+# 5. Verify admin API returns 404 on reader domain
+curl -s -i -H "Host: currentnews.blog" http://localhost:3000/api/admin/articles
+# Expected: HTTP/1.1 404 Not Found {"success":false,"error":"Not found"}
+
+# 6. Verify X-Robots-Tag on admin host
+curl -s -I -H "Host: admin.currentnews.blog" http://localhost:3000/admin
+# Expected: X-Robots-Tag: noindex, nofollow
+```

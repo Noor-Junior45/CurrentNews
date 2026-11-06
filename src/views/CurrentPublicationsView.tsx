@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuthState } from '../hooks/useAuthState';
-import { db } from '../firebase';
-import { collection, getDocs, doc, deleteDoc } from 'firebase/firestore';
 import { Post, slugify } from '../types';
 import { cleanImageUrl, sanitizePostImages } from '../utils/imageUrl';
 import { getCompressedStories, removeCompressedStory, getDeletedStoryIds } from '../utils/compressedStorage';
@@ -50,46 +48,53 @@ export default function CurrentPublicationsView(): React.JSX.Element {
       const deletedIds = getDeletedStoryIds();
       const postMap = new Map<string, Post>();
 
-      // 1. Fetch from backend API / feed
+      let idToken: string | undefined = undefined;
       try {
-        const feedRes = await fetch(`/api/articles/feed?t=${Date.now()}`, { cache: 'no-store' });
-        if (feedRes.ok) {
-          const feedData = await feedRes.json();
-          if (Array.isArray(feedData.articles)) {
-            for (const p of feedData.articles) {
+        idToken = await user.getIdToken();
+      } catch (_) {}
+
+      const authHeaders: Record<string, string> = {};
+      if (idToken) {
+        authHeaders['Authorization'] = `Bearer ${idToken}`;
+      }
+
+      // 1. Fetch from editorial source of truth (/api/admin/articles)
+      try {
+        const adminRes = await fetch(`/api/admin/articles?limit=50&t=${Date.now()}`, {
+          headers: authHeaders,
+          cache: 'no-store'
+        });
+        if (adminRes.ok) {
+          const adminData = await adminRes.json();
+          if (Array.isArray(adminData.articles)) {
+            for (const p of adminData.articles) {
               if (p && p.id && !deletedIds.has(p.id)) {
                 postMap.set(p.id, sanitizePostImages(p));
               }
             }
           }
         }
-      } catch (feedErr) {
-        console.debug('Feed fetch notice, checking local and Firestore caches:', feedErr);
+      } catch (adminErr) {
+        console.debug('Admin articles fetch notice:', adminErr);
       }
 
-      // 2. Query Firestore directly: guarantees newly published articles are never lost
-      try {
-        const snap = await getDocs(collection(db, 'posts'));
-        snap.forEach(docSnap => {
-          const data = docSnap.data() as Post;
-          if (data && docSnap.id && !deletedIds.has(docSnap.id)) {
-            data.id = data.id || docSnap.id;
-            if (!postMap.has(data.id)) {
-              postMap.set(data.id, sanitizePostImages(data));
-            } else {
-              // Enrich existing with metadata
-              const existing = postMap.get(data.id)!;
-              postMap.set(data.id, {
-                ...existing,
-                authorEmail: existing.authorEmail || data.authorEmail || '',
-                authorId: existing.authorId || data.authorId || '',
-                authorName: existing.authorName || data.authorName || 'Current News',
-              });
+      // 2. Fallback to public feed if Neon is empty or during migration
+      if (postMap.size === 0) {
+        try {
+          const feedRes = await fetch(`/api/articles/feed?t=${Date.now()}`, { cache: 'no-store' });
+          if (feedRes.ok) {
+            const feedData = await feedRes.json();
+            if (Array.isArray(feedData.articles)) {
+              for (const p of feedData.articles) {
+                if (p && p.id && !deletedIds.has(p.id)) {
+                  postMap.set(p.id, sanitizePostImages(p));
+                }
+              }
             }
           }
-        });
-      } catch (fsErr) {
-        console.debug('Firestore admin query notice:', fsErr);
+        } catch (feedErr) {
+          console.debug('Feed fetch notice:', feedErr);
+        }
       }
 
       // 3. Merge locally compressed stories (guarantees 0ms visibility after publishing)
@@ -159,29 +164,37 @@ export default function CurrentPublicationsView(): React.JSX.Element {
       // 1. Immediately remove from local compressed memory and mark tombstone
       removeCompressedStory(id);
 
-      // 2. Remove from backend server and Cloudflare R2
-      const res = await fetch(`/api/articles/${id}`, { method: 'DELETE' });
-      if (!res.ok) {
-        throw new Error(`Failed to delete post: HTTP ${res.status}`);
-      }
-
-      // 3. Remove from Firestore
+      // 2. Remove from backend server and editorial repository with Bearer token
+      let idToken: string | undefined = undefined;
       try {
-        await deleteDoc(doc(db, 'posts', id));
-      } catch (fsDelErr) {
-        console.debug('Firestore delete notice:', fsDelErr);
+        idToken = await user?.getIdToken();
+      } catch (_) {}
+
+      const authHeaders: Record<string, string> = {};
+      if (idToken) {
+        authHeaders['Authorization'] = `Bearer ${idToken}`;
       }
 
-      // 4. Update view state
+      const res = await fetch(`/api/admin/articles/${id}`, {
+        method: 'DELETE',
+        headers: authHeaders
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || `Failed to delete post: HTTP ${res.status}`);
+      }
+
+      // 3. Update view state
       setPosts(prev => prev.filter(p => p.id !== id));
       setSuccessMsg('Story deleted successfully from storage repository.');
       setDeleteConfirmId(null);
 
-      // 5. Notify all tabs and home view to remove immediately
+      // 4. Notify all tabs and home view to remove immediately
       window.dispatchEvent(new CustomEvent('stories-updated', { detail: { deletedId: id } }));
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setErrorMsg('Failed to delete story. Permissions check required.');
+      setErrorMsg(err.message || 'Failed to delete story. Permissions check required.');
     }
   };
 

@@ -235,7 +235,11 @@
   - Configurable Revocation Checking: Added `AUTH_CHECK_REVOKED` env flag (defaults to `true`; only when strictly `"false"` does it skip revocation checking).
   - Universal Admin Fetch (`src/utils/adminFetch.ts`): Client-side helper automatically captures `token_expired` and `token_revoked` errors, calls `auth.currentUser.getIdToken(true)` to force-refresh, and retries the request once before propagating errors.
   - User-Facing Error Banners: Wired `adminFetch` into `DraftPublicationView`, `AdminDashboardView`, `CurrentPublicationsView`, and `AudienceRegistryView`, rendering clear human-readable messages in existing error banners without modifying UI styles.
-  - Identity Endpoint: Verified `GET /api/admin/me` (`requireRole('admin', 'writer')`) returning `{ success: true, uid, role, email }`.
+- [x] **Phase 51 (Cloud Run Diagnostic Log Purge & Git Push Fix):** [COMPLETED]
+  - Diagnosed Cloud Run 401 Unauthorized (`auth/argument-error`) caused by leading whitespace in `FIREBASE_PROJECT_ID=" gen-lang-client-0638643565"`.
+  - Added `.trim()` guardrail to `server/auth/firebaseAdmin.ts` so environment whitespace never disrupts JWT token verification.
+  - Deleted `/public/assets/aistudio/downloaded-logs-20261106-204203_c156b31e.json` (7MB log file) that was exceeding GitHub push limits.
+  - Added `*downloaded-logs*` to `.gitignore` to prevent downloaded log attachments from blocking git pushes in the future.
 - **Immediate Next Step:** Run `CHECKLIST.md` steps:
   1. Neon migration (`node scripts/migrate-neon.mjs`) and set admin claim (`node scripts/set-role.mjs mdhassan1738@gmail.com admin`).
   2. Cloudflare Worker D1 migration (`cd worker && npx wrangler d1 execute currentnews-db --remote --file=schema.sql`) and deploy (`npx wrangler deploy`).

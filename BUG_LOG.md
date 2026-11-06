@@ -145,6 +145,10 @@
     2. Added `AUTH_CHECK_REVOKED` env flag (defaults to "true"; allows "false" to bypass revocation check when needed).
     3. Implemented `adminFetch` with automatic single retry via `auth.currentUser.getIdToken(true)` upon receiving `token_expired` or `token_revoked`, and formatted readable error messages in error banners.
 
+- [x] **Bug ID & Summary:** BUG-035 — Cloud Run 401 Unauthorized `auth/argument-error` due to leading whitespace in `FIREBASE_PROJECT_ID`.
+  - **Root Cause:** In Cloud Run revision `currentnews-00030-wvm`, `FIREBASE_PROJECT_ID` had an accidental leading space (`" gen-lang-client-0638643565"`). Firebase Admin initialized with this string and checked JWT `aud` and `iss` claims against `" gen-lang-client-0638643565"` instead of `"gen-lang-client-0638643565"`, throwing `auth/argument-error` on all valid Firebase ID tokens.
+  - **Permanent Guardrail:** `server/auth/firebaseAdmin.ts` sanitizes and trims `process.env.FIREBASE_PROJECT_ID` (`.trim()`) on initialization and in `getAdminProjectId()`, guaranteeing that whitespace in environment variables cannot cause token audience verification failures.
+
 
 
 

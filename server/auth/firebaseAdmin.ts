@@ -1,7 +1,8 @@
 import { initializeApp, getApps, applicationDefault, getApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 
-const projectId = process.env.FIREBASE_PROJECT_ID || 'gen-lang-client-0638643565';
+const rawProjectId = process.env.FIREBASE_PROJECT_ID || 'gen-lang-client-0638643565';
+const projectId = rawProjectId.trim();
 
 if (getApps().length === 0) {
   try {
@@ -26,7 +27,8 @@ export const adminAuth = getAuth();
  * Returns the active projectId used by firebase-admin.
  */
 export function getAdminProjectId(): string {
-  return adminApp?.options?.projectId || process.env.FIREBASE_PROJECT_ID || 'unknown';
+  const pId = adminApp?.options?.projectId || process.env.FIREBASE_PROJECT_ID || 'gen-lang-client-0638643565';
+  return (pId || '').trim();
 }
 
 /**

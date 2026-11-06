@@ -240,9 +240,22 @@
   - Added `.trim()` guardrail to `server/auth/firebaseAdmin.ts` so environment whitespace never disrupts JWT token verification.
   - Deleted `/public/assets/aistudio/downloaded-logs-20261106-204203_c156b31e.json` (7MB log file) that was exceeding GitHub push limits.
   - Added `*downloaded-logs*` to `.gitignore` to prevent downloaded log attachments from blocking git pushes in the future.
+- [x] **Phase 52 (Neon to Cloudflare D1 Publish Pipeline & Outbox Sync):** [COMPLETED]
+  - D1 Reader Schema: Created `worker/migrations/0001_articles.sql` storing only published articles with slug, published, and category indexes.
+  - Internal Signed Endpoints (`worker/src/index.ts`): Implemented `/internal/publish`, `/internal/unpublish`, `/internal/bulk`, and `/internal/reconcile` protected with HMAC-SHA256 signatures (`SYNC_SECRET`), constant-time signature comparison, body size caps (1MB/5MB), and zero CORS headers.
+  - Public Reader Endpoints (`worker/src/index.ts`): Implemented `GET /articles` (keyset pagination, light fields), `GET /articles/:idOrSlug` (full parsed article), and `GET /articles/recent-ids` with 60s edge caching and 300s stale-while-revalidate.
+  - Outbox Publisher (`server/sync/d1Publisher.ts`): Added `signedPost`, `publishArticleToD1`, `unpublishArticleFromD1`, and `syncPendingArticles(50)` with exponential backoff and 10s timeouts.
+  - Neon Outbox Migration (`migrations/002_sync.sql`): Added `sync_pending`, `synced_version`, and partial outbox index.
+  - Admin Endpoints: Added `POST /api/admin/sync/run` (admin role) and `POST /api/admin/sync-tick` (`X-Sync-Token` constant-time check).
+  - Admin UI: Added "Live", "Sync pending", and "Sync failed" badges (with error tooltip) and "Retry sync" button in `CurrentPublicationsView.tsx`, plus warning message forward in `DraftPublicationView.tsx`.
+  - Full Resync CLI: Created `scripts/resync-d1.mjs` supporting `--dry-run` and safe reconciliation.
 - **Immediate Next Step:** Run `CHECKLIST.md` steps:
-  1. Neon migration (`node scripts/migrate-neon.mjs`) and set admin claim (`node scripts/set-role.mjs mdhassan1738@gmail.com admin`).
-  2. Cloudflare Worker D1 migration (`cd worker && npx wrangler d1 execute currentnews-db --remote --file=schema.sql`) and deploy (`npx wrangler deploy`).
-  3. Delete obsolete `server.cjs` and `server.cjs.map` from `android/app/src/main/assets/public/` before next Android release build.
+  1. Neon migrations: `export NEON_DATABASE_URL="..." && node scripts/migrate-neon.mjs`
+  2. D1 migration: `cd worker && npx wrangler d1 execute currentnews-db --remote --file=migrations/0001_articles.sql`
+  3. Worker secret: `cd worker && npx wrangler secret put SYNC_SECRET`
+  4. Cloud Run secrets: `SYNC_SECRET`, `SYNC_TICK_TOKEN` in Secret Manager + `WORKER_BASE_URL`
+  5. Deploy worker: `cd worker && npx wrangler deploy`
+  6. Cloud Scheduler: Create 5-minute HTTP job for `POST https://admin.currentnews.blog/api/admin/sync-tick`
+  7. Resync D1: `node scripts/resync-d1.mjs`
 
 

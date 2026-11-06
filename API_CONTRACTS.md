@@ -475,6 +475,62 @@ All `/api/admin/*` endpoints strictly require `Authorization: Bearer <ID_TOKEN>`
 - **Payload:** `{ "id": string, "subscription": object }`
 - **Validation:** `id` must match `/^[A-Za-z0-9_-]{16,128}$/`, payload max 4KB, `subscription.endpoint` must begin with `https://`.
 
+## 9. Signed Internal Edge Sync Endpoints (`worker/src/index.ts`)
+
+All `/internal/*` routes require:
+- **Method:** `POST` strictly (401 on other methods)
+- **CORS:** Zero CORS headers
+- **Headers:** `X-Timestamp: <ms>`, `X-Signature: hex HMAC-SHA256(SYNC_SECRET, timestamp + "." + rawBody)`
+- **Timestamp Window:** Within 5 minutes past or 1 minute future
+- **Rejection:** 401 Unauthorized with generic body, zero explanation
+
+### `POST /internal/publish`
+- **Body:** `{ "article": { id, slug, title, content, ... } }` (max 1MB)
+- **Validation:** title (1-200), slug (`/^[a-z0-9-]{1,120}$/`), id (`/^[A-Za-z0-9_-]{6,64}$/`), content (<500KB), arrays (<=20 items), URLs (https only)
+- **Idempotency:** `INSERT ... ON CONFLICT(id) DO UPDATE ... WHERE excluded.version >= articles.version`
+- **Response (200 OK):** `{ "ok": true, "id": string, "version": number }`
+
+### `POST /internal/unpublish`
+- **Body:** `{ "id": string }`
+- **Response (200 OK):** `{ "ok": true, "id": string }`
+
+### `POST /internal/bulk`
+- **Body:** `{ "articles": [...] }` (1-25 articles, max 5MB)
+- **Execution:** Atomic `env.DB.batch`
+- **Response (200 OK):** `{ "ok": true, "count": number }`
+
+### `POST /internal/reconcile`
+- **Body:** `{ "ids": string[] }` (1-5000 IDs, rejects empty array with 400)
+- **Operation:** Prunes all rows in D1 not in `ids`
+- **Response (200 OK):** `{ "ok": true, "deleted": number }`
+
+## 10. Public Reader Edge Endpoints (`api.currentnews.blog`)
+
+### `GET /articles`
+- **Params:** `limit` (1-50, default 20), `cursor` (base64url timestamp:id), `category` (taxonomy allowlist)
+- **Fields:** id, slug, title, excerpt, category, image_url, image_url_fallback, author_name, published_at, nextCursor. (Never content)
+- **Headers:** `Cache-Control: public, s-maxage=60, stale-while-revalidate=300`
+
+### `GET /articles/:idOrSlug`
+- **Lookup:** By `id = ? OR slug = ?`
+- **Response:** Full article with parsed JSON arrays (hashtags, customLinks, imageUrls, galleryPositions)
+- **Headers:** `Cache-Control: public, s-maxage=60, stale-while-revalidate=300`
+
+### `GET /articles/recent-ids`
+- **Params:** `limit` (1-1000, default 1000)
+- **Response:** `{ "articles": [{ "id": string, "slug": string, "updated_at": number }] }`
+- **Headers:** `Cache-Control: public, s-maxage=60, stale-while-revalidate=300`
+
+## 11. Admin Outbox & Sync Tick Endpoints
+
+### `POST /api/admin/sync/run`
+- **Access:** Admin role only
+- **Response (200 OK):** `{ "success": true, "processed": number, "succeeded": number, "failed": number }`
+
+### `POST /api/admin/sync-tick`
+- **Access:** Header `X-Sync-Token` matching `SYNC_TICK_TOKEN` in constant time
+- **Response (200 OK):** `{ "success": true, "processed": number, "succeeded": number, "failed": number }`
+
 
 
 

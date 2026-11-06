@@ -23,6 +23,9 @@ export interface Post {
   views?: number; // Total article views
   hashtags?: string[]; // Custom social/instagram hashtags
   excerpt?: string; // Light feed plain-text excerpt (~200 chars)
+  syncPending?: boolean; // Outbox sync to Cloudflare D1
+  syncedVersion?: number; // Synced version in D1
+  syncError?: string | null; // D1 sync error message if failed
 }
 
 export function slugify(text: string): string {

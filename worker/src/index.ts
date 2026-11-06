@@ -23,6 +23,7 @@ export interface Env {
   DB: D1Database;
   AGG: DurableObjectNamespace;
   FIREBASE_PROJECT_ID?: string;
+  SYNC_SECRET?: string;
 }
 
 /**
@@ -447,6 +448,432 @@ async function parseJsonBody<T = any>(
 const POST_ID_REGEX = /^[A-Za-z0-9_-]{6,64}$/;
 const PUSH_ID_REGEX = /^[A-Za-z0-9_-]{16,128}$/;
 const EMAIL_REGEX = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
+const SLUG_REGEX = /^[a-z0-9-]{1,120}$/;
+const ALLOWED_ARTICLE_CATEGORIES = [
+  'Jharkhand', 'Politics', 'Tech', 'Sports', 'Business', 'Health',
+  'World', 'Opinion', 'General', 'National', 'Economy', 'Culture', 'Science'
+];
+
+/**
+ * Constant-time HMAC-SHA256 signature verification for internal worker routes.
+ */
+async function verifyInternalSignature(
+  secret: string,
+  timestampStr: string,
+  rawBody: string,
+  signatureHex: string
+): Promise<boolean> {
+  const timestamp = parseInt(timestampStr, 10);
+  if (isNaN(timestamp)) return false;
+  const now = Date.now();
+  // Reject if older than 5 minutes or more than 1 minute in the future
+  if (now - timestamp > 300000 || timestamp - now > 60000) return false;
+  if (!signatureHex || typeof signatureHex !== 'string') return false;
+
+  try {
+    const enc = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      'raw',
+      enc.encode(secret),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign']
+    );
+    const signedBuf = await crypto.subtle.sign(
+      'HMAC',
+      key,
+      enc.encode(timestampStr + '.' + rawBody)
+    );
+    const expectedHex = Array.from(new Uint8Array(signedBuf))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+
+    if (expectedHex.length !== signatureHex.length) return false;
+    let mismatch = 0;
+    for (let i = 0; i < expectedHex.length; i++) {
+      mismatch |= expectedHex.charCodeAt(i) ^ signatureHex.charCodeAt(i);
+    }
+    return mismatch === 0;
+  } catch {
+    return false;
+  }
+}
+
+function safeParseJsonArray(value: any): string[] {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+/**
+ * Validates article payload for D1 reader table.
+ * Enforces strict boundaries: no author email/uid, valid types, max lengths, https URLs.
+ */
+function validateArticleForD1(article: any): { valid: boolean; error?: string; cleanArticle?: any } {
+  if (!article || typeof article !== 'object') {
+    return { valid: false, error: 'Article object required' };
+  }
+
+  const id = typeof article.id === 'string' ? article.id.trim() : '';
+  if (!POST_ID_REGEX.test(id)) {
+    return { valid: false, error: 'Invalid id format (must match /^[A-Za-z0-9_-]{6,64}$/)' };
+  }
+
+  const slug = typeof article.slug === 'string' ? article.slug.trim().toLowerCase() : '';
+  if (!SLUG_REGEX.test(slug)) {
+    return { valid: false, error: 'Invalid slug format (must match /^[a-z0-9-]{1,120}$/)' };
+  }
+
+  const title = typeof article.title === 'string' ? article.title.trim() : '';
+  if (title.length < 1 || title.length > 200) {
+    return { valid: false, error: 'Title must be 1-200 characters' };
+  }
+
+  const content = typeof article.content === 'string' ? article.content : '';
+  if (!content || new TextEncoder().encode(content).length > 500 * 1024) {
+    return { valid: false, error: 'Content must not be empty and under 500KB' };
+  }
+
+  const isValidHttps = (url?: string | null): boolean => {
+    if (!url) return true;
+    const str = String(url).trim();
+    if (!str) return true;
+    return str.startsWith('https://');
+  };
+
+  if (!isValidHttps(article.imageUrl ?? article.image_url)) {
+    return { valid: false, error: 'image_url must use https' };
+  }
+  if (!isValidHttps(article.imageUrlFallback ?? article.image_url_fallback)) {
+    return { valid: false, error: 'image_url_fallback must use https' };
+  }
+  if (!isValidHttps(article.youtubeUrl ?? article.youtube_url)) {
+    return { valid: false, error: 'youtube_url must use https' };
+  }
+  if (!isValidHttps(article.facebookUrl ?? article.facebook_url)) {
+    return { valid: false, error: 'facebook_url must use https' };
+  }
+
+  const parseArray = (arr: any, maxLen = 20): string[] | null => {
+    if (arr === undefined || arr === null) return [];
+    let list: any[] = [];
+    if (typeof arr === 'string') {
+      try {
+        list = JSON.parse(arr);
+      } catch {
+        return null;
+      }
+    } else if (Array.isArray(arr)) {
+      list = arr;
+    } else {
+      return null;
+    }
+    if (!Array.isArray(list) || list.length > maxLen) return null;
+    return list.map((item) => String(item).trim());
+  };
+
+  const hashtags = parseArray(article.hashtags, 20);
+  if (hashtags === null) return { valid: false, error: 'hashtags must be array <= 20 items' };
+
+  const customLinks = parseArray(article.customLinks ?? article.custom_links, 20);
+  if (customLinks === null) return { valid: false, error: 'custom_links must be array <= 20 items' };
+  for (const link of customLinks) {
+    if (!isValidHttps(link)) return { valid: false, error: 'custom_links items must use https' };
+  }
+
+  const imageUrls = parseArray(article.imageUrls ?? article.image_urls, 20);
+  if (imageUrls === null) return { valid: false, error: 'image_urls must be array <= 20 items' };
+  for (const url of imageUrls) {
+    if (!isValidHttps(url)) return { valid: false, error: 'image_urls items must use https' };
+  }
+
+  const imageUrlsFallback = parseArray(article.imageUrlsFallback ?? article.image_urls_fallback, 20);
+  if (imageUrlsFallback === null) return { valid: false, error: 'image_urls_fallback must be array <= 20 items' };
+  for (const url of imageUrlsFallback) {
+    if (!isValidHttps(url)) return { valid: false, error: 'image_urls_fallback items must use https' };
+  }
+
+  const galleryPositions = parseArray(article.galleryPositions ?? article.gallery_positions, 20);
+  if (galleryPositions === null) return { valid: false, error: 'gallery_positions must be array <= 20 items' };
+
+  const category = (typeof article.category === 'string' && article.category.trim()) ? article.category.trim() : 'General';
+  const excerpt = typeof article.excerpt === 'string' ? article.excerpt.trim() : '';
+  const authorName = (typeof article.authorName === 'string' && article.authorName.trim())
+    ? article.authorName.trim()
+    : ((typeof article.author_name === 'string' && article.author_name.trim()) ? article.author_name.trim() : 'Current News');
+
+  const now = Date.now();
+  const publishedAt = Number(article.publishedAt ?? article.published_at) || now;
+  const updatedAt = Number(article.updatedAt ?? article.updated_at) || now;
+  const version = Math.max(1, Number(article.version) || 1);
+
+  return {
+    valid: true,
+    cleanArticle: {
+      id,
+      slug,
+      title,
+      excerpt,
+      content,
+      category,
+      hashtags: JSON.stringify(hashtags),
+      youtube_url: (article.youtubeUrl || article.youtube_url || '').trim(),
+      facebook_url: (article.facebookUrl || article.facebook_url || '').trim(),
+      custom_links: JSON.stringify(customLinks),
+      image_url: (article.imageUrl || article.image_url || '').trim(),
+      image_url_fallback: (article.imageUrlFallback || article.image_url_fallback || '').trim(),
+      image_urls: JSON.stringify(imageUrls),
+      image_urls_fallback: JSON.stringify(imageUrlsFallback),
+      image_position: (article.imagePosition || article.image_position || 'top').trim(),
+      gallery_positions: JSON.stringify(galleryPositions),
+      author_name: authorName,
+      published_at: publishedAt,
+      updated_at: updatedAt,
+      version,
+    },
+  };
+}
+
+function buildArticleUpsertStatement(db: D1Database, a: any): D1PreparedStatement {
+  return db.prepare(`
+    INSERT INTO articles (
+      id, slug, title, excerpt, content, category,
+      hashtags, youtube_url, facebook_url, custom_links,
+      image_url, image_url_fallback, image_urls, image_urls_fallback,
+      image_position, gallery_positions, author_name,
+      published_at, updated_at, version
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      slug = excluded.slug,
+      title = excluded.title,
+      excerpt = excluded.excerpt,
+      content = excluded.content,
+      category = excluded.category,
+      hashtags = excluded.hashtags,
+      youtube_url = excluded.youtube_url,
+      facebook_url = excluded.facebook_url,
+      custom_links = excluded.custom_links,
+      image_url = excluded.image_url,
+      image_url_fallback = excluded.image_url_fallback,
+      image_urls = excluded.image_urls,
+      image_urls_fallback = excluded.image_urls_fallback,
+      image_position = excluded.image_position,
+      gallery_positions = excluded.gallery_positions,
+      author_name = excluded.author_name,
+      published_at = excluded.published_at,
+      updated_at = excluded.updated_at,
+      version = excluded.version
+    WHERE excluded.version >= articles.version
+  `).bind(
+    a.id, a.slug, a.title, a.excerpt, a.content, a.category,
+    a.hashtags, a.youtube_url, a.facebook_url, a.custom_links,
+    a.image_url, a.image_url_fallback, a.image_urls, a.image_urls_fallback,
+    a.image_position, a.gallery_positions, a.author_name,
+    a.published_at, a.updated_at, a.version
+  );
+}
+
+/**
+ * Handles all internal signed sync requests (/internal/*).
+ * Zero CORS headers, POST only, HMAC-SHA256 signature, constant-time validation.
+ */
+async function handleInternalRequest(
+  request: Request,
+  env: Env,
+  path: string,
+  method: string
+): Promise<Response> {
+  const unauthorizedResponse = () =>
+    new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 401,
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'X-Content-Type-Options': 'nosniff',
+      },
+    });
+
+  // Internal routes are POST only
+  if (method !== 'POST') {
+    return unauthorizedResponse();
+  }
+
+  if (!env.SYNC_SECRET) {
+    return unauthorizedResponse();
+  }
+
+  const timestamp = request.headers.get('X-Timestamp') || request.headers.get('x-timestamp') || '';
+  const signature = request.headers.get('X-Signature') || request.headers.get('x-signature') || '';
+
+  if (!timestamp || !signature) {
+    return unauthorizedResponse();
+  }
+
+  const isBulk = path === '/internal/bulk';
+  const maxBytes = isBulk ? 5 * 1024 * 1024 : 1024 * 1024;
+
+  const contentLength = parseInt(request.headers.get('content-length') || '0', 10);
+  if (contentLength > maxBytes) {
+    return unauthorizedResponse();
+  }
+
+  const rawBody = await request.text();
+  if (new TextEncoder().encode(rawBody).length > maxBytes) {
+    return unauthorizedResponse();
+  }
+
+  const isValidSignature = await verifyInternalSignature(
+    env.SYNC_SECRET,
+    timestamp,
+    rawBody,
+    signature
+  );
+
+  if (!isValidSignature) {
+    return unauthorizedResponse();
+  }
+
+  let body: any = {};
+  try {
+    body = JSON.parse(rawBody);
+  } catch {
+    return new Response(JSON.stringify({ error: 'Invalid JSON payload' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+    });
+  }
+
+  // 1. POST /internal/publish { article }
+  if (path === '/internal/publish') {
+    const validated = validateArticleForD1(body.article);
+    if (!validated.valid) {
+      return new Response(JSON.stringify({ error: validated.error }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      });
+    }
+
+    const stmt = buildArticleUpsertStatement(env.DB, validated.cleanArticle);
+    await stmt.run();
+
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        id: validated.cleanArticle.id,
+        version: validated.cleanArticle.version,
+      }),
+      {
+        status: 200,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      }
+    );
+  }
+
+  // 2. POST /internal/unpublish { id }
+  if (path === '/internal/unpublish') {
+    const id = typeof body.id === 'string' ? body.id.trim() : '';
+    if (!POST_ID_REGEX.test(id)) {
+      return new Response(JSON.stringify({ error: 'Invalid id format' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      });
+    }
+
+    await env.DB.prepare('DELETE FROM articles WHERE id = ?').bind(id).run();
+
+    return new Response(JSON.stringify({ ok: true, id }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+    });
+  }
+
+  // 3. POST /internal/bulk { articles: [...] } (max 25)
+  if (path === '/internal/bulk') {
+    if (!Array.isArray(body.articles) || body.articles.length === 0 || body.articles.length > 25) {
+      return new Response(
+        JSON.stringify({ error: 'articles array required (1-25 items)' }),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        }
+      );
+    }
+
+    const statements: D1PreparedStatement[] = [];
+    for (let i = 0; i < body.articles.length; i++) {
+      const validated = validateArticleForD1(body.articles[i]);
+      if (!validated.valid) {
+        return new Response(
+          JSON.stringify({ error: `Article [${i}] invalid: ${validated.error}` }),
+          {
+            status: 400,
+            headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          }
+        );
+      }
+      statements.push(buildArticleUpsertStatement(env.DB, validated.cleanArticle));
+    }
+
+    await env.DB.batch(statements);
+
+    return new Response(JSON.stringify({ ok: true, count: statements.length }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+    });
+  }
+
+  // 4. POST /internal/reconcile { ids: [...] } (max 5000 ids)
+  if (path === '/internal/reconcile') {
+    if (!Array.isArray(body.ids) || body.ids.length === 0) {
+      return new Response(
+        JSON.stringify({ error: 'ids array required and cannot be empty' }),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        }
+      );
+    }
+
+    if (body.ids.length > 5000) {
+      return new Response(
+        JSON.stringify({ error: 'ids array cannot exceed 5000 items' }),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        }
+      );
+    }
+
+    const validSet = new Set(body.ids);
+    const existingRes = await env.DB.prepare('SELECT id FROM articles').all<{ id: string }>();
+    const existing = existingRes.results || [];
+    const toDelete = existing.filter((row) => !validSet.has(row.id)).map((r) => r.id);
+
+    if (toDelete.length > 0) {
+      const chunkSize = 50;
+      for (let i = 0; i < toDelete.length; i += chunkSize) {
+        const chunk = toDelete.slice(i, i + chunkSize);
+        await env.DB.batch(
+          chunk.map((id) => env.DB.prepare('DELETE FROM articles WHERE id = ?').bind(id))
+        );
+      }
+    }
+
+    return new Response(JSON.stringify({ ok: true, deleted: toDelete.length }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+    });
+  }
+
+  return unauthorizedResponse();
+}
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -465,6 +892,15 @@ export default {
     const method = request.method;
     const clientIp = request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || '127.0.0.1';
 
+    // -------------------------------------------------------------
+    // PART B: Signed Internal Endpoints (/internal/*)
+    // No CORS headers, POST only, body max 1MB (bulk 5MB), HMAC-SHA256 signature
+    // Exempt from IP rate limits ONLY AFTER signature is verified.
+    // -------------------------------------------------------------
+    if (path.startsWith('/internal/')) {
+      return await handleInternalRequest(request, env, path, method);
+    }
+
     // Cleanup rate limits periodically
     if (Math.random() < 0.05) {
       cleanupRateLimits();
@@ -482,6 +918,174 @@ export default {
     }
 
     try {
+      // -------------------------------------------------------------
+      // PART C: Public Reader Endpoints (/articles*)
+      // No auth, CORS allowlist, Cache-Control: public, s-maxage=60, stale-while-revalidate=300
+      // -------------------------------------------------------------
+
+      // 0a. GET /articles/recent-ids?limit=1000 (for sitemap/RSS)
+      if (method === 'GET' && path === '/articles/recent-ids') {
+        const limitParam = parseInt(url.searchParams.get('limit') || '1000', 10);
+        const limit = Math.max(1, Math.min(1000, isNaN(limitParam) ? 1000 : limitParam));
+        const { results } = await env.DB.prepare(
+          'SELECT id, slug, updated_at FROM articles ORDER BY updated_at DESC, id DESC LIMIT ?'
+        ).bind(limit).all();
+
+        return jsonResponse(
+          { success: true, articles: results || [] },
+          200,
+          {
+            ...corsHeaders,
+            'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+          }
+        );
+      }
+
+      // 0b. GET /articles?limit=20&cursor=&category= (Keyset pagination, light fields only, never content)
+      if (method === 'GET' && path === '/articles') {
+        const limitParam = parseInt(url.searchParams.get('limit') || '20', 10);
+        const limit = Math.max(1, Math.min(50, isNaN(limitParam) ? 20 : limitParam));
+        const cursorParam = (url.searchParams.get('cursor') || '').trim();
+        const categoryParam = (url.searchParams.get('category') || '').trim();
+
+        let matchedCategory: string | null = null;
+        if (categoryParam) {
+          const found = ALLOWED_ARTICLE_CATEGORIES.find(
+            (c) => c.toLowerCase() === categoryParam.toLowerCase()
+          );
+          if (!found) {
+            return jsonResponse(
+              { success: true, articles: [], nextCursor: null },
+              200,
+              {
+                ...corsHeaders,
+                'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+              }
+            );
+          }
+          matchedCategory = found;
+        }
+
+        let cursorPublishedAt: number | null = null;
+        let cursorId: string | null = null;
+        if (cursorParam) {
+          try {
+            const decoded = atob(cursorParam.replace(/-/g, '+').replace(/_/g, '/'));
+            const colonIdx = decoded.indexOf(':');
+            if (colonIdx > 0) {
+              const pAt = parseInt(decoded.substring(0, colonIdx), 10);
+              const pId = decoded.substring(colonIdx + 1);
+              if (!isNaN(pAt) && POST_ID_REGEX.test(pId)) {
+                cursorPublishedAt = pAt;
+                cursorId = pId;
+              }
+            }
+          } catch (_) {}
+        }
+
+        const conditions: string[] = [];
+        const params: any[] = [];
+
+        if (matchedCategory) {
+          conditions.push('category = ?');
+          params.push(matchedCategory);
+        }
+
+        if (cursorPublishedAt !== null && cursorId !== null) {
+          conditions.push('(published_at < ? OR (published_at = ? AND id < ?))');
+          params.push(cursorPublishedAt, cursorPublishedAt, cursorId);
+        }
+
+        const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+        params.push(limit + 1);
+
+        const sql = `
+          SELECT id, slug, title, excerpt, category, image_url, image_url_fallback, author_name, published_at
+          FROM articles
+          ${whereSql}
+          ORDER BY published_at DESC, id DESC
+          LIMIT ?
+        `;
+
+        const stmt = env.DB.prepare(sql).bind(...params);
+        const { results } = await stmt.all();
+        const rows = (results || []) as any[];
+        const hasMore = rows.length > limit;
+        const pageArticles = hasMore ? rows.slice(0, limit) : rows;
+
+        let nextCursor: string | null = null;
+        if (hasMore && pageArticles.length > 0) {
+          const last = pageArticles[pageArticles.length - 1];
+          const rawCursor = `${last.published_at}:${last.id}`;
+          nextCursor = btoa(rawCursor)
+            .replace(/\+/g, '-')
+            .replace(/\//g, '_')
+            .replace(/=+$/, '');
+        }
+
+        return jsonResponse(
+          {
+            success: true,
+            articles: pageArticles,
+            nextCursor,
+          },
+          200,
+          {
+            ...corsHeaders,
+            'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+          }
+        );
+      }
+
+      // 0c. GET /articles/:idOrSlug (Full article with JSON arrays parsed)
+      if (method === 'GET' && path.startsWith('/articles/')) {
+        const idOrSlug = path.replace('/articles/', '').trim();
+        if (!idOrSlug) {
+          return jsonResponse({ error: 'Article not found' }, 404, corsHeaders);
+        }
+
+        const stmt = env.DB.prepare(
+          'SELECT * FROM articles WHERE id = ? OR slug = ? LIMIT 1'
+        ).bind(idOrSlug, idOrSlug);
+        const row = await stmt.first<any>();
+
+        if (!row) {
+          return jsonResponse({ error: 'Article not found' }, 404, corsHeaders);
+        }
+
+        const article = {
+          id: row.id,
+          slug: row.slug,
+          title: row.title,
+          excerpt: row.excerpt,
+          content: row.content,
+          category: row.category,
+          hashtags: safeParseJsonArray(row.hashtags),
+          youtubeUrl: row.youtube_url || '',
+          facebookUrl: row.facebook_url || '',
+          customLinks: safeParseJsonArray(row.custom_links),
+          imageUrl: row.image_url || '',
+          imageUrlFallback: row.image_url_fallback || '',
+          imageUrls: safeParseJsonArray(row.image_urls),
+          imageUrlsFallback: safeParseJsonArray(row.image_urls_fallback),
+          imagePosition: row.image_position || 'top',
+          galleryPositions: safeParseJsonArray(row.gallery_positions),
+          authorName: row.author_name || 'Current News',
+          publishedAt: row.published_at,
+          updatedAt: row.updated_at,
+          version: row.version,
+        };
+
+        return jsonResponse(
+          { success: true, article },
+          200,
+          {
+            ...corsHeaders,
+            'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+          }
+        );
+      }
+
       // -------------------------------------------------------------
       // 1. GET /stats?ids=a,b,c
       // Batch fetch likes/dislikes/views for multiple posts in ONE query

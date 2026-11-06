@@ -29,7 +29,9 @@ import {
   handleAdminCreateOrUpdateArticle,
   handleAdminGetArticles,
   handleAdminDeleteArticle,
-  handleAdminGetMe
+  handleAdminGetMe,
+  handleAdminRunSync,
+  handleAdminSyncTick
 } from './server/api/adminArticles.ts';
 
 // Load environment variables
@@ -206,6 +208,8 @@ async function startServer() {
   app.get('/api/admin/articles', requireRole('admin', 'writer'), asyncHandler(handleAdminGetArticles));
   app.delete('/api/admin/articles/:id', requireRole('admin', 'writer'), asyncHandler(handleAdminDeleteArticle));
   app.get('/api/admin/me', requireRole('admin', 'writer'), asyncHandler(handleAdminGetMe));
+  app.post('/api/admin/sync/run', requireRole('admin'), asyncHandler(handleAdminRunSync));
+  app.post('/api/admin/sync-tick', asyncHandler(handleAdminSyncTick));
 
   // High-performance Cloudflare R2 articles endpoints (zero Firestore read quota consumption)
   app.get('/api/posts', asyncHandler(handleGetPosts));

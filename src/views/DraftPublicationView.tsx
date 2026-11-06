@@ -277,7 +277,13 @@ export default function DraftPublicationView(): React.JSX.Element {
         console.warn('Storage sync warning:', savedData.syncWarning);
       }
 
-      setSuccessMsg(targetStatus === 'draft' ? 'Draft saved successfully!' : (isEditing ? 'Story updated and published successfully!' : 'Story published successfully!'));
+      let warningText: string | undefined = undefined;
+      if (savedData?.synced === false && savedData?.warning) {
+        warningText = savedData.warning;
+        setSuccessMsg(savedData.warning);
+      } else {
+        setSuccessMsg(targetStatus === 'draft' ? 'Draft saved successfully!' : (isEditing ? 'Story updated and published successfully!' : 'Story published successfully!'));
+      }
 
       // Dispatch alert to subscribers if checked and published
       if (targetStatus === 'published' && sendEmailAlert) {
@@ -332,7 +338,7 @@ export default function DraftPublicationView(): React.JSX.Element {
       } catch (_) {}
 
       handleResetForm();
-      navigate('/admin/publications');
+      navigate('/admin/publications', { state: { warning: warningText } });
     } catch (err: any) {
       console.error(err);
       setErrorMsg(err.message || 'Failed to submit publication.');

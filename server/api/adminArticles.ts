@@ -1,9 +1,11 @@
 import type { Request, Response } from 'express';
+import crypto from 'node:crypto';
 import { z } from 'zod';
 import sanitizeHtml from 'sanitize-html';
 import { query, isNeonConfigured } from '../db/neon.ts';
 import { saveArticleToR2, deleteArticleFromR2, getFeedFromR2, loadLocalFeed, extractPlainExcerpt } from '../../src/server/r2Articles.ts';
 import { slugify } from '../../src/types.ts';
+import { syncSingleArticle, unpublishArticleFromD1, syncPendingArticles } from '../sync/d1Publisher.ts';
 
 const ALLOWED_CATEGORIES = [
   'Jharkhand', 'Politics', 'Tech', 'Sports', 'Business', 'Health',
@@ -103,6 +105,8 @@ export function mapRowToArticle(row: any): any {
     updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : new Date().toISOString(),
     publishedAt: row.published_at ? new Date(row.published_at).toISOString() : null,
     syncedAt: row.synced_at ? new Date(row.synced_at).toISOString() : null,
+    syncPending: row.sync_pending !== false,
+    syncedVersion: row.synced_version || 0,
     syncError: row.sync_error || null,
   };
 }
@@ -211,14 +215,14 @@ export async function handleAdminCreateOrUpdateArticle(req: Request, res: Respon
           image_url, image_url_fallback, image_urls, image_urls_fallback,
           image_position, gallery_positions,
           author_uid, author_name, author_email,
-          status, version, created_at, updated_at, published_at
+          status, version, sync_pending, created_at, updated_at, published_at
         ) VALUES (
           $1, $2, $3, $4, $5, $6, $7,
           $8, $9, $10,
           $11, $12, $13, $14,
           $15, $16,
           $17, $18, $19,
-          $20, 1, $21, $22, $23
+          $20, 1, true, $21, $22, $23
         )
         ON CONFLICT (id) DO UPDATE SET
           slug = EXCLUDED.slug,
@@ -239,6 +243,7 @@ export async function handleAdminCreateOrUpdateArticle(req: Request, res: Respon
           author_name = EXCLUDED.author_name,
           status = EXCLUDED.status,
           version = articles.version + 1,
+          sync_pending = true,
           updated_at = EXCLUDED.updated_at,
           published_at = COALESCE(articles.published_at, EXCLUDED.published_at)
         RETURNING *;
@@ -271,7 +276,50 @@ export async function handleAdminCreateOrUpdateArticle(req: Request, res: Respon
       ];
 
       const dbRes = await query(upsertSql, values);
-      neonArticle = mapRowToArticle(dbRes.rows[0]);
+      const rawDbRow = dbRes.rows[0];
+      neonArticle = mapRowToArticle(rawDbRow);
+
+      // PART D: Live sync to Cloudflare D1 reader copy
+      try {
+        const d1SyncRes = await syncSingleArticle(rawDbRow);
+        if (d1SyncRes.success) {
+          syncedAt = new Date();
+          await query(
+            `UPDATE articles 
+             SET sync_pending = false, 
+                 synced_at = $1, 
+                 synced_version = version, 
+                 sync_error = NULL 
+             WHERE id = $2`,
+            [syncedAt, articleId]
+          );
+          neonArticle.syncPending = false;
+          neonArticle.syncedAt = syncedAt.toISOString();
+          neonArticle.syncError = null;
+        } else {
+          syncError = (d1SyncRes.error || 'D1 sync failed').slice(0, 300);
+          await query(
+            `UPDATE articles 
+             SET sync_pending = true, 
+                 sync_error = $1 
+             WHERE id = $2`,
+            [syncError, articleId]
+          );
+          neonArticle.syncPending = true;
+          neonArticle.syncError = syncError;
+        }
+      } catch (d1Err: any) {
+        syncError = (d1Err?.message || 'D1 sync error').slice(0, 300);
+        await query(
+          `UPDATE articles 
+           SET sync_pending = true, 
+               sync_error = $1 
+           WHERE id = $2`,
+          [syncError, articleId]
+        ).catch(() => {});
+        neonArticle.syncPending = true;
+        neonArticle.syncError = syncError;
+      }
     } catch (dbErr: any) {
       console.error('[Admin API] Neon write error:', dbErr?.message || dbErr);
       return res.status(500).json({
@@ -281,36 +329,17 @@ export async function handleAdminCreateOrUpdateArticle(req: Request, res: Respon
     }
   }
 
-  // Dual-write: If published, synchronize with Cloudflare R2 / local feed
+  // Legacy Dual-write: Maintain Cloudflare R2 / local feed compatibility for reader site and old apps
   if (data.status === 'published') {
     try {
-      const r2Res = await saveArticleToR2(postPayloadForR2);
-      if (r2Res.success) {
-        syncedAt = new Date();
-        if (isNeonConfigured()) {
-          await query(
-            'UPDATE articles SET synced_at = $1, sync_error = NULL WHERE id = $2',
-            [syncedAt, articleId]
-          );
-        }
-      } else {
-        syncError = r2Res.error || 'Failed to sync to Cloudflare R2';
-        if (isNeonConfigured()) {
-          await query(
-            'UPDATE articles SET sync_error = $1 WHERE id = $2',
-            [syncError, articleId]
-          );
-        }
-      }
+      await saveArticleToR2(postPayloadForR2);
     } catch (r2Err: any) {
-      syncError = r2Err?.message || 'Cloudflare R2 sync failed';
-      console.warn('[Admin API] R2 sync warning:', syncError);
-      if (isNeonConfigured()) {
-        try {
-          await query('UPDATE articles SET sync_error = $1 WHERE id = $2', [syncError, articleId]);
-        } catch (_) {}
-      }
+      console.warn('[Admin API] Legacy R2 sync warning:', r2Err?.message || r2Err);
     }
+  } else if (data.status === 'draft' || data.status === 'archived') {
+    try {
+      await deleteArticleFromR2(articleId);
+    } catch (_) {}
   }
 
   // Audit log
@@ -330,14 +359,16 @@ export async function handleAdminCreateOrUpdateArticle(req: Request, res: Respon
     return res.status(200).json({
       success: true,
       article: returnedArticle,
-      warning: `Article saved in Neon database, but public CDN sync error occurred: ${syncError}`,
+      synced: false,
+      warning: 'Saved. Live sync will retry automatically.',
       syncError
     });
   }
 
   return res.status(200).json({
     success: true,
-    article: returnedArticle
+    article: returnedArticle,
+    synced: true
   });
 }
 
@@ -486,10 +517,50 @@ export async function handleAdminDeleteArticle(req: Request, res: Response) {
         }
       }
 
-      // Soft delete: status = 'archived'
-      await query(`UPDATE articles SET status = 'archived', updated_at = now() WHERE id = $1`, [id]);
+      // Soft delete: status = 'archived', sync_pending = true, version = version + 1
+      await query(
+        `UPDATE articles 
+         SET status = 'archived', 
+             version = version + 1, 
+             sync_pending = true, 
+             updated_at = now() 
+         WHERE id = $1`,
+        [id]
+      );
 
-      // If it was published, remove from public feed and R2
+      // Unpublish from D1 reader table
+      try {
+        const unpubRes = await unpublishArticleFromD1(id);
+        if (unpubRes.success) {
+          await query(
+            `UPDATE articles 
+             SET sync_pending = false, 
+                 synced_at = now(), 
+                 synced_version = version, 
+                 sync_error = NULL 
+             WHERE id = $1`,
+            [id]
+          );
+        } else {
+          await query(
+            `UPDATE articles 
+             SET sync_pending = true, 
+                 sync_error = $1 
+             WHERE id = $2`,
+            [(unpubRes.error || 'Failed to unpublish from D1').slice(0, 300), id]
+          );
+        }
+      } catch (d1Err: any) {
+        await query(
+          `UPDATE articles 
+           SET sync_pending = true, 
+               sync_error = $1 
+           WHERE id = $2`,
+          [(d1Err?.message || 'D1 unpublish error').slice(0, 300), id]
+        ).catch(() => {});
+      }
+
+      // Legacy R2 removal
       if (article.status === 'published') {
         await deleteArticleFromR2(id);
       }
@@ -534,4 +605,60 @@ export async function handleAdminGetMe(req: Request, res: Response) {
     role: req.user.role,
     email: req.user.email
   });
+}
+
+/**
+ * POST /api/admin/sync/run
+ * Requires admin role. Processes up to 50 pending outbox rows oldest first.
+ */
+export async function handleAdminRunSync(req: Request, res: Response) {
+  if (!req.user || req.user.role !== 'admin') {
+    return res.status(403).json({ success: false, error: 'Forbidden: Admin role required' });
+  }
+
+  try {
+    const result = await syncPendingArticles(50);
+    return res.status(200).json({
+      success: true,
+      processed: result.processed,
+      succeeded: result.succeeded,
+      failed: result.failed,
+    });
+  } catch (err: any) {
+    console.error('[Admin API] Run sync error:', err?.message || err);
+    return res.status(500).json({ success: false, error: 'Sync failed: ' + (err?.message || 'Internal error') });
+  }
+}
+
+/**
+ * POST /api/admin/sync-tick
+ * Cloud Scheduler trigger. NOT behind requireRole; requires header X-Sync-Token matching
+ * SYNC_TICK_TOKEN in constant time.
+ */
+export async function handleAdminSyncTick(req: Request, res: Response) {
+  const syncTokenHeader = req.headers['x-sync-token'] || req.headers['X-Sync-Token'];
+  const expectedToken = (process.env.SYNC_TICK_TOKEN || '').trim();
+
+  if (!expectedToken || typeof syncTokenHeader !== 'string') {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  }
+
+  const bufA = Buffer.from(syncTokenHeader);
+  const bufB = Buffer.from(expectedToken);
+  if (bufA.length !== bufB.length || !crypto.timingSafeEqual(bufA, bufB)) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  }
+
+  try {
+    const result = await syncPendingArticles(50);
+    return res.status(200).json({
+      success: true,
+      processed: result.processed,
+      succeeded: result.succeeded,
+      failed: result.failed,
+    });
+  } catch (err: any) {
+    console.error('[Admin API] Sync tick error:', err?.message || err);
+    return res.status(500).json({ success: false, error: 'Sync tick failed' });
+  }
 }

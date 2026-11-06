@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuthState } from '../hooks/useAuthState';
 import { Post, slugify } from '../types';
 import { cleanImageUrl, sanitizePostImages } from '../utils/imageUrl';
@@ -18,18 +18,22 @@ import {
   AlertCircle, 
   X, 
   Clock, 
-  Newspaper 
+  Newspaper,
+  RefreshCw
 } from 'lucide-react';
 
 export default function CurrentPublicationsView(): React.JSX.Element {
   const { user, isAdmin } = useAuthState();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [posts, setPosts] = useState<Post[]>([]);
   const [feedLoading, setFeedLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [pubListFilter, setPubListFilter] = useState<'all' | 'published' | 'drafts'>('all');
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [warningMsg, setWarningMsg] = useState<string | null>((location.state as any)?.warning || null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
@@ -173,6 +177,23 @@ export default function CurrentPublicationsView(): React.JSX.Element {
     }
   };
 
+  const handleRetrySync = async () => {
+    setSyncing(true);
+    try {
+      const { ok, data, error } = await adminFetch('/api/admin/sync/run', { method: 'POST' });
+      if (ok) {
+        setSuccessMsg(`Outbox sync complete: ${data?.processed || 0} processed (${data?.succeeded || 0} succeeded, ${data?.failed || 0} failed).`);
+        await fetchAdminPosts();
+      } else {
+        setErrorMsg(error || 'Failed to trigger outbox sync.');
+      }
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Sync failed.');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const filteredPosts = posts.filter(post => {
     if (pubListFilter === 'published') return post.status === 'published';
     if (pubListFilter === 'drafts') return post.status === 'draft';
@@ -215,15 +236,41 @@ export default function CurrentPublicationsView(): React.JSX.Element {
                 ))}
               </div>
 
-              <p className="hidden sm:block text-xs text-slate-500 dark:text-slate-400 font-sans">
-                Manage, edit, or delete your publications and drafts.
-              </p>
+              <div className="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto">
+                <p className="hidden sm:block text-xs text-slate-500 dark:text-slate-400 font-sans">
+                  Manage, edit, or delete your publications and drafts.
+                </p>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={handleRetrySync}
+                    disabled={syncing}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
+                    title="Process pending outbox articles to Cloudflare D1"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
+                    <span>{syncing ? 'Syncing...' : 'Retry sync'}</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
 
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           {/* Notifications */}
+          {warningMsg && (
+            <div className="mb-6 p-4 bg-amber-50 dark:bg-amber-950/40 border-l-4 border-amber-500 text-amber-800 dark:text-amber-200 rounded-lg flex items-center justify-between shadow-xs">
+              <div className="flex items-center space-x-2">
+                <AlertCircle className="h-5 w-5 shrink-0" />
+                <span className="text-sm font-medium">{warningMsg}</span>
+              </div>
+              <button onClick={() => setWarningMsg(null)} className="text-amber-600 hover:text-amber-800 dark:text-amber-400 cursor-pointer">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+
           {successMsg && (
             <div className="mb-6 p-4 bg-green-50 dark:bg-green-950/40 border-l-4 border-green-500 text-green-800 dark:text-green-200 rounded-lg flex items-center justify-between shadow-xs">
               <div className="flex items-center space-x-2">
@@ -300,14 +347,29 @@ export default function CurrentPublicationsView(): React.JSX.Element {
 
                     {/* Metadata & Headline */}
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className={`text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded-sm ${
-                          post.status === 'published'
-                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300'
-                            : 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300'
-                        }`}>
-                          {post.status === 'published' ? 'Live' : 'Draft'}
-                        </span>
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        {post.status === 'published' ? (
+                          post.syncError ? (
+                            <span 
+                              title={post.syncError}
+                              className="text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded-sm bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300 cursor-help"
+                            >
+                              Sync failed
+                            </span>
+                          ) : post.syncPending ? (
+                            <span className="text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded-sm bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300">
+                              Sync pending
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded-sm bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300">
+                              Live
+                            </span>
+                          )
+                        ) : (
+                          <span className="text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded-sm bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300">
+                            Draft
+                          </span>
+                        )}
                         <span className="text-[10px] font-mono font-semibold text-indigo-600 dark:text-indigo-400 uppercase">
                           {post.category || 'General'}
                         </span>

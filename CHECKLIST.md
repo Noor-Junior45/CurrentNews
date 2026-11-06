@@ -1,155 +1,190 @@
-# Cloud Run & Neon Production Setup Checklist
+# Cloud Run, Neon & Cloudflare D1 Production Setup Checklist
 
-Follow these exact verification and provisioning commands once to connect your Neon PostgreSQL editorial database, assign server-side admin privileges via Firebase Custom Claims, and route traffic to `admin.currentnews.blog`:
+This document provides exact, battle-tested operational commands to deploy the **Neon PostgreSQL (source of truth)** -> **Cloudflare D1 (reader edge)** publish pipeline, configure HMAC-signed synchronization, set up Cloud Scheduler, and verify edge replication.
 
 ---
 
-### Step 1: Run Neon Database Migrations
-Initialize the `staff`, `articles`, indexes, and `audit_log` tables in your Neon PostgreSQL database.
+## 1. Apply Neon PostgreSQL Migrations
+Run the initial schema (`migrations/001_init.sql`) and outbox synchronization schema (`migrations/002_sync.sql`) using your owner connection string:
 
 ```bash
 # In your local shell or Cloud Shell with NEON_DATABASE_URL exported:
 export NEON_DATABASE_URL="postgres://currentnews_app:<password>@<ep-xyz>.us-east-2.aws.neon.tech/currentnews?sslmode=require"
+
+# Execute all migrations in order
 node scripts/migrate-neon.mjs
 ```
 
 ---
 
-### Step 2: Assign Admin Role via Firebase Custom Claims
-Authenticate with Google Cloud Application Default Credentials (ADC) and grant the `admin` custom claim to your Google account. This revokes refresh tokens to ensure the new role is minted immediately on next sign-in.
+## 2. Apply Cloudflare D1 Schema Migration
+Initialize the `articles` table and performance indexes on your Cloudflare D1 database:
 
 ```bash
-# Authenticate with your GCP project
-gcloud auth application-default login
-
-# Assign admin role (run from Cloud Shell or local terminal)
-node scripts/set-role.mjs mdhassan1738@gmail.com admin
-```
-
-*(Note: To grant writer permissions to another reporter later: `node scripts/set-role.mjs reporter@currentnews.blog writer`)*
-
----
-
-### Step 3: Add `NEON_DATABASE_URL` as a Cloud Run Secret & Redeploy
-Store the database credentials securely in Google Cloud Secret Manager so the server reads it at runtime without exposing it to client bundles.
-
-```bash
-# Create the secret in Secret Manager
-echo -n "postgres://currentnews_app:<password>@<ep-xyz>.us-east-2.aws.neon.tech/currentnews?sslmode=require" | \
-  gcloud secrets create NEON_DATABASE_URL --data-file=-
-
-# Grant Cloud Run service account access to the secret
-gcloud secrets add-iam-policy-binding NEON_DATABASE_URL \
-  --member="serviceAccount:<service-account-number>-compute@developer.gserviceaccount.com" \
-  --role="roles/secretmanager.secretAccessor"
-
-# Update Cloud Run service with the secret and project id
-gcloud run deploy currentnews \
-  --set-secrets="NEON_DATABASE_URL=NEON_DATABASE_URL:latest" \
-  --set-env-vars="FIREBASE_PROJECT_ID=gen-lang-client-0638643565" \
-  --region="us-central1"
-```
-
----
-
-### Step 4: Add `admin.currentnews.blog` to Firebase Authorized Domains
-1. Open the [Firebase Console](https://console.firebase.google.com/).
-2. Select project **`gen-lang-client-0638643565`**.
-3. Navigate to **Authentication** > **Settings** > **Authorized domains**.
-4. Click **Add domain** and enter:
-   ```
-   admin.currentnews.blog
-   ```
-5. Click **Save**.
-
----
-
-### Step 5: Sign Out & Sign In Again on Admin Host
-1. Visit `https://admin.currentnews.blog/admin`.
-2. Sign out if already signed in.
-3. Sign in using `mdhassan1738@gmail.com` via Google Sign-In.
-4. Firebase Auth will mint a fresh ID token containing `claims: { role: 'admin' }`.
-5. The admin dashboard, draft composer, publication manager, and audience registry will load seamlessly with full server-side authorization.
-
----
-
-### Verification Endpoints & Commands
-- **Check Role via CLI:**
-  ```bash
-  node scripts/set-role.mjs mdhassan1738@gmail.com
-  ```
-- **Test Admin Identity API (with Bearer Token):**
-  ```bash
-  curl -i -H "Authorization: Bearer <ID_TOKEN>" https://admin.currentnews.blog/api/admin/me
-  ```
-- **Verify Public Domain Redirection:**
-  ```bash
-  curl -I https://currentnews.blog/admin
-  # Expected: HTTP/1.1 301 Moved Permanently -> Location: https://admin.currentnews.blog/admin
-  ```
-- **Verify Admin API Block on Reader Host:**
-  ```bash
-  curl -i https://currentnews.blog/api/admin/articles
-  # Expected: HTTP/1.1 404 Not Found
-  ```
-- **Verify Robots Directive on Admin Host:**
-  ```bash
-  curl -I https://admin.currentnews.blog/admin
-  # Expected: X-Robots-Tag: noindex, nofollow
-  ```
-
----
-
-### Step 6: Deploy Cloudflare Worker & Run D1 Migrations
-Deploy the hardened edge worker (`worker/src/index.ts`) with Firebase role-based authorization, rate limits, Durable Object persistent stat aggregation, and strict origin allowlist.
-
-```bash
-# 1. Switch to worker directory
+# From the root directory:
 cd worker
 
-# 2. Run D1 database migration (creates missing tables and idx_reactions_user_id index)
-npx wrangler d1 execute currentnews-db --remote --file=schema.sql
+# Execute 0001_articles.sql against remote D1 database
+npx wrangler d1 execute currentnews-db --remote --file=migrations/0001_articles.sql
 
-# 3. Deploy the worker to production
-npx wrangler deploy
+cd ..
 ```
 
 ---
 
-### Cloudflare Worker Verification Endpoints & Commands
-Run these adversarial verification checks against `https://api.currentnews.blog`:
+## 3. Configure Cloudflare Worker Secret (`SYNC_SECRET`)
+Store the HMAC signing secret securely in Cloudflare:
 
-1. **Verify Edge Worker Health Check:**
+```bash
+# Generate a strong 64-character random hex string:
+openssl rand -hex 32
+
+# Store the secret in Cloudflare Worker (prompts to paste your secret):
+cd worker
+npx wrangler secret put SYNC_SECRET
+cd ..
+```
+
+---
+
+## 4. Configure Cloud Run Secrets & Environment Variables
+Add `SYNC_SECRET`, `SYNC_TICK_TOKEN`, and `WORKER_BASE_URL` to Google Cloud Secret Manager and deploy to your admin Cloud Run service:
+
+```bash
+# 1. Generate a secure random token for Cloud Scheduler tick
+SYNC_TICK_TOKEN=$(openssl rand -hex 32)
+echo "Generated SYNC_TICK_TOKEN: $SYNC_TICK_TOKEN"
+
+# 2. Store SYNC_SECRET in Secret Manager (use the same secret generated in Step 3)
+echo -n "<PASTE_YOUR_SYNC_SECRET_HERE>" | \
+  gcloud secrets create SYNC_SECRET --data-file=- \
+  || echo -n "<PASTE_YOUR_SYNC_SECRET_HERE>" | gcloud secrets versions add SYNC_SECRET --data-file=-
+
+# 3. Store SYNC_TICK_TOKEN in Secret Manager
+echo -n "$SYNC_TICK_TOKEN" | \
+  gcloud secrets create SYNC_TICK_TOKEN --data-file=- \
+  || echo -n "$SYNC_TICK_TOKEN" | gcloud secrets versions add SYNC_TICK_TOKEN --data-file=-
+
+# 4. Grant Cloud Run service account access to both secrets
+PROJECT_NUM=$(gcloud projects describe gen-lang-client-0638643565 --format='value(projectNumber)')
+SERVICE_ACCOUNT="${PROJECT_NUM}-compute@developer.gserviceaccount.com"
+
+gcloud secrets add-iam-policy-binding SYNC_SECRET \
+  --member="serviceAccount:${SERVICE_ACCOUNT}" \
+  --role="roles/secretmanager.secretAccessor"
+
+gcloud secrets add-iam-policy-binding SYNC_TICK_TOKEN \
+  --member="serviceAccount:${SERVICE_ACCOUNT}" \
+  --role="roles/secretmanager.secretAccessor"
+
+# 5. Update Cloud Run service with secrets & worker base URL
+gcloud run services update currentnews \
+  --region="asia-east1" \
+  --set-secrets="SYNC_SECRET=SYNC_SECRET:latest,SYNC_TICK_TOKEN=SYNC_TICK_TOKEN:latest" \
+  --update-env-vars="WORKER_BASE_URL=https://api.currentnews.blog,FIREBASE_PROJECT_ID=gen-lang-client-0638643565"
+```
+
+---
+
+## 5. Deploy Cloudflare Worker
+Deploy the updated edge worker with signed internal synchronization endpoints (`/internal/*`) and public reader routes (`/articles*`):
+
+```bash
+cd worker
+npx wrangler deploy
+cd ..
+```
+
+---
+
+## 6. Configure Google Cloud Scheduler for Outbox Background Sync
+Set up a recurring Cloud Scheduler job to trigger `POST /api/admin/sync-tick` every 5 minutes to flush any pending outbox items:
+
+```bash
+# Create the 5-minute scheduler job with the X-Sync-Token header:
+gcloud scheduler jobs create http currentnews-outbox-sync \
+  --location="asia-east1" \
+  --schedule="*/5 * * * *" \
+  --uri="https://admin.currentnews.blog/api/admin/sync-tick" \
+  --http-method="POST" \
+  --headers="Content-Type=application/json,X-Sync-Token=$SYNC_TICK_TOKEN" \
+  --description="Hourly/5-min automated outbox flush for Current News D1 publish pipeline"
+```
+
+---
+
+## 7. Initial Historical Resync (Neon -> D1)
+Populate D1 with all currently published articles and prune orphaned rows:
+
+```bash
+# Dry run first to verify batches
+node scripts/resync-d1.mjs --dry-run
+
+# Run live resync and reconciliation
+node scripts/resync-d1.mjs
+```
+
+---
+
+## 8. Verification & Adversarial Test Plan
+
+### Test A: Publish an Article & Verify Edge Propagation
+1. Sign in to `https://admin.currentnews.blog/admin/draft`.
+2. Compose a new story with headline, manuscript, and image.
+3. Click **Publish Article**.
+4. Observe the response:
+   - Status badge in `/admin/publications` displays **`Live`** (emerald pill).
+   - If D1 is temporarily unreachable, displays **`Sync pending`** or **`Sync failed`** with hover tooltip, and the save still succeeds!
+5. Test public edge reader endpoint immediately:
    ```bash
-   curl -i https://api.currentnews.blog/health
-   # Expected: HTTP/1.1 200 OK
-   # {"status":"operational","service":"currentnews-worker"}
+   curl -i "https://api.currentnews.blog/articles?limit=5"
+   # Verify the new article appears in the JSON response
+   ```
+6. Test direct lookup by ID or slug:
+   ```bash
+   curl -i "https://api.currentnews.blog/articles/<POST_ID>"
    ```
 
-2. **Verify Admin Route Block without Authentication (401 Unauthorized):**
+### Test B: Edit an Article & Verify Keyset Consistency
+1. Edit the title or content in `/admin/draft?id=<POST_ID>`.
+2. Click **Publish Article**.
+3. Query D1 edge:
    ```bash
-   curl -i https://api.currentnews.blog/subscribers
+   curl -i "https://api.currentnews.blog/articles/<POST_ID>"
+   # Verify updated content and incremented version
+   ```
+
+### Test C: Unpublish / Delete an Article & Verify Purge
+1. In `/admin/publications`, click the trash icon on the article.
+2. Confirm deletion.
+3. Query D1 edge:
+   ```bash
+   curl -i "https://api.currentnews.blog/articles/<POST_ID>"
+   # Expected: HTTP/1.1 404 Not Found
+   ```
+4. Verify the article is removed from `/articles` feed.
+
+### Test D: Security & Replay Attack Defense Check
+1. **Unauthorized Internal Route Access:**
+   ```bash
+   curl -i -X POST https://api.currentnews.blog/internal/publish \
+     -H "Content-Type: application/json" \
+     -d '{"article":{"id":"post_test"}}'
+   # Expected: HTTP/1.1 401 Unauthorized (never reveals why)
+   ```
+2. **Expired Timestamp Replay Attack:**
+   ```bash
+   curl -i -X POST https://api.currentnews.blog/internal/publish \
+     -H "Content-Type: application/json" \
+     -H "X-Timestamp: 1500000000000" \
+     -H "X-Signature: abcdef" \
+     -d '{"article":{"id":"post_test"}}'
    # Expected: HTTP/1.1 401 Unauthorized
-   # {"error":"Missing or invalid authorization token"}
    ```
-
-3. **Verify Admin Route Block with Non-Admin Token (403 Forbidden):**
+3. **Trigger Manual Outbox Sync from Admin:**
+   In `/admin/publications`, click the **Retry sync** button or call:
    ```bash
-   curl -i -H "Authorization: Bearer <REGULAR_READER_OR_WRITER_TOKEN>" https://api.currentnews.blog/subscribers
-   # Expected: HTTP/1.1 403 Forbidden
-   # {"error":"Admin role required"}
-   ```
-
-4. **Verify Input Fuzzing Defense on Reactions (400 Bad Request on invalid postId):**
-   ```bash
-   curl -i -X POST https://api.currentnews.blog/reaction/invalid--postId--with--bad--chars\$\$\$ -H "Content-Type: application/json" -d '{"action":"like"}'
-   # Expected: HTTP/1.1 400 Bad Request
-   # {"error":"Invalid postId format"}
-   ```
-
-5. **Verify Request Body Size Cap (413 Payload Too Large on oversized payload):**
-   ```bash
-   # Any body exceeding 16KB on standard endpoints is rejected before parsing
-   curl -i -X POST https://api.currentnews.blog/subscribe -H "Content-Type: application/json" -d "{\"email\":\"$(head -c 20000 < /dev/zero | tr '\0' 'a')@example.com\"}"
-   # Expected: HTTP/1.1 413 Payload Too Large
+   curl -i -X POST https://admin.currentnews.blog/api/admin/sync/run \
+     -H "Authorization: Bearer <ID_TOKEN>"
+   # Expected: HTTP/1.1 200 OK {"success":true,"processed":...,"succeeded":...}
    ```

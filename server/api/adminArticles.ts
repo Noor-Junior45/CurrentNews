@@ -525,13 +525,13 @@ export async function handleAdminDeleteArticle(req: Request, res: Response) {
  */
 export async function handleAdminGetMe(req: Request, res: Response) {
   if (!req.user) {
-    return res.status(401).json({ success: false, error: 'Unauthorized' });
+    return res.status(401).json({ success: false, error: 'Unauthorized', code: 'no_token' });
   }
 
   return res.status(200).json({
     success: true,
     uid: req.user.uid,
-    email: req.user.email,
-    role: req.user.role
+    role: req.user.role,
+    email: req.user.email
   });
 }

@@ -17,11 +17,13 @@ export const API_BASE = (((import.meta as any).env?.VITE_API_BASE as string) || 
 /**
  * Retrieve current user's Firebase ID token if signed in
  */
-async function getIdToken(): Promise<string | null> {
+import { formatAuthErrorMessage } from './adminFetch';
+
+async function getIdToken(forceRefresh = false): Promise<string | null> {
   try {
     const user = auth.currentUser;
     if (!user) return null;
-    return await user.getIdToken();
+    return await user.getIdToken(forceRefresh);
   } catch (err) {
     console.debug('[Worker API] Could not get ID token:', err);
     return null;
@@ -29,25 +31,24 @@ async function getIdToken(): Promise<string | null> {
 }
 
 /**
- * Wrapper around fetch that auto-attaches Firebase ID token and default headers
+ * Wrapper around fetch that auto-attaches Firebase ID token and default headers.
+ * Automatically refreshes token and retries once on token_expired / token_revoked.
  */
 async function apiFetch<T = any>(
   endpoint: string,
   options: RequestInit = {}
-): Promise<{ data: T | null; error: string | null; status: number }> {
+): Promise<{ data: T | null; error: string | null; status: number; code?: string }> {
   const url = `${API_BASE}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
-  const headers = new Headers(options.headers || {});
 
-  if (!headers.has('Content-Type') && options.method && options.method !== 'GET') {
-    headers.set('Content-Type', 'application/json');
-  }
+  const execute = async (token: string | null) => {
+    const headers = new Headers(options.headers || {});
+    if (!headers.has('Content-Type') && options.method && options.method !== 'GET') {
+      headers.set('Content-Type', 'application/json');
+    }
+    if (token && !headers.has('Authorization')) {
+      headers.set('Authorization', `Bearer ${token}`);
+    }
 
-  const token = await getIdToken();
-  if (token && !headers.has('Authorization')) {
-    headers.set('Authorization', `Bearer ${token}`);
-  }
-
-  try {
     const res = await fetch(url, {
       ...options,
       headers,
@@ -55,16 +56,38 @@ async function apiFetch<T = any>(
 
     const isJson = res.headers.get('content-type')?.includes('application/json');
     const data = isJson ? await res.json().catch(() => null) : null;
+    const code = (data?.code as string | undefined) || undefined;
+
+    return { res, data, code };
+  };
+
+  try {
+    let token = await getIdToken(false);
+    let { res, data, code } = await execute(token);
+
+    if (!res.ok && (code === 'token_expired' || code === 'token_revoked')) {
+      console.warn(`[Worker API] Received ${code}. Refreshing token and retrying once...`);
+      const freshToken = await getIdToken(true);
+      if (freshToken) {
+        const retryResult = await execute(freshToken);
+        res = retryResult.res;
+        data = retryResult.data;
+        code = retryResult.code;
+      }
+    }
 
     if (!res.ok) {
+      const rawError = data?.error || data?.message || `HTTP ${res.status}: ${res.statusText}`;
+      const readableError = formatAuthErrorMessage(code, rawError);
       return {
         data: null,
-        error: data?.error || data?.message || `HTTP ${res.status}: ${res.statusText}`,
+        error: readableError,
         status: res.status,
+        code,
       };
     }
 
-    return { data, error: null, status: res.status };
+    return { data, error: null, status: res.status, code };
   } catch (err: any) {
     console.warn(`[Worker API] Network error on ${endpoint}:`, err?.message || err);
     return { data: null, error: err?.message || 'Network request failed', status: 0 };

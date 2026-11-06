@@ -4,6 +4,7 @@ import { useAuthState } from '../hooks/useAuthState';
 import { Post, slugify } from '../types';
 import { cleanImageUrl, sanitizePostImages } from '../utils/imageUrl';
 import { getCompressedStories, removeCompressedStory, getDeletedStoryIds } from '../utils/compressedStorage';
+import { adminFetch } from '../utils/adminFetch';
 import { safeFormatDate } from '../utils/dateHelper';
 import ProfilePageNavbar from '../components/ProfilePageNavbar';
 import AdminAuthGuard from '../components/AdminAuthGuard';
@@ -48,31 +49,17 @@ export default function CurrentPublicationsView(): React.JSX.Element {
       const deletedIds = getDeletedStoryIds();
       const postMap = new Map<string, Post>();
 
-      let idToken: string | undefined = undefined;
-      try {
-        idToken = await user.getIdToken();
-      } catch (_) {}
-
-      const authHeaders: Record<string, string> = {};
-      if (idToken) {
-        authHeaders['Authorization'] = `Bearer ${idToken}`;
-      }
-
       // 1. Fetch from editorial source of truth (/api/admin/articles)
       try {
-        const adminRes = await fetch(`/api/admin/articles?limit=50&t=${Date.now()}`, {
-          headers: authHeaders,
-          cache: 'no-store'
-        });
-        if (adminRes.ok) {
-          const adminData = await adminRes.json();
-          if (Array.isArray(adminData.articles)) {
-            for (const p of adminData.articles) {
-              if (p && p.id && !deletedIds.has(p.id)) {
-                postMap.set(p.id, sanitizePostImages(p));
-              }
+        const { ok, data: adminData, error: adminFetchErr } = await adminFetch(`/api/admin/articles?limit=50&t=${Date.now()}`);
+        if (ok && Array.isArray(adminData?.articles)) {
+          for (const p of adminData.articles) {
+            if (p && p.id && !deletedIds.has(p.id)) {
+              postMap.set(p.id, sanitizePostImages(p));
             }
           }
+        } else if (!ok && adminFetchErr) {
+          setErrorMsg(adminFetchErr);
         }
       } catch (adminErr) {
         console.debug('Admin articles fetch notice:', adminErr);
@@ -165,24 +152,12 @@ export default function CurrentPublicationsView(): React.JSX.Element {
       removeCompressedStory(id);
 
       // 2. Remove from backend server and editorial repository with Bearer token
-      let idToken: string | undefined = undefined;
-      try {
-        idToken = await user?.getIdToken();
-      } catch (_) {}
-
-      const authHeaders: Record<string, string> = {};
-      if (idToken) {
-        authHeaders['Authorization'] = `Bearer ${idToken}`;
-      }
-
-      const res = await fetch(`/api/admin/articles/${id}`, {
-        method: 'DELETE',
-        headers: authHeaders
+      const { ok, error: deleteErr } = await adminFetch(`/api/admin/articles/${id}`, {
+        method: 'DELETE'
       });
 
-      if (!res.ok) {
-        const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson.error || `Failed to delete post: HTTP ${res.status}`);
+      if (!ok) {
+        throw new Error(deleteErr || 'Failed to delete post');
       }
 
       // 3. Update view state

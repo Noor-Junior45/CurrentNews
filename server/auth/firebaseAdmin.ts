@@ -21,3 +21,24 @@ if (getApps().length === 0) {
 
 export const adminApp = getApps().length > 0 ? getApp() : null;
 export const adminAuth = getAuth();
+
+/**
+ * Returns the active projectId used by firebase-admin.
+ */
+export function getAdminProjectId(): string {
+  return adminApp?.options?.projectId || process.env.FIREBASE_PROJECT_ID || 'unknown';
+}
+
+/**
+ * Logs which projectId firebase-admin is using on server start
+ * and warns if it differs from process.env.FIREBASE_PROJECT_ID.
+ */
+export function logFirebaseAdminProjectId(): void {
+  const activeId = getAdminProjectId();
+  const envId = process.env.FIREBASE_PROJECT_ID;
+
+  console.log(`[Firebase Admin] active projectId: ${activeId}`);
+  if (envId && activeId !== envId) {
+    console.warn(`[Firebase Admin] WARNING: active projectId (${activeId}) differs from process.env.FIREBASE_PROJECT_ID (${envId})`);
+  }
+}

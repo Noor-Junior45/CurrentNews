@@ -125,6 +125,27 @@
   - **Root Cause:** Admin access was previously evaluated using client-side hardcoded email arrays (`AUTHORIZED_ADMIN_EMAILS`, `VITE_ADMIN_EMAILS`, `AUTHORIZED_ADMIN_DOMAINS`) in `src/hooks/useAuthState.ts` and `src/utils/writers.ts`. Any user spoofing client state or modifying environment variables could access admin views, and write endpoints lacked server-side token and role verification.
   - **Permanent Guardrail:** Enforce server-side role validation via Firebase Custom Claims (`admin`, `writer`, `none`) with `requireRole` middleware on Express routes (`/api/admin/*`, `/api/articles/save`, `/api/upload`, `/api/mail/send-alert`, `/api/push/broadcast`). In `src/hooks/useAuthState.ts`, role is extracted exclusively from `user.getIdTokenResult(true).claims.role`. All hardcoded admin/writer email lists have been deleted. Neon Postgres acts as the editorial source of truth, and `firestore.rules` is locked down with `allow read, write: if false;`.
 
+- [x] **Bug ID & Summary:** BUG-032 — Cloudflare Edge Worker Hardcoded Email Lists, Token Verification Gaps & Durable Object Eviction Data Loss.
+  - **Root Cause:**
+    1. `worker/src/index.ts` hardcoded email lists and `@currentnews.blog` suffix bypasses, drifting out of sync with Firebase Custom Claims.
+    2. `verifyFirebaseIdToken` did not inspect token claims (`role`, `email_verified`), future `iat` timestamps, or missing `auth_time`.
+    3. `StatsAggregator` stored reaction/view deltas in ephemeral RAM only (`this.deltas = new Map()`); if Cloudflare evicted the DO before the 30-second alarm fired, accumulated likes and views were permanently lost.
+  - **Permanent Guardrail:**
+    1. Purged all hardcoded emails from the worker and `wrangler.toml`. Role checks now strictly enforce `isAdmin(user) = user.role === 'admin' && user.emailVerified === true`.
+    2. Tokens with future `iat` or missing/future `auth_time` are immediately rejected.
+    3. `StatsAggregator` uses `this.ctx.storage.put()` on every delta addition and hydrates state in the constructor using `this.ctx.blockConcurrencyWhile()`, deleting storage records only upon verified D1 batch commits.
+
+- [x] **Bug ID & Summary:** BUG-034 — Opaque "Unauthorized: Invalid authentication credentials" Errors and Silent Token Expiration / Revocation Gaps.
+  - **Root Cause:**
+    1. In `server/auth/requireRole.ts`, any error during `verifyIdToken(token, true)` that was not `id-token-revoked` or `id-token-expired` fell through to a generic "Unauthorized: Invalid authentication credentials" without an error code, making diagnostics impossible.
+    2. Revocation checking requires contacting Google's backend, which fails if credentials or network are restricted in certain environments.
+    3. The client had no automatic token refresh retry logic when tokens expired or were revoked, causing immediate failed requests.
+  - **Permanent Guardrail:**
+    1. Mapped all rejections in `requireRole.ts` to standard error codes (`no_token`, `token_expired`, `token_revoked`, `invalid_token`, `auth_backend_error`, `email_not_verified`, `no_role`, `forbidden`) with `console.warn` logging the code, method, path, hasHeader, projectId, and firebaseErrorCode without logging sensitive tokens, emails, or DB URLs.
+    2. Added `AUTH_CHECK_REVOKED` env flag (defaults to "true"; allows "false" to bypass revocation check when needed).
+    3. Implemented `adminFetch` with automatic single retry via `auth.currentUser.getIdToken(true)` upon receiving `token_expired` or `token_revoked`, and formatted readable error messages in error banners.
+
+
 
 
 

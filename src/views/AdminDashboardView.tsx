@@ -5,6 +5,7 @@ import { Post } from '../types';
 import { sanitizePostImages } from '../utils/imageUrl';
 import { getCompressedStories } from '../utils/compressedStorage';
 import { api } from '../utils/api';
+import { adminFetch } from '../utils/adminFetch';
 import { clientLoadBalancer } from '../utils/clientLoadBalancer';
 import ProfilePageNavbar from '../components/ProfilePageNavbar';
 import AdminAuthGuard from '../components/AdminAuthGuard';
@@ -56,6 +57,16 @@ export default function AdminDashboardView(): React.JSX.Element {
     if (!user) return;
     setFeedLoading(true);
     try {
+      // 0. Verify admin/writer credentials with server
+      try {
+        const { ok, error: meErr } = await adminFetch('/api/admin/me');
+        if (!ok && meErr) {
+          setErrorMsg(meErr);
+        }
+      } catch (meError: any) {
+        console.debug('Admin me verify notice:', meError);
+      }
+
       // 1. Fetch user pen name (Worker D1 with local storage fallback)
       try {
         const cloudPenName = await api.getUserPenName();

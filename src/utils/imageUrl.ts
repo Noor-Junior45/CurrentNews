@@ -8,6 +8,7 @@
 export const R2_CUSTOM_DOMAIN = 'media.currentnews.blog';
 export const R2_DEV_DOMAIN = 'pub-03dd1274c4824531a1478f20e0485d75.r2.dev';
 export const DEFAULT_BRAND_EMBLEM = 'https://i.imgur.com/gFgShoZ.jpeg';
+import { webUrl } from './webBase';
 
 /**
  * Known non-image sites or patterns (such as online converter tools or generic page roots)
@@ -49,6 +50,11 @@ export function isLikelyImageUrl(url?: string | null): boolean {
 
   // Accept data URLs or blob URLs
   if (trimmed.startsWith('data:image/') || trimmed.startsWith('blob:')) {
+    return true;
+  }
+
+  // Accept relative /img/ or /uploads/ paths
+  if (trimmed.startsWith('/img/') || trimmed.startsWith('/uploads/')) {
     return true;
   }
 
@@ -129,7 +135,10 @@ export function cleanImageUrl(url?: string | null): string {
   }
 
   // 1. Fix duplicated, malformed, or missing-colon protocols (e.g. "https://https//", "https//", "http://https://", "https:")
-  let formatted = cleaned.replace(/^(?:https?[:/]*)+/i, 'https://');
+  let formatted = cleaned;
+  if (!formatted.startsWith('/img/') && !formatted.startsWith('/uploads/')) {
+    formatted = formatted.replace(/^(?:https?[:/]*)+/i, 'https://');
+  }
 
   // 2. Fix accidental path insertions like "/uploads/photo.jpg/uploads/" or "/photo.jpg/uploads/" or "/uploads/photo.jpg/img/"
   // e.g. "media.currentnews.blog/uploads/photo.jpg/uploads/2026/..." -> "media.currentnews.blog/uploads/2026/..."
@@ -145,6 +154,11 @@ export function cleanImageUrl(url?: string | null): string {
   // 4. Imgur non-direct link normalization (e.g. imgur.com/abc -> i.imgur.com/abc.jpg)
   if (formatted.includes('imgur.com') && !/\.(png|jpg|jpeg|gif|webp)$/i.test(formatted)) {
     formatted = formatted.replace('imgur.com', 'i.imgur.com') + '.jpg';
+  }
+
+  // 5. Wrap relative /img/ or /uploads/ with webUrl for Android native shell
+  if (formatted.startsWith('/img/') || formatted.startsWith('/uploads/')) {
+    return webUrl(formatted);
   }
 
   return formatted;

@@ -97,3 +97,59 @@ gcloud run deploy currentnews \
   curl -I https://admin.currentnews.blog/admin
   # Expected: X-Robots-Tag: noindex, nofollow
   ```
+
+---
+
+### Step 6: Deploy Cloudflare Worker & Run D1 Migrations
+Deploy the hardened edge worker (`worker/src/index.ts`) with Firebase role-based authorization, rate limits, Durable Object persistent stat aggregation, and strict origin allowlist.
+
+```bash
+# 1. Switch to worker directory
+cd worker
+
+# 2. Run D1 database migration (creates missing tables and idx_reactions_user_id index)
+npx wrangler d1 execute currentnews-db --remote --file=schema.sql
+
+# 3. Deploy the worker to production
+npx wrangler deploy
+```
+
+---
+
+### Cloudflare Worker Verification Endpoints & Commands
+Run these adversarial verification checks against `https://api.currentnews.blog`:
+
+1. **Verify Edge Worker Health Check:**
+   ```bash
+   curl -i https://api.currentnews.blog/health
+   # Expected: HTTP/1.1 200 OK
+   # {"status":"operational","service":"currentnews-worker"}
+   ```
+
+2. **Verify Admin Route Block without Authentication (401 Unauthorized):**
+   ```bash
+   curl -i https://api.currentnews.blog/subscribers
+   # Expected: HTTP/1.1 401 Unauthorized
+   # {"error":"Missing or invalid authorization token"}
+   ```
+
+3. **Verify Admin Route Block with Non-Admin Token (403 Forbidden):**
+   ```bash
+   curl -i -H "Authorization: Bearer <REGULAR_READER_OR_WRITER_TOKEN>" https://api.currentnews.blog/subscribers
+   # Expected: HTTP/1.1 403 Forbidden
+   # {"error":"Admin role required"}
+   ```
+
+4. **Verify Input Fuzzing Defense on Reactions (400 Bad Request on invalid postId):**
+   ```bash
+   curl -i -X POST https://api.currentnews.blog/reaction/invalid--postId--with--bad--chars\$\$\$ -H "Content-Type: application/json" -d '{"action":"like"}'
+   # Expected: HTTP/1.1 400 Bad Request
+   # {"error":"Invalid postId format"}
+   ```
+
+5. **Verify Request Body Size Cap (413 Payload Too Large on oversized payload):**
+   ```bash
+   # Any body exceeding 16KB on standard endpoints is rejected before parsing
+   curl -i -X POST https://api.currentnews.blog/subscribe -H "Content-Type: application/json" -d "{\"email\":\"$(head -c 20000 < /dev/zero | tr '\0' 'a')@example.com\"}"
+   # Expected: HTTP/1.1 413 Payload Too Large
+   ```

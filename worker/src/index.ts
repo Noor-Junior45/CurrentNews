@@ -22,13 +22,13 @@ export interface ExecutionContext {
 export interface Env {
   DB: D1Database;
   AGG: DurableObjectNamespace;
-  ADMIN_EMAILS?: string;
   FIREBASE_PROJECT_ID?: string;
 }
 
 /**
  * Singleton Durable Object for coalescing stats updates (likes, dislikes, views)
  * into high-performance periodic D1 batch writes every 30 seconds.
+ * Persists pending deltas in ctx.storage to prevent data loss on DO eviction.
  */
 export class StatsAggregator extends DurableObject {
   private deltas: Map<string, { likes: number; dislikes: number; views: number }> = new Map();
@@ -37,6 +37,26 @@ export class StatsAggregator extends DurableObject {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.env = env;
+
+    // Load persisted deltas on initialization before processing any requests
+    this.ctx.blockConcurrencyWhile(async () => {
+      try {
+        const stored = await this.ctx.storage.get<Record<string, { likes: number; dislikes: number; views: number }>>('deltas');
+        if (stored && typeof stored === 'object') {
+          for (const [postId, stats] of Object.entries(stored)) {
+            if (stats) {
+              this.deltas.set(postId, {
+                likes: Number(stats.likes) || 0,
+                dislikes: Number(stats.dislikes) || 0,
+                views: Number(stats.views) || 0,
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.error('[StatsAggregator] Error restoring deltas from storage:', err);
+      }
+    });
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -48,7 +68,7 @@ export class StatsAggregator extends DurableObject {
       } catch (e) {}
 
       const { postId, likes = 0, dislikes = 0, views = 0 } = body;
-      if (!postId) {
+      if (!postId || typeof postId !== 'string') {
         return new Response('Missing postId', { status: 400 });
       }
 
@@ -58,7 +78,14 @@ export class StatsAggregator extends DurableObject {
       current.views += Number(views) || 0;
       this.deltas.set(postId, current);
 
-      // On the first add, call this.ctx.storage.setAlarm(Date.now() + 30000) only if no alarm is set
+      // Persist deltas to ctx.storage on every addition so DO eviction does not lose stats
+      try {
+        await this.ctx.storage.put('deltas', Object.fromEntries(this.deltas.entries()));
+      } catch (storeErr) {
+        console.error('[StatsAggregator] Failed to persist deltas:', storeErr);
+      }
+
+      // On the first add, set 30s alarm only if no alarm is currently active
       const currentAlarm = await this.ctx.storage.getAlarm();
       if (currentAlarm === null) {
         await this.ctx.storage.setAlarm(Date.now() + 30000);
@@ -73,7 +100,10 @@ export class StatsAggregator extends DurableObject {
   }
 
   async alarm(): Promise<void> {
-    if (this.deltas.size === 0) return;
+    if (this.deltas.size === 0) {
+      await this.ctx.storage.delete('deltas');
+      return;
+    }
 
     // Snapshot deltas to flush
     const snapshot = new Map(this.deltas);
@@ -94,6 +124,7 @@ export class StatsAggregator extends DurableObject {
 
     if (statements.length === 0) {
       this.deltas.clear();
+      await this.ctx.storage.delete('deltas');
       return;
     }
 
@@ -104,7 +135,7 @@ export class StatsAggregator extends DurableObject {
         await this.env.DB.batch(statements.slice(i, i + chunkSize));
       }
 
-      // Clear the flushed deltas only after the batch succeeds
+      // Clear the flushed deltas only after the D1 batch succeeds
       for (const [postId, delta] of snapshot.entries()) {
         const remaining = this.deltas.get(postId);
         if (remaining) {
@@ -116,9 +147,16 @@ export class StatsAggregator extends DurableObject {
           }
         }
       }
+
+      // Update storage state after batch completion
+      if (this.deltas.size === 0) {
+        await this.ctx.storage.delete('deltas');
+      } else {
+        await this.ctx.storage.put('deltas', Object.fromEntries(this.deltas.entries()));
+      }
     } catch (err) {
       console.error('[StatsAggregator] D1 batch failed, re-arming alarm:', err);
-      // Keep deltas and re-arm alarm
+      // Keep deltas in memory and storage, and re-arm alarm to retry in 15s
       await this.ctx.storage.setAlarm(Date.now() + 15000);
     }
   }
@@ -162,6 +200,8 @@ interface JWKKey {
 interface AuthUser {
   uid: string;
   email?: string;
+  emailVerified: boolean;
+  role?: string;
 }
 
 // In-memory cache for Google's public JWK set
@@ -184,7 +224,6 @@ function checkRateLimit(ip: string, limit: number = 60, windowMs: number = 60000
   return true;
 }
 
-// Clean up stale rate-limit entries periodically
 function cleanupRateLimits() {
   const now = Date.now();
   for (const [ip, entry] of ipWriteRateLimits.entries()) {
@@ -194,27 +233,33 @@ function cleanupRateLimits() {
   }
 }
 
-// Allowed CORS origins
+// Exact allowed CORS origins (no wildcards)
 const ALLOWED_ORIGINS = [
   'https://currentnews.blog',
   'https://www.currentnews.blog',
+  'https://admin.currentnews.blog',
   'https://localhost',
   'capacitor://localhost',
   'http://localhost:3000',
   'http://localhost:5173',
 ];
 
-function getCorsHeaders(request: Request): HeadersInit {
+function getCorsHeaders(request: Request): Record<string, string> {
   const origin = request.headers.get('Origin') || '';
-  const isAllowed = ALLOWED_ORIGINS.includes(origin) || origin.endsWith('.currentnews.blog');
-  const allowOrigin = isAllowed ? origin : 'https://currentnews.blog';
+  const isAllowed = ALLOWED_ORIGINS.includes(origin);
 
-  return {
-    'Access-Control-Allow-Origin': allowOrigin,
+  const headers: Record<string, string> = {
+    'Vary': 'Origin',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
     'Access-Control-Max-Age': '86400',
   };
+
+  if (isAllowed) {
+    headers['Access-Control-Allow-Origin'] = origin;
+  }
+
+  return headers;
 }
 
 function jsonResponse(data: any, status = 200, headers: HeadersInit = {}): Response {
@@ -222,6 +267,8 @@ function jsonResponse(data: any, status = 200, headers: HeadersInit = {}): Respo
     status,
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
+      'X-Content-Type-Options': 'nosniff',
+      'Vary': 'Origin',
       ...headers,
     },
   });
@@ -255,7 +302,6 @@ async function getGoogleJwks(): Promise<JWKKey[]> {
     throw new Error(`Failed to fetch Google JWK set: ${res.status}`);
   }
 
-  // Parse max-age from Cache-Control header, default to 1 hour
   let maxAge = 3600;
   const cacheControl = res.headers.get('Cache-Control') || '';
   const match = cacheControl.match(/max-age=(\d+)/i);
@@ -273,7 +319,9 @@ async function getGoogleJwks(): Promise<JWKKey[]> {
 }
 
 /**
- * Verifies a Firebase ID token using Google's public JWK set and Web Crypto API
+ * Verifies a Firebase ID token using Google's public JWK set and Web Crypto API.
+ * Validates expiration, issued-at time (no future iat), auth_time presence, issuer, audience, and subject.
+ * Returns { uid, email, emailVerified, role }.
  */
 async function verifyFirebaseIdToken(token: string, projectId: string): Promise<AuthUser | null> {
   try {
@@ -293,7 +341,11 @@ async function verifyFirebaseIdToken(token: string, projectId: string): Promise<
 
     // Verify standard Firebase JWT claims
     const nowSec = Math.floor(Date.now() / 1000);
-    if (!payload.exp || payload.exp < nowSec) return null;
+    if (!payload.exp || typeof payload.exp !== 'number' || payload.exp <= nowSec) return null;
+    // Reject tokens whose iat is in the future
+    if (!payload.iat || typeof payload.iat !== 'number' || payload.iat > nowSec) return null;
+    // Reject tokens whose auth_time is missing or in the future
+    if (!payload.auth_time || typeof payload.auth_time !== 'number' || payload.auth_time > nowSec) return null;
     if (payload.iss !== `https://securetoken.google.com/${projectId}`) return null;
     if (payload.aud !== projectId) return null;
     if (!payload.sub || typeof payload.sub !== 'string') return null;
@@ -330,7 +382,9 @@ async function verifyFirebaseIdToken(token: string, projectId: string): Promise<
 
     return {
       uid: payload.sub,
-      email: payload.email,
+      email: typeof payload.email === 'string' ? payload.email : undefined,
+      emailVerified: payload.email_verified === true,
+      role: typeof payload.role === 'string' ? payload.role : undefined,
     };
   } catch (err) {
     console.warn('[Worker Auth] Token verification error:', err);
@@ -353,40 +407,46 @@ async function authenticateRequest(request: Request, env: Env): Promise<AuthUser
   return await verifyFirebaseIdToken(token, projectId);
 }
 
-const AUTHORIZED_WRITER_AND_ADMIN_EMAILS = [
-  'mdhassan1738@gmail.com',
-  'mdnoor4860@gmail.com',
-  'alifraja404@gmail.com',
-  'admin@currentnews.blog',
-  'support@guashoomin.resend.app',
-  'inbound@currentnews.blog',
-  'alerts@currentnews.blog',
-  'privacy@currentnews.blog',
-  'contact@currentnews.blog'
-];
+/**
+ * Role check: User must have custom claim role 'admin' and a verified email.
+ * Zero hardcoded email addresses.
+ */
+function isAdmin(user: AuthUser | null): boolean {
+  return !!user && user.role === 'admin' && user.emailVerified === true;
+}
 
 /**
- * Check if the authenticated user is an administrator or authorized newsroom writer.
- * Matches authorized list, domain @currentnews.blog, or env.ADMIN_EMAILS / env.WRITERS.
+ * Safe JSON body parser enforcing a maximum byte limit to prevent DoS memory exhaustion.
  */
-function isUserAdmin(email: string | undefined, env: Env): boolean {
-  if (!email) return false;
-  const cleaned = email.trim().toLowerCase();
-  if (cleaned.endsWith('@currentnews.blog')) return true;
+async function parseJsonBody<T = any>(
+  request: Request,
+  maxBytes: number = 16 * 1024
+): Promise<{ data: T | null; error?: string; status?: number }> {
+  const contentLength = parseInt(request.headers.get('content-length') || '0', 10);
+  if (contentLength > maxBytes) {
+    return { data: null, error: 'Payload too large', status: 413 };
+  }
 
-  const rawAdmins = [env.ADMIN_EMAILS, (env as any).WRITERS].filter(Boolean).join(',');
-  const dynamicList = rawAdmins
-    .split(',')
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
+  const text = await request.text();
+  if (new TextEncoder().encode(text).length > maxBytes) {
+    return { data: null, error: 'Payload too large', status: 413 };
+  }
 
-  const fullList = [...AUTHORIZED_WRITER_AND_ADMIN_EMAILS, ...dynamicList];
-  return fullList.includes(cleaned);
+  if (!text.trim()) {
+    return { data: {} as T };
+  }
+
+  try {
+    return { data: JSON.parse(text) as T };
+  } catch {
+    return { data: null, error: 'Invalid JSON payload', status: 400 };
+  }
 }
 
-function isUserAdminOrWriter(email: string | undefined, env: Env): boolean {
-  return isUserAdmin(email, env);
-}
+// Validation constants
+const POST_ID_REGEX = /^[A-Za-z0-9_-]{6,64}$/;
+const PUSH_ID_REGEX = /^[A-Za-z0-9_-]{16,128}$/;
+const EMAIL_REGEX = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -425,7 +485,6 @@ export default {
       // -------------------------------------------------------------
       // 1. GET /stats?ids=a,b,c
       // Batch fetch likes/dislikes/views for multiple posts in ONE query
-      // Cached at edge with Cache-Control: public, s-maxage=30
       // -------------------------------------------------------------
       if (method === 'GET' && path === '/stats') {
         const idsParam = url.searchParams.get('ids') || '';
@@ -433,7 +492,7 @@ export default {
           .split(',')
           .map((id) => id.trim())
           .filter(Boolean)
-          .slice(0, 100); // Guard max 100 IDs per query
+          .slice(0, 100);
 
         if (ids.length === 0) {
           return jsonResponse({ stats: {} }, 200, {
@@ -442,13 +501,22 @@ export default {
           });
         }
 
-        const placeholders = ids.map(() => '?').join(',');
+        // Validate IDs format to avoid malformed inputs
+        const validIds = ids.filter((id) => POST_ID_REGEX.test(id));
+        if (validIds.length === 0) {
+          return jsonResponse({ stats: {} }, 200, {
+            ...corsHeaders,
+            'Cache-Control': 'public, s-maxage=30',
+          });
+        }
+
+        const placeholders = validIds.map(() => '?').join(',');
         const query = `SELECT post_id, likes, dislikes, views FROM posts_stats WHERE post_id IN (${placeholders})`;
-        const stmt = env.DB.prepare(query).bind(...ids);
+        const stmt = env.DB.prepare(query).bind(...validIds);
         const { results } = await stmt.all();
 
         const statsMap: Record<string, { likes: number; dislikes: number; views: number }> = {};
-        for (const id of ids) {
+        for (const id of validIds) {
           statsMap[id] = { likes: 0, dislikes: 0, views: 0 };
         }
 
@@ -467,7 +535,6 @@ export default {
         return jsonResponse({ stats: statsMap }, 200, {
           ...corsHeaders,
           'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
-          'Vary': 'Origin',
         });
       }
 
@@ -477,8 +544,8 @@ export default {
       // -------------------------------------------------------------
       if (method === 'POST' && path.startsWith('/view/')) {
         const postId = path.replace('/view/', '').trim();
-        if (!postId) {
-          return jsonResponse({ error: 'Post ID is required' }, 400, corsHeaders);
+        if (!POST_ID_REGEX.test(postId)) {
+          return jsonResponse({ error: 'Invalid post ID format' }, 400, corsHeaders);
         }
 
         // Deduplicate using Cloudflare Cache API
@@ -519,13 +586,16 @@ export default {
       // -------------------------------------------------------------
       if (method === 'GET' && path.startsWith('/reaction/')) {
         const postId = path.replace('/reaction/', '').trim();
-        if (!postId) {
-          return jsonResponse({ error: 'Post ID is required' }, 400, corsHeaders);
+        if (!POST_ID_REGEX.test(postId)) {
+          return jsonResponse({ error: 'Invalid post ID format' }, 400, corsHeaders);
         }
 
         const user = await authenticateRequest(request, env);
         if (!user) {
-          return jsonResponse({ error: 'Unauthorized' }, 401, corsHeaders);
+          return jsonResponse({ error: 'Unauthorized' }, 401, {
+            ...corsHeaders,
+            'Cache-Control': 'no-store',
+          });
         }
 
         const row = await env.DB.prepare(
@@ -539,32 +609,37 @@ export default {
             type: row?.type || null,
           },
           200,
-          corsHeaders
+          {
+            ...corsHeaders,
+            'Cache-Control': 'no-store',
+          }
         );
       }
 
       // -------------------------------------------------------------
       // 4. POST /reaction/:postId { type } (requires auth)
-      // Writes user's reaction row immediately (source of truth) and
-      // coalesces posts_stats delta via Durable Object (with D1 fallback)
+      // Writes user's reaction row immediately and coalesces stats delta
       // -------------------------------------------------------------
       if (method === 'POST' && path.startsWith('/reaction/')) {
         const postId = path.replace('/reaction/', '').trim();
-        if (!postId) {
-          return jsonResponse({ error: 'Post ID is required' }, 400, corsHeaders);
+        if (!POST_ID_REGEX.test(postId)) {
+          return jsonResponse({ error: 'Invalid post ID format' }, 400, corsHeaders);
         }
 
         const user = await authenticateRequest(request, env);
         if (!user) {
-          return jsonResponse({ error: 'Unauthorized' }, 401, corsHeaders);
+          return jsonResponse({ error: 'Unauthorized' }, 401, {
+            ...corsHeaders,
+            'Cache-Control': 'no-store',
+          });
         }
 
-        let body: any = {};
-        try {
-          body = await request.json();
-        } catch (_) {}
+        const { data: body, error: bodyErr, status: bodyStatus } = await parseJsonBody(request, 16 * 1024);
+        if (bodyErr) {
+          return jsonResponse({ error: bodyErr }, bodyStatus || 400, corsHeaders);
+        }
 
-        const targetType = body.type === 'like' || body.type === 'dislike' ? body.type : null;
+        const targetType = body?.type === 'like' || body?.type === 'dislike' ? body.type : null;
         const nowMs = Date.now();
 
         // 1. Check current reaction
@@ -578,10 +653,13 @@ export default {
 
         // If target matches current state, nothing to change
         if (prevType === targetType) {
-          return jsonResponse({ success: true, type: targetType }, 200, corsHeaders);
+          return jsonResponse({ success: true, type: targetType }, 200, {
+            ...corsHeaders,
+            'Cache-Control': 'no-store',
+          });
         }
 
-        // 2. Write user's row in reactions table immediately (source of truth)
+        // 2. Write user's row in reactions table immediately
         if (targetType === null) {
           await env.DB.prepare('DELETE FROM reactions WHERE user_id = ? AND post_id = ?')
             .bind(user.uid, postId)
@@ -612,7 +690,7 @@ export default {
           deltaDislikes += 1;
         }
 
-        // 4. Send delta to Durable Object with ctx.waitUntil, with direct D1 fallback
+        // 4. Send delta to Durable Object with direct D1 fallback
         ctx.waitUntil((async () => {
           try {
             await sendDeltaToAggregator(env, postId, { likes: deltaLikes, dislikes: deltaDislikes });
@@ -634,7 +712,10 @@ export default {
           }
         })());
 
-        return jsonResponse({ success: true, type: targetType }, 200, corsHeaders);
+        return jsonResponse({ success: true, type: targetType }, 200, {
+          ...corsHeaders,
+          'Cache-Control': 'no-store',
+        });
       }
 
       // -------------------------------------------------------------
@@ -644,7 +725,10 @@ export default {
       if (method === 'GET' && path === '/my-reactions') {
         const user = await authenticateRequest(request, env);
         if (!user) {
-          return jsonResponse({ error: 'Unauthorized' }, 401, corsHeaders);
+          return jsonResponse({ error: 'Unauthorized' }, 401, {
+            ...corsHeaders,
+            'Cache-Control': 'no-store',
+          });
         }
 
         const { results } = await env.DB.prepare(
@@ -654,21 +738,24 @@ export default {
           .all<{ post_id: string }>();
 
         const likedPostIds = (results || []).map((r) => r.post_id);
-        return jsonResponse({ likedPostIds }, 200, corsHeaders);
+        return jsonResponse({ likedPostIds }, 200, {
+          ...corsHeaders,
+          'Cache-Control': 'no-store',
+        });
       }
 
       // -------------------------------------------------------------
       // 6. POST /subscribe { email }
-      // Insert new subscriber, ignore if exists
+      // Insert new subscriber with strict length and email regex validation
       // -------------------------------------------------------------
       if (method === 'POST' && path === '/subscribe') {
-        let body: any = {};
-        try {
-          body = await request.json();
-        } catch (_) {}
+        const { data: body, error: bodyErr, status: bodyStatus } = await parseJsonBody(request, 16 * 1024);
+        if (bodyErr) {
+          return jsonResponse({ error: bodyErr }, bodyStatus || 400, corsHeaders);
+        }
 
-        const email = (body.email || '').trim().toLowerCase();
-        if (!email || !email.includes('@')) {
+        const email = (body?.email || '').trim().toLowerCase();
+        if (!email || email.length > 254 || !EMAIL_REGEX.test(email)) {
           return jsonResponse({ error: 'Valid email address is required' }, 400, corsHeaders);
         }
 
@@ -684,22 +771,27 @@ export default {
       }
 
       // -------------------------------------------------------------
-      // 7. GET /subscribe/check?email= (requires auth)
-      // Verifies if email is subscribed (email must match token or admin)
+      // 7. GET /subscribe/check?email= (requires verified email auth)
+      // Non-admins can only check their own verified email
       // -------------------------------------------------------------
       if (method === 'GET' && path === '/subscribe/check') {
         const user = await authenticateRequest(request, env);
-        if (!user) {
-          return jsonResponse({ error: 'Unauthorized' }, 401, corsHeaders);
+        if (!user || !user.emailVerified || !user.email) {
+          return jsonResponse({ error: 'Unauthorized: Verified email required' }, 401, {
+            ...corsHeaders,
+            'Cache-Control': 'no-store',
+          });
         }
 
         const queryEmail = (url.searchParams.get('email') || '').trim().toLowerCase();
-        const userEmail = (user.email || '').toLowerCase();
-        const isAdmin = isUserAdmin(userEmail, env);
+        const userEmail = user.email.toLowerCase();
 
-        // Security check: email must match token or user must be admin
-        if (!isAdmin && queryEmail !== userEmail) {
-          return jsonResponse({ error: 'Forbidden: Email mismatch' }, 403, corsHeaders);
+        // Non-admins can only act on their own email address
+        if (!isAdmin(user) && queryEmail && queryEmail !== userEmail) {
+          return jsonResponse({ error: 'Forbidden: Email mismatch' }, 403, {
+            ...corsHeaders,
+            'Cache-Control': 'no-store',
+          });
         }
 
         const emailToCheck = queryEmail || userEmail;
@@ -707,24 +799,42 @@ export default {
           .bind(emailToCheck)
           .first<{ email: string }>();
 
-        return jsonResponse({ subscribed: !!row }, 200, corsHeaders);
+        return jsonResponse({ subscribed: !!row }, 200, {
+          ...corsHeaders,
+          'Cache-Control': 'no-store',
+        });
       }
 
       // -------------------------------------------------------------
-      // 8. DELETE /subscribe (requires auth)
+      // 8. DELETE /subscribe (requires verified email auth)
       // Removes user's own subscription based on auth token
       // -------------------------------------------------------------
       if (method === 'DELETE' && path === '/subscribe') {
         const user = await authenticateRequest(request, env);
-        if (!user || !user.email) {
-          return jsonResponse({ error: 'Unauthorized' }, 401, corsHeaders);
+        if (!user || !user.emailVerified || !user.email) {
+          return jsonResponse({ error: 'Unauthorized: Verified email required' }, 401, {
+            ...corsHeaders,
+            'Cache-Control': 'no-store',
+          });
+        }
+
+        let targetEmail = user.email.toLowerCase();
+        if (isAdmin(user)) {
+          const { data: body } = await parseJsonBody(request, 16 * 1024);
+          const overrideEmail = (body?.email || url.searchParams.get('email') || '').trim().toLowerCase();
+          if (overrideEmail) {
+            targetEmail = overrideEmail;
+          }
         }
 
         await env.DB.prepare('DELETE FROM subscribers WHERE email = ?')
-          .bind(user.email.toLowerCase())
+          .bind(targetEmail)
           .run();
 
-        return jsonResponse({ success: true, message: 'Unsubscribed successfully' }, 200, corsHeaders);
+        return jsonResponse({ success: true, message: 'Unsubscribed successfully' }, 200, {
+          ...corsHeaders,
+          'Cache-Control': 'no-store',
+        });
       }
 
       // -------------------------------------------------------------
@@ -732,18 +842,35 @@ export default {
       // POST /push/subscribe, DELETE /push/subscribe, GET /push/count
       // -------------------------------------------------------------
       if (method === 'POST' && path === '/push/subscribe') {
-        let body: any = {};
-        try {
-          body = await request.json();
-        } catch (_) {}
+        const { data: body, error: bodyErr, status: bodyStatus } = await parseJsonBody(request, 16 * 1024);
+        if (bodyErr) {
+          return jsonResponse({ error: bodyErr }, bodyStatus || 400, corsHeaders);
+        }
 
-        const id = (body.id || '').trim();
-        const subscription = typeof body.subscription === 'string'
+        const id = (body?.id || '').trim();
+        if (!PUSH_ID_REGEX.test(id)) {
+          return jsonResponse({ error: 'Invalid push subscription ID format' }, 400, corsHeaders);
+        }
+
+        const subStr = typeof body?.subscription === 'string'
           ? body.subscription
-          : JSON.stringify(body.subscription || {});
+          : JSON.stringify(body?.subscription || {});
 
-        if (!id || !subscription) {
-          return jsonResponse({ error: 'ID and subscription payload required' }, 400, corsHeaders);
+        // Max 4KB size cap for subscription payload
+        if (!subStr || subStr.length > 4096) {
+          return jsonResponse({ error: 'Subscription payload exceeds 4KB limit' }, 400, corsHeaders);
+        }
+
+        // Verify payload contains a valid HTTPS endpoint
+        let subObj: any = null;
+        try {
+          subObj = JSON.parse(subStr);
+        } catch (_) {
+          return jsonResponse({ error: 'Invalid subscription JSON' }, 400, corsHeaders);
+        }
+
+        if (!subObj || typeof subObj.endpoint !== 'string' || !subObj.endpoint.startsWith('https://')) {
+          return jsonResponse({ error: 'Subscription must contain a valid https endpoint' }, 400, corsHeaders);
         }
 
         const nowMs = Date.now();
@@ -752,7 +879,7 @@ export default {
            VALUES (?, ?, ?)
            ON CONFLICT(id) DO UPDATE SET subscription = excluded.subscription`
         )
-          .bind(id, subscription, nowMs)
+          .bind(id, subStr, nowMs)
           .run();
 
         return jsonResponse({ success: true, message: 'Push subscription stored' }, 200, corsHeaders);
@@ -761,14 +888,12 @@ export default {
       if (method === 'DELETE' && path === '/push/subscribe') {
         let id = url.searchParams.get('id') || '';
         if (!id) {
-          try {
-            const body: any = await request.json();
-            id = body.id || '';
-          } catch (_) {}
+          const { data: body } = await parseJsonBody(request, 16 * 1024);
+          id = body?.id || '';
         }
 
-        if (!id) {
-          return jsonResponse({ error: 'Subscription ID is required' }, 400, corsHeaders);
+        if (!id || !PUSH_ID_REGEX.test(id)) {
+          return jsonResponse({ error: 'Invalid push subscription ID format' }, 400, corsHeaders);
         }
 
         await env.DB.prepare('DELETE FROM push_subscriptions WHERE id = ?').bind(id).run();
@@ -784,7 +909,7 @@ export default {
           200,
           {
             ...corsHeaders,
-            'Cache-Control': 'public, s-maxage=300', // Cache count 5 min
+            'Cache-Control': 'public, s-maxage=300',
           }
         );
       }
@@ -796,7 +921,10 @@ export default {
       if (path === '/user/pen-name') {
         const user = await authenticateRequest(request, env);
         if (!user) {
-          return jsonResponse({ error: 'Unauthorized' }, 401, corsHeaders);
+          return jsonResponse({ error: 'Unauthorized' }, 401, {
+            ...corsHeaders,
+            'Cache-Control': 'no-store',
+          });
         }
 
         if (method === 'GET') {
@@ -804,16 +932,27 @@ export default {
             .bind(user.uid)
             .first<{ pen_name: string }>();
 
-          return jsonResponse({ penName: row?.pen_name || null }, 200, corsHeaders);
+          return jsonResponse({ penName: row?.pen_name || null }, 200, {
+            ...corsHeaders,
+            'Cache-Control': 'no-store',
+          });
         }
 
         if (method === 'PUT') {
-          let body: any = {};
-          try {
-            body = await request.json();
-          } catch (_) {}
+          const { data: body, error: bodyErr, status: bodyStatus } = await parseJsonBody(request, 16 * 1024);
+          if (bodyErr) {
+            return jsonResponse({ error: bodyErr }, bodyStatus || 400, corsHeaders);
+          }
 
-          const penName = (body.penName || '').trim().substring(0, 100);
+          // Strip HTML tags, control characters, collapse whitespace, max 100 chars
+          const rawName = typeof body?.penName === 'string' ? body.penName : '';
+          const penName = rawName
+            .replace(/<[^>]*>/g, '')
+            .replace(/[\x00-\x1F\x7F]/g, '')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .slice(0, 100);
+
           await env.DB.prepare(
             `INSERT INTO users (uid, pen_name) VALUES (?, ?)
              ON CONFLICT(uid) DO UPDATE SET pen_name = excluded.pen_name`
@@ -821,59 +960,93 @@ export default {
             .bind(user.uid, penName)
             .run();
 
-          return jsonResponse({ success: true, penName }, 200, corsHeaders);
+          return jsonResponse({ success: true, penName }, 200, {
+            ...corsHeaders,
+            'Cache-Control': 'no-store',
+          });
         }
       }
 
       // -------------------------------------------------------------
-      // 11. Admin Endpoints (requires auth + exact admin email check)
-      // GET /subscribers, POST /import, DELETE /admin/subscriber
+      // 11. Admin-Only Endpoints (requires auth + role 'admin' + verified email)
+      // GET /subscribers, DELETE /admin/subscriber, POST /import, POST /admin/recount
       // -------------------------------------------------------------
       if (path === '/subscribers' && method === 'GET') {
         const user = await authenticateRequest(request, env);
-        if (!user || !isUserAdmin(user.email, env)) {
-          return jsonResponse({ error: 'Forbidden: Admin access required' }, 403, corsHeaders);
+        if (!user) {
+          return jsonResponse({ error: 'Unauthorized' }, 401, {
+            ...corsHeaders,
+            'Cache-Control': 'no-store',
+          });
+        }
+        if (!isAdmin(user)) {
+          return jsonResponse({ error: 'Forbidden: Admin role required' }, 403, {
+            ...corsHeaders,
+            'Cache-Control': 'no-store',
+          });
         }
 
         const { results } = await env.DB.prepare(
           'SELECT email, created_at FROM subscribers ORDER BY created_at DESC LIMIT 1000'
         ).all<{ email: string; created_at: number }>();
 
-        return jsonResponse({ subscribers: results || [] }, 200, corsHeaders);
+        return jsonResponse({ subscribers: results || [] }, 200, {
+          ...corsHeaders,
+          'Cache-Control': 'no-store',
+        });
       }
 
       if (path === '/admin/subscriber' && method === 'DELETE') {
         const user = await authenticateRequest(request, env);
-        if (!user || !isUserAdmin(user.email, env)) {
-          return jsonResponse({ error: 'Forbidden: Admin access required' }, 403, corsHeaders);
+        if (!user) {
+          return jsonResponse({ error: 'Unauthorized' }, 401, {
+            ...corsHeaders,
+            'Cache-Control': 'no-store',
+          });
+        }
+        if (!isAdmin(user)) {
+          return jsonResponse({ error: 'Forbidden: Admin role required' }, 403, {
+            ...corsHeaders,
+            'Cache-Control': 'no-store',
+          });
         }
 
-        let body: any = {};
-        try {
-          body = await request.json();
-        } catch (_) {}
+        const { data: body, error: bodyErr, status: bodyStatus } = await parseJsonBody(request, 16 * 1024);
+        if (bodyErr) {
+          return jsonResponse({ error: bodyErr }, bodyStatus || 400, corsHeaders);
+        }
 
-        const email = (body.email || '').trim().toLowerCase();
+        const email = (body?.email || url.searchParams.get('email') || '').trim().toLowerCase();
         if (!email) {
           return jsonResponse({ error: 'Email is required' }, 400, corsHeaders);
         }
 
         await env.DB.prepare('DELETE FROM subscribers WHERE email = ?').bind(email).run();
-        return jsonResponse({ success: true, message: 'Subscriber deleted' }, 200, corsHeaders);
+        return jsonResponse({ success: true, message: 'Subscriber deleted' }, 200, {
+          ...corsHeaders,
+          'Cache-Control': 'no-store',
+        });
       }
 
-      // POST /import: Bulk import JSON from Firestore export into D1
+      // POST /import: Bulk import JSON from Firestore export into D1 (5MB cap, admin only)
       if (path === '/import' && method === 'POST') {
         const user = await authenticateRequest(request, env);
-        if (!user || !isUserAdmin(user.email, env)) {
-          return jsonResponse({ error: 'Forbidden: Admin access required' }, 403, corsHeaders);
+        if (!user) {
+          return jsonResponse({ error: 'Unauthorized' }, 401, {
+            ...corsHeaders,
+            'Cache-Control': 'no-store',
+          });
+        }
+        if (!isAdmin(user)) {
+          return jsonResponse({ error: 'Forbidden: Admin role required' }, 403, {
+            ...corsHeaders,
+            'Cache-Control': 'no-store',
+          });
         }
 
-        let data: any = {};
-        try {
-          data = await request.json();
-        } catch (e) {
-          return jsonResponse({ error: 'Invalid JSON payload' }, 400, corsHeaders);
+        const { data, error: bodyErr, status: bodyStatus } = await parseJsonBody(request, 5 * 1024 * 1024);
+        if (bodyErr || !data) {
+          return jsonResponse({ error: bodyErr || 'Invalid JSON payload' }, bodyStatus || 400, corsHeaders);
         }
 
         const counts = {
@@ -889,7 +1062,7 @@ export default {
         // 1. posts_stats
         if (Array.isArray(data.posts_stats)) {
           for (const item of data.posts_stats) {
-            if (item.post_id) {
+            if (item.post_id && POST_ID_REGEX.test(item.post_id)) {
               batchStatements.push(
                 env.DB.prepare(
                   `INSERT INTO posts_stats (post_id, likes, dislikes, views)
@@ -913,7 +1086,7 @@ export default {
         // 2. reactions
         if (Array.isArray(data.reactions)) {
           for (const item of data.reactions) {
-            if (item.user_id && item.post_id && (item.type === 'like' || item.type === 'dislike')) {
+            if (item.user_id && item.post_id && POST_ID_REGEX.test(item.post_id) && (item.type === 'like' || item.type === 'dislike')) {
               batchStatements.push(
                 env.DB.prepare(
                   `INSERT INTO reactions (user_id, post_id, type, updated_at)
@@ -937,7 +1110,7 @@ export default {
         if (Array.isArray(data.subscribers)) {
           for (const item of data.subscribers) {
             const email = (item.email || '').trim().toLowerCase();
-            if (email && email.includes('@')) {
+            if (email && email.length <= 254 && EMAIL_REGEX.test(email)) {
               batchStatements.push(
                 env.DB.prepare(
                   `INSERT INTO subscribers (email, created_at)
@@ -953,18 +1126,20 @@ export default {
         // 4. push_subscriptions
         if (Array.isArray(data.push_subscriptions)) {
           for (const item of data.push_subscriptions) {
-            if (item.id && item.subscription) {
+            if (item.id && PUSH_ID_REGEX.test(item.id) && item.subscription) {
               const subStr = typeof item.subscription === 'string'
                 ? item.subscription
                 : JSON.stringify(item.subscription);
-              batchStatements.push(
-                env.DB.prepare(
-                  `INSERT INTO push_subscriptions (id, subscription, created_at)
-                   VALUES (?, ?, ?)
-                   ON CONFLICT(id) DO UPDATE SET subscription = excluded.subscription`
-                ).bind(item.id, subStr, Number(item.created_at) || Date.now())
-              );
-              counts.push_subscriptions++;
+              if (subStr.length <= 4096) {
+                batchStatements.push(
+                  env.DB.prepare(
+                    `INSERT INTO push_subscriptions (id, subscription, created_at)
+                     VALUES (?, ?, ?)
+                     ON CONFLICT(id) DO UPDATE SET subscription = excluded.subscription`
+                  ).bind(item.id, subStr, Number(item.created_at) || Date.now())
+                );
+                counts.push_subscriptions++;
+              }
             }
           }
         }
@@ -973,19 +1148,27 @@ export default {
         if (Array.isArray(data.users)) {
           for (const item of data.users) {
             if (item.uid) {
+              const rawPenName = typeof item.pen_name === 'string' ? item.pen_name : '';
+              const cleanPenName = rawPenName
+                .replace(/<[^>]*>/g, '')
+                .replace(/[\x00-\x1F\x7F]/g, '')
+                .replace(/\s+/g, ' ')
+                .trim()
+                .slice(0, 100);
+
               batchStatements.push(
                 env.DB.prepare(
                   `INSERT INTO users (uid, pen_name)
                    VALUES (?, ?)
                    ON CONFLICT(uid) DO UPDATE SET pen_name = excluded.pen_name`
-                ).bind(item.uid, item.pen_name || '')
+                ).bind(item.uid, cleanPenName)
               );
               counts.users++;
             }
           }
         }
 
-        // Execute batch in chunks of 50 to respect D1 batch limits
+        // Execute batch in chunks of 50
         const chunkSize = 50;
         for (let i = 0; i < batchStatements.length; i += chunkSize) {
           const chunk = batchStatements.slice(i, i + chunkSize);
@@ -999,7 +1182,10 @@ export default {
             imported: counts,
           },
           200,
-          corsHeaders
+          {
+            ...corsHeaders,
+            'Cache-Control': 'no-store',
+          }
         );
       }
 
@@ -1009,8 +1195,17 @@ export default {
       // -------------------------------------------------------------
       if (method === 'POST' && path === '/admin/recount') {
         const user = await authenticateRequest(request, env);
-        if (!user || !isUserAdmin(user.email, env)) {
-          return jsonResponse({ error: 'Forbidden: Admin access required' }, 403, corsHeaders);
+        if (!user) {
+          return jsonResponse({ error: 'Unauthorized' }, 401, {
+            ...corsHeaders,
+            'Cache-Control': 'no-store',
+          });
+        }
+        if (!isAdmin(user)) {
+          return jsonResponse({ error: 'Forbidden: Admin role required' }, 403, {
+            ...corsHeaders,
+            'Cache-Control': 'no-store',
+          });
         }
 
         await env.DB.exec(`
@@ -1033,11 +1228,14 @@ export default {
             message: 'Posts stats successfully recounted from reactions table',
           },
           200,
-          corsHeaders
+          {
+            ...corsHeaders,
+            'Cache-Control': 'no-store',
+          }
         );
       }
 
-      // Root endpoint
+      // Root / Health endpoint
       if (path === '/' || path === '/health') {
         return jsonResponse(
           {
@@ -1057,7 +1255,7 @@ export default {
       console.error('[Worker Fatal Error]', err);
       return jsonResponse(
         {
-          error: err?.message || 'Internal Server Error',
+          error: 'Internal Server Error',
         },
         500,
         corsHeaders

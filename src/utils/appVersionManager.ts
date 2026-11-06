@@ -8,6 +8,7 @@
 
 import { App } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
+import { webUrl } from './webBase';
 
 export interface AppVersionInfo {
   latestVersion: string;
@@ -91,7 +92,7 @@ class AppVersionManager {
 
     // 1. Fetch from Origin API
     try {
-      const resp = await fetch('/api/app/version', {
+      const resp = await fetch(webUrl('/api/app/version'), {
         headers: { 'Cache-Control': 'no-cache' },
         signal: AbortSignal.timeout(4000),
       });

@@ -60,3 +60,21 @@
 14. **Vulnerability: Admin Surface Exposure, Search Indexing & IDOR on Public Reader Host**
     - **Exploit Vector:** Public readers visiting `/admin` on the main domain (`currentnews.blog`) or search crawlers indexing administrative panels, alongside malicious writers modifying articles authored by other newsroom reporters.
     - **Defense:** Enforced host segregation in `server.ts`: `admin.currentnews.blog` serves exclusively `/admin`, `/api/admin`, and static assets, and automatically injects `X-Robots-Tag: noindex, nofollow` on every response. Public hosts (`currentnews.blog` and `www`) issue 301 redirects for `/admin` and return HTTP 404 JSON for `/api/admin/*`. In `handleAdminCreateOrUpdateArticle` and `handleAdminDeleteArticle`, ownership is strictly checked (`author_uid === req.user.uid` for writers; only admins can modify or archive other reporters' work).
+
+15. **Vulnerability: Cloudflare Edge Worker Role Forgery & Hardcoded Email Desync**
+    - **Exploit Vector:** Edge worker (`worker/src/index.ts`) previously maintained static email lists and bypassed checks on `@currentnews.blog` email suffixes, allowing unverified or spoofed Google accounts to access `/subscribers` and trigger D1 imports.
+    - **Defense:** Upgraded `verifyFirebaseIdToken` with Web Crypto API to strictly extract `payload.role` and `payload.email_verified`. Enforced that `iat` cannot be in the future and `auth_time` must be present and valid. Defined `isAdmin(user) = user.role === 'admin' && user.emailVerified === true`. Purged all hardcoded email lists, environment variables (`ADMIN_EMAILS`, `WRITERS`), and suffix wildcards. Admin endpoints return 401 on missing tokens and 403 on non-admin roles.
+
+16. **Vulnerability: Input Fuzzing, Unbounded D1 Row Injection & Memory Buffer Exhaustion**
+    - **Exploit Vector:** Malicious callers generating arbitrary `postId` parameters on `/reaction/:postId` or `/view/:postId` to inject millions of junk rows into D1 `posts_stats`, or sending megabyte-scale JSON payloads to crash worker isolates.
+    - **Defense:** Enforced strict regex `/^[A-Za-z0-9_-]{6,64}$/` on `postId` and `/^[A-Za-z0-9_-]{16,128}$/` on push subscription `id`. Enforced strict RFC email regex and 254-character bounds on `/subscribe`. Added global `parseJsonBody` capping incoming request payloads at 16 KB (allowing up to 5 MB exclusively on admin-authenticated `POST /import`). Enforced `X-Content-Type-Options: nosniff` and `Cache-Control: no-store` on all authenticated routes.
+
+17. **Vulnerability: Android App Relative Fetch Black Hole & Sensitive Server Code in APK Bundle**
+    - **Exploit Vector:** In Capacitor Android builds, relative network calls (e.g. `fetch('/api/...')`) resolve against local WebView `http://localhost/api/...`, resulting in failed requests and app dead-ends. Furthermore, bundling `dist/server.cjs` and sourcemaps into `dist/` caused server source code and secrets to be copied directly into `android/app/src/main/assets/public/` during `cap sync`.
+    - **Defense:** Created `src/utils/webBase.ts` exporting `webUrl(path)` which dynamically prefixes reader-facing routes with `https://www.currentnews.blog` on native platforms (`Capacitor.isNativePlatform()`). Reconfigured `vite.config.ts` (`sourcemap: false`) and `package.json` build scripts so that `server.cjs` is compiled directly in the root workspace outside `dist/` with no `.map` files generated, completely isolating server bundles from the client and Android distribution assets.
+
+18. **Vulnerability: Sensitive Credential Leakage in Auth Failure Logs & Silent Token Dropping**
+    - **Exploit Vector:** Unsanitized server logs printing raw Authorization headers, user emails, or database connection strings during authentication exceptions, exposing credentials in container log aggregators.
+    - **Defense:** Strict sanitization in `requireRole.ts`: console warnings strictly emit `[auth] <code> <method> <path> hasHeader=<bool> projectId=<value> firebaseErrorCode=<error.code>`. Tokens, full emails, and database URLs are never logged.
+
+

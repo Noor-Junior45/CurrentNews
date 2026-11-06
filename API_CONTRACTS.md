@@ -410,13 +410,70 @@ All `/api/admin/*` endpoints strictly require `Authorization: Bearer <ID_TOKEN>`
   ```json
   {
     "success": true,
-    "user": {
-      "uid": "...",
-      "email": "mdhassan1738@gmail.com",
-      "role": "admin"
-    }
+    "uid": "...",
+    "email": "mdhassan1738@gmail.com",
+    "role": "admin"
   }
   ```
+
+### Standard Admin Auth Rejection Payload (All `/api/admin/*` and Protected Endpoints)
+- **Response Shape (401, 403, 503):**
+  ```json
+  {
+    "success": false,
+    "error": "Human-readable diagnostic description",
+    "code": "error_code"
+  }
+  ```
+- **Error Codes:**
+  - `no_token` (401): Missing Authorization header or empty Bearer token.
+  - `token_expired` (401): Token expired; triggers client-side single retry with `getIdToken(true)`.
+  - `token_revoked` (401): Token revoked; triggers client-side single retry with `getIdToken(true)`.
+  - `invalid_token` (401): Token argument error, issuer/audience mismatch, or corrupted signature.
+  - `auth_backend_error` (503): Firebase Admin credential or backend communication failure.
+  - `email_not_verified` (403): User account email address has not been verified.
+  - `no_role` (403): ID token lacks an assigned `role` custom claim.
+  - `forbidden` (403): User role is not authorized for the requested endpoint.
+
+---
+
+## 8. Cloudflare Edge Worker Contracts (`api.currentnews.blog`)
+
+### Security Headers (All Responses)
+- `X-Content-Type-Options: nosniff`
+- `Vary: Origin`
+- `Cache-Control: no-store` (on all authenticated / sensitive endpoints)
+- `Access-Control-Allow-Origin`: Echoed ONLY for verified origins (`currentnews.blog`, `www.currentnews.blog`, `admin.currentnews.blog`, `http://localhost:3000`, `http://localhost:5173`, `https://localhost`, `capacitor://localhost`). Disallowed origins receive no CORS header.
+
+### `GET /subscribers`
+- **Method:** `GET`
+- **Access:** Strict `admin` role (`user.role === 'admin' && user.emailVerified === true`)
+- **Headers:** `Authorization: Bearer <idToken>`
+- **Errors:**
+  - `401 Unauthorized` (`{"error":"Missing or invalid authorization token"}`)
+  - `403 Forbidden` (`{"error":"Admin role required"}`)
+- **Response (200 OK):**
+  ```json
+  {
+    "subscribers": [
+      { "email": "reader@example.com", "created_at": 1740000000000 }
+    ]
+  }
+  ```
+
+### `POST /reaction/:postId` & `POST /view/:postId`
+- **Params:** `postId` matching `/^[A-Za-z0-9_-]{6,64}$/` (otherwise `400 Bad Request`)
+- **Max Body Size:** 16 KB
+- **Durable Object Coalescing:** Updates buffer in `StatsAggregator` with local SQLite storage persistence. Flush happens every 30s or on buffer threshold.
+
+### `POST /subscribe`
+- **Payload:** `{ "email": string }` (trimmed, lowercased, max 254 chars, strict regex RFC-compliant)
+- **Response (200 OK):** `{"success": true}`
+- **Errors:** `400 Bad Request` on invalid email format or payload exceeding 16KB.
+
+### `POST /push/subscribe` & `DELETE /push/subscribe`
+- **Payload:** `{ "id": string, "subscription": object }`
+- **Validation:** `id` must match `/^[A-Za-z0-9_-]{16,128}$/`, payload max 4KB, `subscription.endpoint` must begin with `https://`.
 
 
 

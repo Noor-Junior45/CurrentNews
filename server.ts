@@ -24,6 +24,7 @@ import { handleGetPosts, handleGetPostById, handleGetWriters } from './src/serve
 import { handleSaveArticle, handleDeleteArticle, handleSyncArticles, handleMigrateImages, ensureR2ArticlesWarmup, getFeedFromR2, getDeletedArticleIds } from './src/server/r2Articles.ts';
 import { handleGetAppVersion, handleUpdateAppVersion } from './src/server/appVersionApi.ts';
 import { requireRole } from './server/auth/requireRole.ts';
+import { logFirebaseAdminProjectId } from './server/auth/firebaseAdmin.ts';
 import {
   handleAdminCreateOrUpdateArticle,
   handleAdminGetArticles,
@@ -309,6 +310,8 @@ async function startServer() {
 
   const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server successfully started. Running on http://localhost:${PORT}`);
+    // Log active firebase-admin projectId and warn if it differs from env
+    logFirebaseAdminProjectId();
     // Non-blocking warmup check to guarantee Cloudflare R2 articles feed is primed
     ensureR2ArticlesWarmup().catch(err => console.debug('[R2 Warmup Background]:', err));
   });

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Mail, Send, CheckCircle2, AlertCircle, Phone, MapPin, Clock, ShieldAlert } from 'lucide-react';
 import ProfilePageNavbar from '../components/ProfilePageNavbar';
 import { getCanonicalSiteOrigin } from '../utils/shareUrl';
+import { webUrl } from '../utils/webBase';
 
 import { updateDocumentSEO } from '../utils/seo';
 
@@ -44,7 +45,7 @@ export default function ContactView() {
 
     // Simulate sending to backend / mail alert
     try {
-      await fetch('/api/mail/send-alert', {
+      await fetch(webUrl('/api/mail/send-alert'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

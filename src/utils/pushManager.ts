@@ -3,6 +3,8 @@
  * Handles Web Push & Android Push subscriptions, syncing to backend server for automated dispatches.
  */
 
+import { webUrl } from './webBase';
+
 export function isPushSupported(): boolean {
   return (
     typeof window !== 'undefined' &&
@@ -29,7 +31,7 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
  */
 async function getVapidPublicKey(): Promise<string> {
   try {
-    const res = await fetch('/api/push/public-key');
+    const res = await fetch(webUrl('/api/push/public-key'));
     if (res.ok) {
       const data = await res.json();
       if (data.publicKey) return data.publicKey;
@@ -74,7 +76,7 @@ export async function subscribeUserToPush(): Promise<{ success: boolean; message
     }
 
     // Register subscription on backend server
-    const response = await fetch('/api/push/subscribe', {
+    const response = await fetch(webUrl('/api/push/subscribe'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -111,7 +113,7 @@ export async function unsubscribeUserFromPush(): Promise<{ success: boolean; mes
     const subscription = await reg.pushManager.getSubscription();
 
     if (subscription) {
-      await fetch('/api/push/unsubscribe', {
+      await fetch(webUrl('/api/push/unsubscribe'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ endpoint: subscription.endpoint }),
@@ -166,7 +168,7 @@ export async function syncPushSubscriptionOnAppBoot(): Promise<void> {
       }
 
       if (subscription) {
-        await fetch('/api/push/subscribe', {
+        await fetch(webUrl('/api/push/subscribe'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

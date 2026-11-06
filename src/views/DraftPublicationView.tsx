@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useAuthState } from '../hooks/useAuthState';
 import { api } from '../utils/api';
+import { adminFetch } from '../utils/adminFetch';
 import { saveCompressedStory, getCompressedStories, saveCompressedStories } from '../utils/compressedStorage';
 import { Post, slugify } from '../types';
 import { cleanImageUrl, sanitizePostImages } from '../utils/imageUrl';
@@ -262,31 +263,16 @@ export default function DraftPublicationView(): React.JSX.Element {
         console.debug('Local storage cache notice:', cacheErr);
       }
 
-      // 2. Save to server repository (Neon Postgres + R2 dual-write) with Bearer token authentication
-      let idToken: string | undefined = undefined;
-      if (user) {
-        try {
-          idToken = await user.getIdToken();
-        } catch (_) {}
-      }
-
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (idToken) {
-        headers['Authorization'] = `Bearer ${idToken}`;
-      }
-
-      const saveRes = await fetch('/api/admin/articles', {
+      // 2. Save to server repository (Neon Postgres + R2 dual-write) with auto-refreshing Bearer token
+      const { ok, data: savedData, error: saveErr } = await adminFetch('/api/admin/articles', {
         method: 'POST',
-        headers,
         body: JSON.stringify(fullPostToSave)
       });
 
-      if (!saveRes.ok) {
-        const errJson = await saveRes.json().catch(() => ({}));
-        throw new Error(errJson.error || 'Failed to save article to storage repository.');
+      if (!ok) {
+        throw new Error(saveErr || 'Failed to save article to storage repository.');
       }
 
-      const savedData = await saveRes.json().catch(() => null);
       if (savedData?.syncWarning) {
         console.warn('Storage sync warning:', savedData.syncWarning);
       }
@@ -302,9 +288,8 @@ export default function DraftPublicationView(): React.JSX.Element {
           if (emails.length > 0) {
             const postLink = getCanonicalPostUrl(publishedPostId, title.trim());
             const emailPromises = emails.map(emailAddr => 
-              fetch('/api/mail/send-alert', {
+              adminFetch('/api/mail/send-alert', {
                 method: 'POST',
-                headers,
                 body: JSON.stringify({
                   email: emailAddr,
                   title: `Breaking News: ${title.trim()}`,
@@ -327,9 +312,8 @@ export default function DraftPublicationView(): React.JSX.Element {
           const notifTitle = `Breaking News: ${title.trim()}`;
           const safeNotifImage = (imageUrl && imageUrl.startsWith('http')) ? imageUrl : undefined;
 
-          fetch('/api/push/broadcast', {
+          adminFetch('/api/push/broadcast', {
             method: 'POST',
-            headers,
             body: JSON.stringify({
               title: notifTitle,
               body: notifBody,

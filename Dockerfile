@@ -30,6 +30,7 @@ RUN npm ci --omit=dev || npm install --omit=dev
 
 # Copy compiled artifacts and runtime configuration from builder stage
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/server.cjs ./server.cjs
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/api ./api
 COPY --from=builder /app/firebase-applet-config.json ./firebase-applet-config.json
@@ -38,4 +39,4 @@ COPY --from=builder /app/firebase-applet-config.json ./firebase-applet-config.js
 EXPOSE 8080
 
 # Cloud Run invokes the bundled Express server listening on 0.0.0.0:PORT
-CMD ["node", "dist/server.cjs"]
+CMD ["node", "server.cjs"]

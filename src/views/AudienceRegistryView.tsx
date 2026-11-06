@@ -6,10 +6,12 @@ import { safeFormatDate } from '../utils/dateHelper';
 import ProfilePageNavbar from '../components/ProfilePageNavbar';
 import AdminAuthGuard from '../components/AdminAuthGuard';
 import { updateDocumentSEO } from '../utils/seo';
+import { adminFetch } from '../utils/adminFetch';
 import { 
   Mail, 
   CheckCircle, 
   AlertCircle, 
+  X,
   Bell, 
   Send, 
   RefreshCw,
@@ -22,6 +24,7 @@ export default function AudienceRegistryView(): React.JSX.Element {
   const navigate = useNavigate();
 
   const [pushDeviceCount, setPushDeviceCount] = useState<number | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Ping All Devices console state
   const [pingMessage, setPingMessage] = useState('');
@@ -90,8 +93,11 @@ export default function AudienceRegistryView(): React.JSX.Element {
         createdAt: r.created_at
       }));
       setUserEmails(list);
-    } catch (err) {
+    } catch (err: any) {
       console.debug('User emails fetch notice:', err);
+      if (err?.message) {
+        setErrorMsg(err.message);
+      }
     } finally {
       setLoadingEmails(false);
     }
@@ -109,8 +115,11 @@ export default function AudienceRegistryView(): React.JSX.Element {
     try {
       await api.deleteSubscriberAdmin(emailToDelete);
       setUserEmails(prev => prev.filter(item => item.email !== emailToDelete));
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to delete email:', err);
+      if (err?.message) {
+        setErrorMsg(err.message);
+      }
     }
   };
 
@@ -128,17 +137,8 @@ export default function AudienceRegistryView(): React.JSX.Element {
     setTestEmailFeedback({ status: 'idle', message: '' });
 
     try {
-      let idToken: string | null = null;
-      try {
-        idToken = await user?.getIdToken() || null;
-      } catch (_) {}
-
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (idToken) headers['Authorization'] = `Bearer ${idToken}`;
-
-      const response = await fetch('/api/mail/send-alert', {
+      const { ok, data, error: sendErr } = await adminFetch('/api/mail/send-alert', {
         method: 'POST',
-        headers,
         body: JSON.stringify({
           email: targetEmail,
           title: 'Test Circular: Newsroom Alert Dispatch',
@@ -146,8 +146,7 @@ export default function AudienceRegistryView(): React.JSX.Element {
         })
       });
 
-      const data = await response.json();
-      if (response.ok && data.success) {
+      if (ok && data?.success) {
         setTestEmailFeedback({
           status: 'success',
           message: `successfully ${targetEmail} sent.`
@@ -157,16 +156,20 @@ export default function AudienceRegistryView(): React.JSX.Element {
           setTestEmailFeedback({ status: 'idle', message: '' });
         }, 3000);
       } else {
+        const errorText = sendErr || 'Failed to dispatch test circular.';
         setTestEmailFeedback({
           status: 'error',
-          message: data.error || 'Failed to dispatch test circular.'
+          message: errorText
         });
+        setErrorMsg(errorText);
       }
     } catch (err: any) {
+      const errorText = err.message || 'Network error encountered during email transmission.';
       setTestEmailFeedback({
         status: 'error',
-        message: err.message || 'Network error encountered during email transmission.'
+        message: errorText
       });
+      setErrorMsg(errorText);
     } finally {
       setIsSendingTestEmail(false);
     }
@@ -178,17 +181,8 @@ export default function AudienceRegistryView(): React.JSX.Element {
     setPingFeedback({ status: 'idle', message: '' });
 
     try {
-      let idToken: string | null = null;
-      try {
-        idToken = await user?.getIdToken() || null;
-      } catch (_) {}
-
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (idToken) headers['Authorization'] = `Bearer ${idToken}`;
-
-      const response = await fetch('/api/push/broadcast', {
+      const { ok, data, error: pingErr } = await adminFetch('/api/push/broadcast', {
         method: 'POST',
-        headers,
         body: JSON.stringify({
           title: 'Current News Alert',
           body: pingMessage.trim() || 'A new editorial dispatch has just been published.',
@@ -196,8 +190,7 @@ export default function AudienceRegistryView(): React.JSX.Element {
         })
       });
 
-      const data = await response.json();
-      if (response.ok && data.success) {
+      if (ok && data?.success) {
         const sentCount = data.sent || 0;
         const msg = sentCount > 0
           ? `Dispatched successfully to ${sentCount} active device(s) via Firebase Cloud Messaging.`
@@ -209,16 +202,20 @@ export default function AudienceRegistryView(): React.JSX.Element {
         setPingMessage('');
         fetchPushCount();
       } else {
+        const errorText = pingErr || 'Failed to ping devices via cloud messaging.';
         setPingFeedback({
           status: 'error',
-          message: data.error || 'Failed to ping devices via cloud messaging.'
+          message: errorText
         });
+        setErrorMsg(errorText);
       }
     } catch (err: any) {
+      const errorText = err.message || 'Network error encountered during cloud messaging dispatch.';
       setPingFeedback({
         status: 'error',
-        message: err.message || 'Network error encountered during cloud messaging dispatch.'
+        message: errorText
       });
+      setErrorMsg(errorText);
     } finally {
       setIsPingingDevices(false);
     }
@@ -234,6 +231,22 @@ export default function AudienceRegistryView(): React.JSX.Element {
         />
 
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+          {errorMsg && (
+            <div className="p-4 bg-red-50 dark:bg-red-950/40 border-l-4 border-red-500 text-red-800 dark:text-red-200 rounded-xl flex items-center justify-between shadow-xs">
+              <div className="flex items-center space-x-2">
+                <AlertCircle className="h-5 w-5 shrink-0 text-red-600 dark:text-red-400" />
+                <span className="text-xs sm:text-sm font-medium">{errorMsg}</span>
+              </div>
+              <button 
+                onClick={() => setErrorMsg(null)} 
+                className="text-red-600 hover:text-red-800 dark:text-red-400 p-1 cursor-pointer"
+                title="Dismiss"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+
           {/* 1. Push Notifications Section (Redesigned with alert logo, number & refresh button next to heading) */}
           <div className="p-5 bg-amber-50/60 dark:bg-amber-950/25 border border-amber-200/80 dark:border-amber-900/40 rounded-2xl space-y-4">
             <div className="flex items-center justify-between gap-3 flex-wrap">

@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import { z } from 'zod';
 import sanitizeHtml from 'sanitize-html';
 import { query, isNeonConfigured } from '../db/neon.ts';
-import { saveArticleToR2, deleteArticleFromR2, getFeedFromR2, loadLocalFeed, extractPlainExcerpt } from '../../src/server/r2Articles.ts';
+import { saveArticleToR2, deleteArticleFromR2, getFeedFromR2, loadLocalFeed, extractPlainExcerpt, getArticleFromR2 } from '../../src/server/r2Articles.ts';
 import { slugify } from '../../src/types.ts';
 import { syncSingleArticle, unpublishArticleFromD1, syncPendingArticles } from '../sync/d1Publisher.ts';
 
@@ -57,6 +57,28 @@ export function sanitizeArticleContent(html: string): string {
   });
 }
 
+function parseJsonOrPgArray(val: any): string[] {
+  if (!val) return [];
+  if (Array.isArray(val)) return val.map(String);
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        return Array.isArray(parsed) ? parsed.map(String) : [];
+      } catch {
+        return [];
+      }
+    }
+    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+      const inner = trimmed.slice(1, -1);
+      if (!inner) return [];
+      return inner.split(',').map(s => s.replace(/^"|"$/g, '').trim()).filter(Boolean);
+    }
+  }
+  return [];
+}
+
 const articleSchema = z.object({
   id: z.string().trim().optional(),
   title: z.string().trim().min(1, 'Title is required').max(200, 'Title cannot exceed 200 characters'),
@@ -76,6 +98,7 @@ const articleSchema = z.object({
   galleryPositions: z.array(z.string()).max(10).optional().default([]),
   authorName: z.string().trim().max(100).optional(),
   status: z.enum(['draft', 'published', 'archived']).default('draft'),
+  version: z.number().int().min(1).optional(),
 });
 
 export function mapRowToArticle(row: any): any {
@@ -86,21 +109,21 @@ export function mapRowToArticle(row: any): any {
     excerpt: row.excerpt,
     content: row.content,
     category: row.category || 'General',
-    hashtags: Array.isArray(row.hashtags) ? row.hashtags : [],
+    hashtags: parseJsonOrPgArray(row.hashtags),
     youtubeUrl: row.youtube_url || '',
     facebookUrl: row.facebook_url || '',
-    customLinks: Array.isArray(row.custom_links) ? row.custom_links : [],
+    customLinks: parseJsonOrPgArray(row.custom_links),
     imageUrl: row.image_url || '',
     imageUrlFallback: row.image_url_fallback || '',
-    imageUrls: Array.isArray(row.image_urls) ? row.image_urls : [],
-    imageUrlsFallback: Array.isArray(row.image_urls_fallback) ? row.image_urls_fallback : [],
+    imageUrls: parseJsonOrPgArray(row.image_urls),
+    imageUrlsFallback: parseJsonOrPgArray(row.image_urls_fallback),
     imagePosition: row.image_position || 'top',
-    galleryPositions: Array.isArray(row.gallery_positions) ? row.gallery_positions : [],
+    galleryPositions: parseJsonOrPgArray(row.gallery_positions),
     authorId: row.author_uid,
     authorName: row.author_name || 'Current News',
     authorEmail: row.author_email || '',
     status: row.status,
-    version: row.version || 1,
+    version: typeof row.version === 'number' ? row.version : 1,
     createdAt: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
     updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : new Date().toISOString(),
     publishedAt: row.published_at ? new Date(row.published_at).toISOString() : null,
@@ -161,15 +184,25 @@ export async function handleAdminCreateOrUpdateArticle(req: Request, res: Respon
   const authorName = data.authorName?.trim() || 'Current News';
   const now = new Date();
 
-  // If Neon is configured, verify writer authorization
+  // If Neon is configured, verify writer authorization & optimistic concurrency
   if (isNeonConfigured() && isUpdate) {
-    const existingRes = await query('SELECT id, author_uid, status FROM articles WHERE id = $1', [articleId]);
+    const existingRes = await query('SELECT id, author_uid, status, version FROM articles WHERE id = $1', [articleId]);
     if (existingRes.rows.length > 0) {
       const existing = existingRes.rows[0];
       if (user.role === 'writer' && existing.author_uid !== user.uid) {
         return res.status(403).json({
           success: false,
-          error: 'Forbidden: Writers may only edit their own articles'
+          error: 'Forbidden: Writers may only edit their own articles',
+          code: 'forbidden'
+        });
+      }
+      if (typeof data.version === 'number' && typeof existing.version === 'number' && existing.version > data.version) {
+        return res.status(409).json({
+          success: false,
+          error: 'This article was changed elsewhere, please reload',
+          code: 'version_conflict',
+          serverVersion: existing.version,
+          clientVersion: data.version
         });
       }
     }
@@ -403,10 +436,10 @@ export async function handleAdminGetArticles(req: Request, res: Response) {
       if (statusParam && ['draft', 'published', 'archived'].includes(statusParam)) {
         conditions.push(`status = $${paramIndex++}`);
         params.push(statusParam);
-      } else {
-        // Exclude archived by default unless requested
-        conditions.push(`status != 'archived'`);
+      } else if (statusParam === 'live' || statusParam === 'published_only') {
+        conditions.push(`status = 'published'`);
       }
+      // If statusParam is empty or 'all', all statuses (published, draft, archived) are returned
 
       // Cursor pagination (by updated_at DESC, id DESC)
       if (cursor) {
@@ -480,6 +513,79 @@ export async function handleAdminGetArticles(req: Request, res: Response) {
     });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err?.message || 'Failed to list articles' });
+  }
+}
+
+/**
+ * GET /api/admin/articles/:id
+ * Retrieve a single article by ID from Neon (or R2 fallback) for admin/writer editing.
+ * Enforces:
+ * - 404 { error: 'Article not found', code: 'not_found' } when missing
+ * - 403 { error: 'You can only edit your own articles', code: 'forbidden' } when a writer asks for someone else's article
+ * - Returns full article from Neon mapped to camelCase Post shape
+ */
+export async function handleAdminGetArticleById(req: Request, res: Response) {
+  const user = req.user;
+  if (!user) {
+    return res.status(401).json({ success: false, error: 'Unauthorized', code: 'no_token' });
+  }
+
+  const { id } = req.params;
+  if (!id || typeof id !== 'string') {
+    return res.status(400).json({ success: false, error: 'Article ID is required', code: 'invalid_id' });
+  }
+
+  if (isNeonConfigured()) {
+    try {
+      const result = await query('SELECT * FROM articles WHERE id = $1 LIMIT 1', [id]);
+      if (result.rows.length === 0) {
+        return res.status(404).json({ success: false, error: 'Article not found', code: 'not_found' });
+      }
+
+      const row = result.rows[0];
+      if (user.role === 'writer' && row.author_uid !== user.uid) {
+        return res.status(403).json({
+          success: false,
+          error: 'You can only edit your own articles',
+          code: 'forbidden'
+        });
+      }
+
+      const article = mapRowToArticle(row);
+      return res.status(200).json({
+        success: true,
+        article
+      });
+    } catch (err: any) {
+      console.error('[Admin Articles] Error loading article by ID from Neon:', err);
+      return res.status(500).json({ success: false, error: 'Failed to query database', code: 'db_error' });
+    }
+  }
+
+  // Fallback if Neon is not yet configured: load from R2 / local disk
+  try {
+    const post = await getArticleFromR2(id);
+    if (!post) {
+      return res.status(404).json({ success: false, error: 'Article not found', code: 'not_found' });
+    }
+    if (user.role === 'writer' && post.authorId && post.authorId !== user.uid) {
+      return res.status(403).json({
+        success: false,
+        error: 'You can only edit your own articles',
+        code: 'forbidden'
+      });
+    }
+    return res.status(200).json({
+      success: true,
+      article: {
+        ...post,
+        version: post.version || 1,
+        status: post.status || 'published'
+      }
+    });
+  } catch (err: any) {
+    console.error('[Admin Articles] Error in R2 fallback for article by ID:', err);
+    return res.status(500).json({ success: false, error: 'Failed to retrieve article', code: 'storage_error' });
   }
 }
 

@@ -23,6 +23,7 @@ export interface Post {
   views?: number; // Total article views
   hashtags?: string[]; // Custom social/instagram hashtags
   excerpt?: string; // Light feed plain-text excerpt (~200 chars)
+  version?: number; // Editorial monotonic revision number
   syncPending?: boolean; // Outbox sync to Cloudflare D1
   syncedVersion?: number; // Synced version in D1
   syncError?: string | null; // D1 sync error message if failed

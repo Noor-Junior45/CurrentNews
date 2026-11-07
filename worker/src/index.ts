@@ -343,10 +343,10 @@ async function verifyFirebaseIdToken(token: string, projectId: string): Promise<
     // Verify standard Firebase JWT claims
     const nowSec = Math.floor(Date.now() / 1000);
     if (!payload.exp || typeof payload.exp !== 'number' || payload.exp <= nowSec) return null;
-    // Reject tokens whose iat is in the future
-    if (!payload.iat || typeof payload.iat !== 'number' || payload.iat > nowSec) return null;
-    // Reject tokens whose auth_time is missing or in the future
-    if (!payload.auth_time || typeof payload.auth_time !== 'number' || payload.auth_time > nowSec) return null;
+    // Reject tokens whose iat is in the future (allowing 60 seconds clock leeway)
+    if (!payload.iat || typeof payload.iat !== 'number' || payload.iat > nowSec + 60) return null;
+    // Reject tokens whose auth_time is missing or in the future (allowing 60 seconds clock leeway)
+    if (!payload.auth_time || typeof payload.auth_time !== 'number' || payload.auth_time > nowSec + 60) return null;
     if (payload.iss !== `https://securetoken.google.com/${projectId}`) return null;
     if (payload.aud !== projectId) return null;
     if (!payload.sub || typeof payload.sub !== 'string') return null;

@@ -9,8 +9,15 @@
     <link rel="icon" type="image/png" href="/CurrentNews.png" />
     <link rel="apple-touch-icon" href="/CurrentNews.png" />
 
-    <!-- PWA Capabilities & Web Manifest -->
-    <link rel="manifest" href="/manifest.json" />
+    <!-- PWA Capabilities & Web Manifest (Omitted on admin host) -->
+    <script>
+      if (!window.location.hostname.startsWith('admin.')) {
+        var manifestLink = document.createElement('link');
+        manifestLink.rel = 'manifest';
+        manifestLink.href = '/manifest.json';
+        document.head.appendChild(manifestLink);
+      }
+    </script>
     <meta name="theme-color" content="#121211" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -250,14 +257,18 @@
     </noscript>
     <script type="module" src="/src/main.tsx"></script>
 
-    <!-- Service Worker PWA Registration -->
+    <!-- Service Worker PWA Registration (Omitted on admin host) -->
     <script>
-      if ('serviceWorker' in navigator) {
+      if (!window.location.hostname.startsWith('admin.') && 'serviceWorker' in navigator) {
         window.addEventListener('load', () => {
           navigator.serviceWorker.register('/sw.js')
             .then((reg) => console.log('PWA Service Worker registered successfully:', reg.scope))
             .catch((err) => console.error('PWA Service Worker registration failed:', err));
         });
+      } else if (window.location.hostname.startsWith('admin.') && 'serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then((regs) => {
+          for (var r of regs) r.unregister();
+        }).catch(function() {});
       }
     </script>
   </body>

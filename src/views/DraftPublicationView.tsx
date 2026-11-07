@@ -63,6 +63,7 @@ export default function DraftPublicationView(): React.JSX.Element {
 
   const [isEditing, setIsEditing] = useState(false);
   const [editingPost, setEditingPost] = useState<Post | null>(null);
+  const [loadedVersion, setLoadedVersion] = useState<number>(1);
 
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -110,47 +111,71 @@ export default function DraftPublicationView(): React.JSX.Element {
     }).catch(() => {});
   }, []);
 
-  // If editing an existing article, fetch its record
+  // If editing an existing article, fetch its record from editorial source of truth
   useEffect(() => {
     if (!editingId) {
       setIsEditing(false);
       setEditingPost(null);
+      setLoadedVersion(1);
       return;
     }
 
     const fetchPostToEdit = async () => {
       try {
-        const res = await fetch(`/api/posts/${editingId}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.post) {
-            const p = sanitizePostImages(data.post as Post);
-            setEditingPost(p);
-            setIsEditing(true);
-
-            setTitle(p.title || '');
-            setContent(p.content || '');
-            setCategory(p.category || 'General');
-            setYoutubeUrl(p.youtubeUrl || '');
-            setFacebookUrl(p.facebookUrl || '');
-            setCustomLinks(p.customLinks || []);
-            setHashtags(p.hashtags || []);
-            setImageUrl(p.imageUrl || '');
-            setImageUrlFallback(p.imageUrlFallback || '');
-            setImageUrls(p.imageUrls || []);
-            setImageUrlsFallback(p.imageUrlsFallback || []);
-            setImagePosition(p.imagePosition || 'top');
-            setGalleryPositions(p.galleryPositions || []);
-
-            if (p.authorName) {
-              setAuthorName(p.authorName);
-              setSelectedWriter(availableWriters.includes(p.authorName) ? p.authorName : 'custom');
-            }
+        setErrorMsg(null);
+        const { ok, status, data, error, code } = await adminFetch(`/api/admin/articles/${encodeURIComponent(editingId)}`);
+        if (!ok) {
+          console.error('[DraftPublicationView] Failed to load article details:', { status, body: data, error, code });
+          let message = 'Failed to load article details.';
+          if (status === 404 || code === 'not_found') {
+            message = 'Article not found (404)';
+          } else if (status === 403 || code === 'forbidden') {
+            message = 'You can only edit your own articles (403)';
+          } else if (status === 401 || code === 'no_token' || code === 'token_expired' || code === 'token_revoked') {
+            message = 'Session expired, please sign in again (401)';
+          } else if (error) {
+            message = `${error} (${status})`;
           }
+          setErrorMsg(message);
+          return;
         }
-      } catch (err) {
-        console.error('Failed to load post for editing:', err);
-        setErrorMsg('Failed to load article details.');
+
+        const rawArticle = data?.article || data?.post || data;
+        if (rawArticle) {
+          const p = sanitizePostImages(rawArticle as Post);
+          setEditingPost(p);
+          setIsEditing(true);
+          const ver = typeof rawArticle.version === 'number' ? rawArticle.version : 1;
+          setLoadedVersion(ver);
+
+          setTitle(p.title || '');
+          setContent(p.content || '');
+          setCategory(p.category || 'General');
+          setYoutubeUrl(p.youtubeUrl || '');
+          setFacebookUrl(p.facebookUrl || '');
+          setCustomLinks(p.customLinks || []);
+          setHashtags(p.hashtags || []);
+          setImageUrl(p.imageUrl || '');
+          setImageUrlFallback(p.imageUrlFallback || '');
+          setImageUrls(p.imageUrls || []);
+          setImageUrlsFallback(p.imageUrlsFallback || []);
+          setImagePosition(p.imagePosition || 'top');
+          setGalleryPositions(p.galleryPositions || []);
+          if (p.status === 'draft' || p.status === 'published') {
+            setTargetStatus(p.status);
+          }
+
+          if (p.authorName) {
+            setAuthorName(p.authorName);
+            setSelectedWriter(availableWriters.includes(p.authorName) ? p.authorName : 'custom');
+          }
+        } else {
+          console.error('[DraftPublicationView] Empty article response:', { status, body: data });
+          setErrorMsg('Article not found (404)');
+        }
+      } catch (err: any) {
+        console.error('[DraftPublicationView] Failed to load post for editing:', err);
+        setErrorMsg('Failed to load article details. Please check your network connection.');
       }
     };
 
@@ -173,6 +198,7 @@ export default function DraftPublicationView(): React.JSX.Element {
     setGalleryPositions([]);
     setIsEditing(false);
     setEditingPost(null);
+    setLoadedVersion(1);
     setTargetStatus('published');
     setSelectedWriter(availableWriters[0] || 'Current News');
     setAuthorName(user?.displayName || availableWriters[0] || 'Current News');
@@ -235,10 +261,11 @@ export default function DraftPublicationView(): React.JSX.Element {
         postPayload.authorId = user?.uid || '';
       }
 
-      const fullPostToSave = {
+      const fullPostToSave: Post = {
         id: publishedPostId,
         ...postPayload,
         status: targetStatus,
+        version: isEditing ? (loadedVersion || editingPost?.version || 1) : 1,
         createdAt: isEditing ? (editingPost?.createdAt || new Date().toISOString()) : new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         likes: editingPost?.likes || 0,
@@ -264,13 +291,29 @@ export default function DraftPublicationView(): React.JSX.Element {
       }
 
       // 2. Save to server repository (Neon Postgres + R2 dual-write) with auto-refreshing Bearer token
-      const { ok, data: savedData, error: saveErr } = await adminFetch('/api/admin/articles', {
+      const { ok, status, data: savedData, error: saveErr, code: saveCode } = await adminFetch('/api/admin/articles', {
         method: 'POST',
         body: JSON.stringify(fullPostToSave)
       });
 
       if (!ok) {
-        throw new Error(saveErr || 'Failed to save article to storage repository.');
+        console.error('[DraftPublicationView] Save article error:', { status, body: savedData, error: saveErr, code: saveCode });
+        if (status === 409 || saveCode === 'version_conflict') {
+          setErrorMsg('This article was changed elsewhere, please reload');
+          return;
+        }
+        let message = saveErr || 'Failed to save article to storage repository.';
+        if (status === 403 || saveCode === 'forbidden') {
+          message = 'You can only edit your own articles (403)';
+        } else if (status === 401 || saveCode === 'no_token' || saveCode === 'token_expired' || saveCode === 'token_revoked') {
+          message = 'Session expired, please sign in again (401)';
+        }
+        setErrorMsg(message);
+        return;
+      }
+
+      if (savedData?.article?.version) {
+        setLoadedVersion(savedData.article.version);
       }
 
       if (savedData?.syncWarning) {

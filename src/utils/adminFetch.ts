@@ -14,6 +14,8 @@ export interface AdminFetchResult<T = any> {
  */
 export function formatAuthErrorMessage(code?: string, fallbackMessage?: string): string {
   switch (code) {
+    case 'signing_in':
+      return 'Signing in...';
     case 'token_expired':
       return 'Session expired. Please sign out and sign in again';
     case 'token_revoked':
@@ -37,21 +39,47 @@ export function formatAuthErrorMessage(code?: string, fallbackMessage?: string):
 
 /**
  * Universal admin fetch helper:
+ * - Awaits auth.authStateReady() before reading auth.currentUser
+ * - If there is still no user, does NOT send the request and returns { error: "Signing in...", code: "signing_in" }
  * - Automatically attaches Firebase ID token to the Authorization header
  * - Sets default JSON Content-Type for POST/PUT/PATCH
- * - Catches token_expired and token_revoked responses, forces token refresh via auth.currentUser.getIdToken(true),
- *   and retries the request once
+ * - On any 401 response, calls auth.currentUser.getIdToken(true) and retries the request exactly once
  * - Formats error codes into readable banner messages
  */
 export async function adminFetch<T = any>(
   input: string | URL,
   init: RequestInit = {}
 ): Promise<AdminFetchResult<T>> {
+  // 1. Await auth readiness before reading auth.currentUser
+  if (typeof auth.authStateReady === 'function') {
+    try {
+      await auth.authStateReady();
+    } catch (e) {
+      console.debug('[adminFetch] authStateReady notice:', e);
+    }
+  }
+
+  const currentUser = auth.currentUser;
+  // If there is still no user, do not send the request and let the caller show a "Signing in..." state
+  if (!currentUser) {
+    return {
+      ok: false,
+      status: 401,
+      data: null,
+      error: 'Signing in...',
+      code: 'signing_in',
+      raw: new Response(JSON.stringify({ error: 'Signing in...', code: 'signing_in' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    };
+  }
+
   const getToken = async (forceRefresh = false): Promise<string | null> => {
     try {
-      const user = auth.currentUser;
-      if (!user) return null;
-      return await user.getIdToken(forceRefresh);
+      const u = auth.currentUser;
+      if (!u) return null;
+      return await u.getIdToken(forceRefresh);
     } catch (e) {
       console.debug('[adminFetch] Error retrieving ID token:', e);
       return null;
@@ -80,23 +108,27 @@ export async function adminFetch<T = any>(
     return { res, data, code };
   };
 
-  // 1. Initial attempt with standard token
+  // 2. Initial attempt with standard token
   let token = await getToken(false);
   let { res, data, code } = await execute(token);
 
-  // 2. If rejection code is token_expired or token_revoked, force refresh and retry ONCE
-  if (!res.ok && (code === 'token_expired' || code === 'token_revoked')) {
-    console.warn(`[adminFetch] Received ${code}. Forcing token refresh and retrying once...`);
-    const freshToken = await getToken(true);
-    if (freshToken) {
-      const retryResult = await execute(freshToken);
-      res = retryResult.res;
-      data = retryResult.data;
-      code = retryResult.code;
+  // 3. On a 401 response, call auth.currentUser.getIdToken(true) and retry the request exactly once
+  if (res.status === 401) {
+    console.warn(`[adminFetch] Received 401 (${code || 'unauthorized'}). Forcing token refresh via getIdToken(true) and retrying once...`);
+    try {
+      const freshToken = await currentUser.getIdToken(true);
+      if (freshToken) {
+        const retryResult = await execute(freshToken);
+        res = retryResult.res;
+        data = retryResult.data;
+        code = retryResult.code;
+      }
+    } catch (refreshErr) {
+      console.warn('[adminFetch] Error refreshing ID token on 401:', refreshErr);
     }
   }
 
-  // 3. If still not OK, construct readable error message
+  // 4. If still not OK, construct readable error message
   if (!res.ok) {
     const rawError = data?.error || data?.message || `HTTP ${res.status}: ${res.statusText}`;
     const readableError = formatAuthErrorMessage(code, rawError);

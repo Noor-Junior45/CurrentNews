@@ -149,6 +149,25 @@
   - **Root Cause:** In Cloud Run revision `currentnews-00030-wvm`, `FIREBASE_PROJECT_ID` had an accidental leading space (`" gen-lang-client-0638643565"`). Firebase Admin initialized with this string and checked JWT `aud` and `iss` claims against `" gen-lang-client-0638643565"` instead of `"gen-lang-client-0638643565"`, throwing `auth/argument-error` on all valid Firebase ID tokens.
   - **Permanent Guardrail:** `server/auth/firebaseAdmin.ts` sanitizes and trims `process.env.FIREBASE_PROJECT_ID` (`.trim()`) on initialization and in `getAdminProjectId()`, guaranteeing that whitespace in environment variables cannot cause token audience verification failures.
 
+- [x] **Bug ID & Summary:** BUG-036 — "Failed to load article details." when editing an article in the admin panel (`/admin/draft?id=:id`).
+  - **Root Cause:** `DraftPublicationView` previously loaded articles for editing from the public endpoint `GET /api/posts/:id`, which reads Cloudflare R2 / local container disk. Neon Postgres is the editorial source of truth where drafts and updated revisions live, so editing non-synced drafts or new edits returned 404 and triggered a generic failure banner.
+  - **Permanent Guardrail:**
+    1. Added authenticated `GET /api/admin/articles/:id` behind `requireRole('admin', 'writer')` that queries Neon Postgres directly (with fallback to R2 if unconfigured), returns the full article (including drafts and archived) mapped to the standard camelCase `Post` shape, and restricts writers to their authored posts (`author_uid === user.uid`).
+    2. Updated `DraftPublicationView` to load the article via `adminFetch('/api/admin/articles/:id')` and display actionable error banner messages based on status codes (404 Not Found, 403 Forbidden, 401 Session Expired).
+    3. Added optimistic locking: client tracks `loadedVersion` and sends it to `POST /api/admin/articles`. The server detects stale overwrites and returns `409` (`version_conflict`), alerting the editor to reload before overwriting changes.
+
+- [x] **Bug ID & Summary:** BUG-037 — Admin Host Route Leakage, PWA Infiltration, and Premature Client Auth Fetch Failure.
+  - **Root Cause:**
+    1. On `admin.currentnews.blog`, non-admin `/api/*` endpoints previously redirected to `/admin` returning HTML rather than a clean JSON 404, breaking programmatic API consumers.
+    2. Service worker and manifest link registered on the admin portal, risking cached admin assets and conflicting service worker behavior on administrative screens.
+    3. `adminFetch` read `auth.currentUser` synchronously before Firebase Auth initialized (`authStateReady()`), triggering unauthenticated requests when refreshing admin tabs.
+    4. Worker rejected Firebase tokens with strict `iat` or `auth_time > nowSec` without allowance for minor clock skew between servers.
+  - **Permanent Guardrail:**
+    1. In `server.ts`, all paths on `admin.currentnews.blog` starting with `/api/` (except `/api/admin/*`) return JSON 404 `{ error: "Not found" }`, and `/healthz`/`/readyz` are allowed.
+    2. Omitted `<link rel="manifest">` and Service Worker registration when hostname starts with `admin.`, and enforced `no-store, no-cache, must-revalidate` plus SW cache bypass on all admin assets.
+    3. In `adminFetch`, awaited `auth.authStateReady()` before accessing `currentUser`, aborting early with `{ error: "Signing in...", code: "signing_in" }` if unauthenticated, and retrying with `currentUser.getIdToken(true)` on any 401.
+    4. In `worker/src/index.ts`, added 60-second clock leeway for `iat` and `auth_time`.
+
 
 
 

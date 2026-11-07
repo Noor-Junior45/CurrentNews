@@ -35,14 +35,24 @@ self.addEventListener('activate', (event) => {
 
 // Fetch Event (Required for PWA installability)
 self.addEventListener('fetch', (event) => {
-  // Let the browser handle external analytics, ads, and API requests directly
-  if (
-    event.request.url.includes('google-analytics') ||
-    event.request.url.includes('doubleclick') ||
-    event.request.url.includes('pagead2') ||
-    event.request.url.includes('/api/')
-  ) {
-    return;
+  const reqUrl = event.request.url;
+
+  // Let browser handle external analytics, ads, and all admin pages/API requests directly
+  // Never cache any admin page, admin API response, or requests on admin host
+  try {
+    const parsed = new URL(reqUrl);
+    if (
+      parsed.hostname.startsWith('admin.') ||
+      parsed.pathname.startsWith('/admin') ||
+      parsed.pathname.startsWith('/api/') ||
+      reqUrl.includes('google-analytics') ||
+      reqUrl.includes('doubleclick') ||
+      reqUrl.includes('pagead2')
+    ) {
+      return;
+    }
+  } catch (_) {
+    if (reqUrl.includes('/admin') || reqUrl.includes('/api/')) return;
   }
 
   // Network-First for page navigation requests (guarantees user always gets latest app release)
@@ -51,10 +61,14 @@ self.addEventListener('fetch', (event) => {
       fetch(event.request)
         .then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200) {
-            const responseClone = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, responseClone);
-            });
+            const cacheControl = networkResponse.headers.get('cache-control') || '';
+            // Do not cache if url is admin or response indicates no-store / no-cache
+            if (!event.request.url.includes('/admin') && !cacheControl.includes('no-store')) {
+              const responseClone = networkResponse.clone();
+              caches.open(CACHE_NAME).then((cache) => {
+                cache.put(event.request, responseClone);
+              });
+            }
           }
           return networkResponse;
         })

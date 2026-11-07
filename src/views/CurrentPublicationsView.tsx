@@ -365,6 +365,10 @@ export default function CurrentPublicationsView(): React.JSX.Element {
                               Live
                             </span>
                           )
+                        ) : post.status === 'archived' ? (
+                          <span className="text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded-sm bg-purple-100 text-purple-800 dark:bg-purple-950/80 dark:text-purple-300">
+                            Archived
+                          </span>
                         ) : (
                           <span className="text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded-sm bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300">
                             Draft

@@ -28,6 +28,7 @@ import { logFirebaseAdminProjectId } from './server/auth/firebaseAdmin.ts';
 import {
   handleAdminCreateOrUpdateArticle,
   handleAdminGetArticles,
+  handleAdminGetArticleById,
   handleAdminDeleteArticle,
   handleAdminGetMe,
   handleAdminRunSync,
@@ -109,12 +110,28 @@ async function startServer() {
       // Inject X-Robots-Tag to ensure zero indexing of the administrative portal
       res.setHeader('X-Robots-Tag', 'noindex, nofollow');
 
-      // Allow admin paths, admin API calls, static assets, and system health probes
+      // Do not cache any admin page or admin API response
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+
+      // Allow GET /healthz and /readyz on the admin host
+      if (pathName === '/healthz' || pathName === '/readyz') {
+        return next();
+      }
+
+      // Any path that starts with /api/ and is not /api/admin/* must return a JSON 404 { error: "Not found" }, never a redirect to /admin and never HTML
+      if (pathName.startsWith('/api/')) {
+        if (pathName === '/api/admin' || pathName.startsWith('/api/admin/')) {
+          return next();
+        }
+        return res.status(404).json({ error: 'Not found' });
+      }
+
+      // Allow admin paths and static assets
       const isAllowedAdminPath = 
         pathName === '/admin' ||
         pathName.startsWith('/admin/') ||
-        pathName === '/api/admin' ||
-        pathName.startsWith('/api/admin/') ||
         pathName.startsWith('/assets') ||
         pathName.startsWith('/@vite') ||
         pathName.startsWith('/@fs') ||
@@ -124,9 +141,7 @@ async function startServer() {
         pathName.startsWith('/uploads') ||
         pathName.startsWith('/.well-known') ||
         pathName === '/favicon.ico' ||
-        pathName === '/robots.txt' ||
-        pathName === '/healthz' ||
-        pathName === '/readyz';
+        pathName === '/robots.txt';
 
       if (!isAllowedAdminPath) {
         return res.redirect(302, '/admin');
@@ -206,6 +221,7 @@ async function startServer() {
   // Admin API endpoints (Neon Postgres editorial source of truth + audit log)
   app.post('/api/admin/articles', requireRole('admin', 'writer'), asyncHandler(handleAdminCreateOrUpdateArticle));
   app.get('/api/admin/articles', requireRole('admin', 'writer'), asyncHandler(handleAdminGetArticles));
+  app.get('/api/admin/articles/:id', requireRole('admin', 'writer'), asyncHandler(handleAdminGetArticleById));
   app.delete('/api/admin/articles/:id', requireRole('admin', 'writer'), asyncHandler(handleAdminDeleteArticle));
   app.get('/api/admin/me', requireRole('admin', 'writer'), asyncHandler(handleAdminGetMe));
   app.post('/api/admin/sync/run', requireRole('admin'), asyncHandler(handleAdminRunSync));

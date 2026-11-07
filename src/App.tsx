@@ -96,8 +96,9 @@ function ScrollToTop() {
 
 export default function App() {
   useEffect(() => {
-    // Register PWA service worker for notifications and offline support
-    if ('serviceWorker' in navigator) {
+    // Register PWA service worker for notifications and offline support (omitted on admin host)
+    const isAdminHost = typeof window !== 'undefined' && window.location.hostname.startsWith('admin.');
+    if (!isAdminHost && 'serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').then(() => {
         syncPushSubscriptionOnAppBoot();
       }).catch((err) => {

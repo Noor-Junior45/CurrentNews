@@ -531,6 +531,43 @@ All `/internal/*` routes require:
 - **Access:** Header `X-Sync-Token` matching `SYNC_TICK_TOKEN` in constant time
 - **Response (200 OK):** `{ "success": true, "processed": number, "succeeded": number, "failed": number }`
 
+## 12. Editorial Article Endpoints (`server.ts` & `server/api/adminArticles.ts`)
+
+### `GET /api/admin/articles/:id`
+- **Access:** `admin` or `writer` role
+- **Headers:** `Authorization: Bearer <idToken>`
+- **Behavior:**
+  - Neon Postgres editorial source of truth (falls back to R2/local disk if Neon unconfigured)
+  - Writers may only read articles where `author_uid = uid`; admins may read any.
+  - Returns full article (including drafts and archived) mapped to camelCase Post shape.
+- **Responses:**
+  - `200 OK`: `{ "success": true, "article": { "id": "...", "title": "...", "content": "...", "category": "...", "hashtags": [...], "youtubeUrl": "...", "facebookUrl": "...", "customLinks": [...], "imageUrl": "...", "imageUrlFallback": "...", "imageUrls": [...], "imageUrlsFallback": [...], "imagePosition": "top", "galleryPositions": [...], "authorId": "...", "authorName": "...", "authorEmail": "...", "status": "draft" | "published" | "archived", "version": 1, "createdAt": "...", "updatedAt": "..." } }`
+  - `401 Unauthorized`: `{ "success": false, "error": "...", "code": "no_token" | "token_expired" | "token_revoked" }`
+  - `403 Forbidden`: `{ "success": false, "error": "You can only edit your own articles", "code": "forbidden" }`
+  - `404 Not Found`: `{ "success": false, "error": "Article not found", "code": "not_found" }`
+
+### `POST /api/admin/articles` (Optimistic Concurrency & Publishing)
+- **Access:** `admin` or `writer` role
+- **Payload:** Includes `id` (if update), `title`, `content`, `category`, `hashtags`, `version` (loaded revision number), `status` ('published' | 'draft' | 'archived'), etc.
+- **Optimistic Locking:**
+  - If existing server `version > clientVersion`, rejects with:
+    - `409 Conflict`: `{ "success": false, "error": "This article was changed elsewhere, please reload", "code": "version_conflict", "serverVersion": number, "clientVersion": number }`
+## 13. Admin Host Routing & Edge Auth Leeway (`server.ts` & `worker/src/index.ts`)
+
+### Host `admin.currentnews.blog` Routing
+- **Header:** `X-Forwarded-Host: admin.currentnews.blog` or `Host: admin.currentnews.blog`
+- **Security:** Injects `X-Robots-Tag: noindex, nofollow` and `Cache-Control: no-store, no-cache, must-revalidate, proxy-revalidate`.
+- **System Probes:** `GET /healthz` and `GET /readyz` are explicitly allowed and return standard health telemetry.
+- **API Boundary:** Any path starting with `/api/` that is not `/api/admin` or `/api/admin/*` returns HTTP 404 JSON `{ "error": "Not found" }` (never redirects to `/admin`, never returns HTML).
+- **Navigation:** Allowed paths include `/admin`, `/admin/*`, and static assets (`/assets`, `/@vite`, `/img`, `/uploads`, `/favicon.ico`, `/robots.txt`). Unrecognized paths 302 redirect to `/admin`.
+- **PWA Gating:** Manifest `<link rel="manifest">` and Service Worker registration are omitted on `admin.*` hostnames; service worker explicitly bypasses all `/admin*` and admin API caching.
+
+### Edge Worker Clock Leeway (`verifyFirebaseIdToken`)
+- **Tokens:** Firebase ID tokens verified against Google public JWKs.
+- **Clock Drift Tolerance:** Allows 60 seconds leeway on `iat` (`iat > nowSec + 60`) and `auth_time` (`auth_time > nowSec + 60`) before rejection to prevent spurious failures across server clock skew.
+
+
+
 
 
 

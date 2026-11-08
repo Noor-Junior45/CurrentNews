@@ -16,7 +16,7 @@ export interface OriginNode {
   id: string;
   name: string;
   baseUrl: string;
-  type: 'edge-cdn' | 'origin-api' | 'r2-mirror';
+  type: 'edge-cdn' | 'origin-api' | 'r2-mirror' | 'edge-d1';
   healthy: boolean;
   consecutiveFailures: number;
   lastFailureTime: number;
@@ -24,11 +24,64 @@ export interface OriginNode {
   weight: number;
 }
 
+function mapD1ArticleToPost(a: any): any {
+  if (!a || typeof a !== 'object') return a;
+  const parseJsonArray = (val: any): string[] => {
+    if (Array.isArray(val)) return val;
+    if (typeof val === 'string') {
+      try {
+        const p = JSON.parse(val);
+        return Array.isArray(p) ? p : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  };
+
+  return {
+    ...a,
+    id: a.id,
+    slug: a.slug,
+    title: a.title,
+    excerpt: a.excerpt || '',
+    content: a.content || '',
+    category: a.category || 'General',
+    hashtags: parseJsonArray(a.hashtags),
+    imageUrl: a.imageUrl || a.image_url || '',
+    imageUrlFallback: a.imageUrlFallback || a.image_url_fallback || '',
+    imageUrls: parseJsonArray(a.imageUrls ?? a.image_urls),
+    imageUrlsFallback: parseJsonArray(a.imageUrlsFallback ?? a.image_urls_fallback),
+    imagePosition: a.imagePosition || a.image_position || 'top',
+    galleryPositions: parseJsonArray(a.galleryPositions ?? a.gallery_positions),
+    youtubeUrl: a.youtubeUrl || a.youtube_url || '',
+    facebookUrl: a.facebookUrl || a.facebook_url || '',
+    authorName: a.authorName || a.author_name || 'Current News',
+    createdAt: Number(a.createdAt ?? a.created_at ?? a.publishedAt ?? a.published_at) || Date.now(),
+    updatedAt: Number(a.updatedAt ?? a.updated_at) || Date.now(),
+    status: 'published',
+    views: Number(a.views) || 0,
+    likes: Number(a.likes) || 0,
+    dislikes: Number(a.dislikes) || 0,
+  };
+}
+
 const CIRCUIT_BREAKER_COOLDOWN_MS = 30000; // 30 seconds before retesting failed origin
 const REQUEST_TIMEOUT_MS = 4500; // 4.5s max per attempt before failover
 
 class ClientLoadBalancer {
   private nodes: OriginNode[] = [
+    {
+      id: 'cloudflare-d1',
+      name: 'Cloudflare Edge Worker & D1',
+      baseUrl: 'https://api.currentnews.blog',
+      type: 'edge-d1',
+      healthy: true,
+      consecutiveFailures: 0,
+      lastFailureTime: 0,
+      latencyMs: 25,
+      weight: 10, // Primary source: Cloudflare Edge Worker & D1 Database
+    },
     {
       id: 'cloudflare-cdn',
       name: 'Cloudflare Global Edge CDN',
@@ -38,7 +91,7 @@ class ClientLoadBalancer {
       consecutiveFailures: 0,
       lastFailureTime: 0,
       latencyMs: 35,
-      weight: 3, // Highest priority: distributed global caching
+      weight: 3, // Fallback: distributed static caching
     },
     {
       id: 'cloud-run-origin',
@@ -141,7 +194,7 @@ class ClientLoadBalancer {
       }
       const testUrl = node.type === 'origin-api'
         ? '/healthz'
-        : `${node.baseUrl}/articles/feed.json`;
+        : (node.type === 'edge-d1' ? `${node.baseUrl}/health` : `${node.baseUrl}/articles/feed.json`);
 
       const start = performance.now();
       try {
@@ -182,7 +235,12 @@ class ClientLoadBalancer {
       const startTime = performance.now();
       try {
         let requestUrl = '';
-        if (node.type === 'origin-api') {
+        if (node.type === 'edge-d1') {
+          const queryParams = new URLSearchParams();
+          if (params?.category && params.category !== 'All') queryParams.set('category', params.category);
+          queryParams.set('limit', String(params?.limit || 100));
+          requestUrl = `${node.baseUrl}/articles?${queryParams.toString()}`;
+        } else if (node.type === 'origin-api') {
           const queryParams = new URLSearchParams();
           if (params?.category && params.category !== 'All') queryParams.set('category', params.category);
           if (params?.search) queryParams.set('search', params.search);
@@ -201,7 +259,9 @@ class ClientLoadBalancer {
           const json = await resp.json();
           let rawPosts: any[] = [];
 
-          if (node.type === 'origin-api') {
+          if (node.type === 'edge-d1') {
+            rawPosts = (json?.articles || []).map(mapD1ArticleToPost);
+          } else if (node.type === 'origin-api') {
             rawPosts = json?.posts || [];
           } else if (Array.isArray(json)) {
             rawPosts = json;
@@ -295,14 +355,18 @@ class ClientLoadBalancer {
     for (const node of orderedNodes) {
       const startTime = performance.now();
       try {
-        const url = node.type === 'origin-api'
-          ? `${node.baseUrl}/posts/${id}`
-          : `${node.baseUrl}/articles/${id}.json`;
+        const url = node.type === 'edge-d1'
+          ? `${node.baseUrl}/articles/${encodeURIComponent(id)}`
+          : (node.type === 'origin-api'
+            ? `${node.baseUrl}/posts/${id}`
+            : `${node.baseUrl}/articles/${id}.json`);
 
         const resp = await fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
         if (resp.ok) {
           const json = await resp.json();
-          const target = node.type === 'origin-api' ? json?.post : json;
+          const target = node.type === 'edge-d1'
+            ? mapD1ArticleToPost(json?.article)
+            : (node.type === 'origin-api' ? json?.post : json);
           if (target && target.title) {
             const sanitized = sanitizePostImages(target);
             this.recordSuccess(node.id, performance.now() - startTime);

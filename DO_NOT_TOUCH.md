@@ -68,17 +68,16 @@ The following files, components, and logic structures represent finalized UI and
    - Web Push Notification Alert Prompt (`NotificationBanner.tsx`) and Newsletter Subscription Modal (`NewsletterPopup.tsx`) are permanently removed from the codebase.
    - Reader viewport is strictly preserved with zero intrusive subscription or alert overlays.
 
-14. **Dedicated Individual View Files Architecture**
-   - Every page has its own modular file in `src/views/`:
-     * `src/views/AdminDashboardView.tsx` (main editorial metrics, R2 edge sync, and author pen name manager)
-     * `src/views/DraftPublicationView.tsx` (article composer, rich text, photo attachments, and publishing)
-     * `src/views/CurrentPublicationsView.tsx` (publications table, filter switcher, and delete modal)
-     * `src/views/AudienceRegistryView.tsx` (subscribers directory, push device listeners, and Resend test console)
+14. **Dedicated Public Reader View Files Architecture**
+   - Every public reader sub-page has its own modular file in `src/views/`:
      * `src/views/SettingsView.tsx` (theme, notifications, and preferences)
      * `src/views/LikedView.tsx` (curated liked articles ledger)
      * `src/views/DeleteAccountView.tsx` (account purge & Google Play data safety compliance)
      * `src/views/PrivacyView.tsx` (Privacy Policy)
      * `src/views/TermsView.tsx` (Terms of Service)
-   - All protected by `AdminAuthGuard.tsx` and unified with left-aligned `ProfilePageNavbar`.
+     * `src/views/AboutView.tsx` (E-E-A-T About Us)
+     * `src/views/ContactView.tsx` (Reader Contact & Editorial Office)
+     * `src/views/EditorialPolicyView.tsx` (Editorial Standards & Ethics)
+   - All admin panels and write actions are decoupled to `https://admin.currentnews.blog/admin`. Any `/admin*` URL strictly 301 redirects to the dedicated admin repository.
 
 

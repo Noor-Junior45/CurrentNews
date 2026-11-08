@@ -20,70 +20,16 @@ export function getCanonicalPostUrl(postId: string, title?: string): string {
   const postSlug = title ? slugify(title) : '';
   const path = postSlug ? `/post/${postId}/${postSlug}` : `/post/${postId}`;
 
-  if (typeof window !== 'undefined' && window.location) {
-    const origin = window.location.origin || '';
-    const hostname = (window.location.hostname || '').toLowerCase();
-
-    // Check if running on Android Native Capacitor, localhost, or file protocol
-    const isLocalOrNative =
-      hostname === 'localhost' ||
-      hostname === '127.0.0.1' ||
-      hostname === '0.0.0.0' ||
-      origin.includes('localhost') ||
-      origin.includes('capacitor://') ||
-      origin.startsWith('file:') ||
-      Boolean((window as any)?.Capacitor?.isNativePlatform?.());
-
-    if (isLocalOrNative) {
-      return `https://www.currentnews.blog${path}`;
-    }
-
-    // If already on the production domain or its variants
-    if (hostname.includes('currentnews.blog')) {
-      return `https://www.currentnews.blog${path}`;
-    }
-
-    // If on a live web host (like Cloud Run development preview ais-dev/pre...run.app)
-    if (origin.startsWith('http://') || origin.startsWith('https://')) {
-      return `${origin}${path}`;
-    }
-  }
-
+  // Always share with the live canonical production domain so recipients on WhatsApp, Twitter, etc. can open it
   return `https://www.currentnews.blog${path}`;
 }
 
 /**
  * Returns the canonical public web origin (base URL).
  * In Android Capacitor native apps, local dev, or webviews,
- * returns "https://www.currentnews.blog" instead of "http://localhost".
+ * strictly returns "https://www.currentnews.blog".
  */
 export function getCanonicalSiteOrigin(): string {
-  if (typeof window !== 'undefined' && window.location) {
-    const origin = window.location.origin || '';
-    const hostname = (window.location.hostname || '').toLowerCase();
-
-    const isLocalOrNative =
-      hostname === 'localhost' ||
-      hostname === '127.0.0.1' ||
-      hostname === '0.0.0.0' ||
-      origin.includes('localhost') ||
-      origin.includes('capacitor://') ||
-      origin.startsWith('file:') ||
-      Boolean((window as any)?.Capacitor?.isNativePlatform?.());
-
-    if (isLocalOrNative) {
-      return 'https://www.currentnews.blog';
-    }
-
-    if (hostname.includes('currentnews.blog')) {
-      return 'https://www.currentnews.blog';
-    }
-
-    if (origin.startsWith('http://') || origin.startsWith('https://')) {
-      return origin;
-    }
-  }
-
   return 'https://www.currentnews.blog';
 }
 

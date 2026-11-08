@@ -2,7 +2,6 @@ import React from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { 
   ThumbsUp, 
-  Shield, 
   Settings as SettingsIcon, 
   ShieldCheck, 
   FileText, 
@@ -10,10 +9,7 @@ import {
   LogOut, 
   LogIn, 
   CheckCircle2, 
-  User,
-  PlusCircle,
-  Newspaper,
-  Mail 
+  User 
 } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import { auth } from '../firebase';
@@ -22,7 +18,7 @@ import ProfilePageNavbar from '../components/ProfilePageNavbar';
 import { updateDocumentSEO } from '../utils/seo';
 
 export default function ProfileView(): React.JSX.Element {
-  const { user, loading, isAdmin } = useAuthState();
+  const { user, loading } = useAuthState();
   const navigate = useNavigate();
   const [authError, setAuthError] = React.useState<string | null>(null);
 
@@ -114,46 +110,6 @@ export default function ProfileView(): React.JSX.Element {
                 <ThumbsUp className="h-4 w-4 text-rose-550 shrink-0" />
                 <span className="font-semibold text-slate-800 dark:text-slate-100 dark:hover:text-white">Liked</span>
               </Link>
-
-              {isAdmin && (
-                <>
-                  <Link
-                    to="/admin"
-                    className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 dark:text-slate-100 dark:hover:text-white bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-transparent backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 dark:hover:border-indigo-500/60 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
-                    id="profile-admin-dashboard-button"
-                  >
-                    <Shield className="h-4 w-4 text-indigo-500 shrink-0" />
-                    <span className="font-semibold text-slate-800 dark:text-slate-100 dark:hover:text-white">Admin</span>
-                  </Link>
-
-                  <Link
-                    to="/admin/draft"
-                    className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 dark:text-slate-100 dark:hover:text-white bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-transparent backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 dark:hover:border-indigo-500/60 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
-                    id="profile-draft-publication-button"
-                  >
-                    <PlusCircle className="h-4 w-4 text-emerald-500 shrink-0" />
-                    <span className="font-semibold text-slate-800 dark:text-slate-100 dark:hover:text-white">Draft New Publication</span>
-                  </Link>
-
-                  <Link
-                    to="/admin/publications"
-                    className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 dark:text-slate-100 dark:hover:text-white bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-transparent backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 dark:hover:border-indigo-500/60 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
-                    id="profile-current-publication-button"
-                  >
-                    <Newspaper className="h-4 w-4 text-amber-500 shrink-0" />
-                    <span className="font-semibold text-slate-800 dark:text-slate-100 dark:hover:text-white">Current Publication</span>
-                  </Link>
-
-                  <Link
-                    to="/admin/audience"
-                    className="w-full flex items-center space-x-3 py-3 px-4 rounded-full text-slate-700 hover:text-indigo-600 dark:text-slate-100 dark:hover:text-white bg-slate-50/90 hover:bg-slate-100/90 dark:bg-slate-900/60 dark:hover:bg-transparent backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 dark:hover:border-indigo-500/60 shadow-xs hover:shadow-sm text-xs font-semibold tracking-wide transition-all cursor-pointer"
-                    id="profile-audience-registry-button"
-                  >
-                    <Mail className="h-4 w-4 text-cyan-500 shrink-0" />
-                    <span className="font-semibold text-slate-800 dark:text-slate-100 dark:hover:text-white">Audience Registry</span>
-                  </Link>
-                </>
-              )}
 
               {/* Setting Button */}
               <Link

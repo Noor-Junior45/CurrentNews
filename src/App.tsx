@@ -7,10 +7,6 @@ import AndroidBackGestureHandler from './components/AndroidBackGestureHandler';
 import { syncPushSubscriptionOnAppBoot } from './utils/pushManager';
 import HomeView from './views/HomeView';
 import PostDetailView from './views/PostDetailView';
-import AdminView from './views/AdminView';
-import DraftPublicationView from './views/DraftPublicationView';
-import CurrentPublicationsView from './views/CurrentPublicationsView';
-import AudienceRegistryView from './views/AudienceRegistryView';
 import LikedView from './views/LikedView';
 import PrivacyView from './views/PrivacyView';
 import TermsView from './views/TermsView';
@@ -31,7 +27,6 @@ const PROFILE_PAGES = [
   '/signin',
   '/login',
   '/liked',
-  '/admin',
   '/settings',
   '/privacy',
   '/terms',
@@ -65,6 +60,22 @@ function ConditionalFooter() {
 function AdSenseRouteWatcher() {
   useAdSenseRouteGuard();
   return null;
+}
+
+function AdminRedirect() {
+  useEffect(() => {
+    window.location.href = 'https://admin.currentnews.blog/admin';
+  }, []);
+  return (
+    <div className="min-h-screen flex items-center justify-center p-6 text-center">
+      <p className="text-sm text-slate-600 dark:text-slate-400">
+        Redirecting to Editorial Admin Portal at{' '}
+        <a href="https://admin.currentnews.blog/admin" className="text-indigo-600 dark:text-indigo-400 underline font-semibold">
+          admin.currentnews.blog
+        </a>...
+      </p>
+    </div>
+  );
 }
 
 function ScrollToTop() {
@@ -131,11 +142,9 @@ export default function App() {
             <Route path="/post/:id" element={<PostDetailView />} />
             <Route path="/post/:id/:slug" element={<PostDetailView />} />
 
-            {/* 3. Secure Admin Panel & Dedicated Editorial Views */}
-            <Route path="/admin" element={<AdminView />} />
-            <Route path="/admin/draft" element={<DraftPublicationView />} />
-            <Route path="/admin/publications" element={<CurrentPublicationsView />} />
-            <Route path="/admin/audience" element={<AudienceRegistryView />} />
+            {/* 3. Redirect /admin to Dedicated External Admin Portal */}
+            <Route path="/admin" element={<AdminRedirect />} />
+            <Route path="/admin/*" element={<AdminRedirect />} />
 
             {/* 4. Profile Hub Page */}
             <Route path="/profile" element={<ProfileView />} />

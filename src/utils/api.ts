@@ -17,7 +17,21 @@ export const API_BASE = (((import.meta as any).env?.VITE_API_BASE as string) || 
 /**
  * Retrieve current user's Firebase ID token if signed in
  */
-import { formatAuthErrorMessage } from './adminFetch';
+function formatAuthErrorMessage(code?: string, rawError?: string): string {
+  switch (code) {
+    case 'token_expired':
+      return 'Your session has expired. Please sign in again.';
+    case 'token_revoked':
+      return 'Your session was revoked. Please sign in again.';
+    case 'email_not_verified':
+      return 'Your email address is not verified.';
+    case 'no_role':
+    case 'forbidden':
+      return 'You do not have permission to perform this action.';
+    default:
+      return rawError || 'Request failed';
+  }
+}
 
 async function getIdToken(forceRefresh = false): Promise<string | null> {
   try {

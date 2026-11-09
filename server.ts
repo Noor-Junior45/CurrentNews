@@ -2,6 +2,8 @@ import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 
 // Modular route handlers
 import sendAlertHandler from './api/mail/send-alert.ts';
@@ -42,8 +44,112 @@ async function startServer() {
   const app = express();
   const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
-  // Trust proxy headers for Google Cloud Load Balancer (GCLB) and Cloudflare Anycast CDN
-  app.set('trust proxy', true);
+  // Trust proxy: 2 hops for Google Cloud Load Balancer (GCLB) / Google Front End and Cloudflare Anycast CDN
+  app.set('trust proxy', 2);
+
+  // Security headers with Helmet and Content Security Policy (CSP)
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: [
+            "'self'",
+            "'unsafe-inline'",
+            "'unsafe-eval'",
+            "https://pagead2.googlesyndication.com",
+            "https://*.googlesyndication.com",
+            "https://*.google.com",
+            "https://*.doubleclick.net",
+            "https://www.googletagmanager.com",
+            "https://apis.google.com"
+          ],
+          imgSrc: [
+            "'self'",
+            "https://media.currentnews.blog",
+            "https:",
+            "data:",
+            "blob:"
+          ],
+          connectSrc: [
+            "'self'",
+            "https://api.currentnews.blog",
+            "https://identitytoolkit.googleapis.com",
+            "https://securetoken.googleapis.com",
+            "https://*.googleapis.com",
+            "https://*.firebaseio.com",
+            "https://*.google.com",
+            "https://*.doubleclick.net",
+            "https://pagead2.googlesyndication.com",
+            "https://www.google-analytics.com",
+            "https://*.googletagmanager.com",
+            "ws:",
+            "wss:"
+          ],
+          frameSrc: [
+            "'self'",
+            "https://www.youtube.com",
+            "https://youtube.com",
+            "https://www.youtube-nocookie.com",
+            "https://*.google.com",
+            "https://*.doubleclick.net",
+            "https://*.firebaseapp.com",
+            "https://googleads.g.doubleclick.net"
+          ],
+          frameAncestors: [
+            "'self'",
+            "https://*.google.com",
+            "https://*.aistudio.google.com",
+            "https://*.run.app",
+            "https://*.googleusercontent.com",
+            "https://*.cloud.google.com"
+          ],
+          styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+          fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
+          mediaSrc: ["'self'", "https:", "blob:", "data:"],
+          objectSrc: ["'none'"],
+          baseUri: ["'self'"],
+          formAction: ["'self'"]
+        }
+      },
+      xFrameOptions: false,
+      crossOriginEmbedderPolicy: false,
+      crossOriginOpenerPolicy: false,
+      crossOriginResourcePolicy: { policy: "cross-origin" },
+      hsts: {
+        maxAge: 31536000,
+        includeSubDomains: true,
+        preload: true
+      }
+    })
+  );
+
+  // General rate limiter: 300 requests per 15 minutes per IP on /api/*
+  const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 300,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: {
+      success: false,
+      error: 'Too many requests from this IP, please try again after 15 minutes.'
+    }
+  });
+
+  // Strict rate limiter: 5 requests per hour per IP on POST /api/mail/send-alert
+  const sendAlertLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 5,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: {
+      success: false,
+      error: 'Too many alert requests from this IP, please try again after an hour.'
+    }
+  });
+
+  // Apply general API rate limiter to all /api/* routes
+  app.use('/api', apiLimiter);
 
   // Health-check (liveness) endpoint for Google Cloud Run / Container orchestrators
   app.get('/healthz', (_req, res) => {
@@ -75,12 +181,14 @@ async function startServer() {
   });
 
   // Admin Redirection & Public Host Routing
+  const ADMIN_BASE_URL = (process.env.ADMIN_BASE_URL || 'https://admin.currentnews.blog').replace(/\/+$/, '');
+
   app.use((req, res, next) => {
     const pathName = req.path || '';
 
     // Permanently redirect all admin portal visits to the dedicated admin repository
     if (pathName === '/admin' || pathName.startsWith('/admin/')) {
-      const targetUrl = `https://admin.currentnews.blog${req.originalUrl || '/admin'}`;
+      const targetUrl = `${ADMIN_BASE_URL}${req.originalUrl || '/admin'}`;
       return res.redirect(301, targetUrl);
     }
 
@@ -88,7 +196,7 @@ async function startServer() {
     if (pathName === '/api/admin' || pathName.startsWith('/api/admin/')) {
       return res.status(404).json({
         success: false,
-        error: 'Admin APIs have moved to https://admin.currentnews.blog'
+        error: `Admin APIs have moved to ${ADMIN_BASE_URL}`
       });
     }
 
@@ -118,8 +226,8 @@ async function startServer() {
   // Server-driven App Update endpoint (Google Play Store / Cloud Run reader version check)
   app.get('/api/app/version', asyncHandler(handleGetAppVersion));
 
-  // Public contact & alert mail endpoint
-  app.post('/api/mail/send-alert', asyncHandler(sendAlertHandler));
+  // Public contact & alert mail endpoint with dedicated rate limit
+  app.post('/api/mail/send-alert', sendAlertLimiter, asyncHandler(sendAlertHandler));
 
   // Inbound mail endpoint for webhook notifications
   app.all('/api/mail/inbound', asyncHandler(inboundHandler));

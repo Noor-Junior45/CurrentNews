@@ -180,3 +180,40 @@ curl -s -i -H "Host: currentnews.blog" http://localhost:3000/api/admin/articles
 curl -s -I -H "Host: admin.currentnews.blog" http://localhost:3000/admin
 # Expected: X-Robots-Tag: noindex, nofollow
 ```
+
+## 8. Security Headers, CSP & Rate Limiting Chaos Tests
+
+```bash
+# 1. Verify Helmet CSP and HSTS headers on public reader endpoints
+curl -s -I http://localhost:3000/healthz | grep -iE 'content-security-policy|strict-transport-security|x-content-type-options'
+# Expected:
+# Content-Security-Policy: default-src 'self'; ...
+# Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+# X-Content-Type-Options: nosniff
+
+# 2. Verify RateLimit headers on /api/* (300 requests / 15 minutes)
+curl -s -I http://localhost:3000/api/posts | grep -i 'ratelimit'
+# Expected:
+# RateLimit-Policy: 300;w=900
+# RateLimit: limit=300, remaining=..., reset=...
+
+# 3. Verify Alert Mail rate limit (5 requests / hour)
+curl -s -I -X POST http://localhost:3000/api/mail/send-alert \
+  -H "Content-Type: application/json" \
+  -d '{"email":"invalid","title":"Test"}' | grep -i 'ratelimit'
+# Expected:
+# RateLimit-Policy: 5;w=3600
+# RateLimit: limit=5, remaining=..., reset=...
+
+# 4. Verify Alert Mail rejects malformed recipient email with 400 Bad Request
+curl -s -X POST http://localhost:3000/api/mail/send-alert \
+  -H "Content-Type: application/json" \
+  -d '{"email":"not-an-email","title":"Breaking News"}'
+# Expected: {"success":false,"message":"Invalid recipient email address format."}
+
+# 5. Verify Alert Mail rejects external phishing URLs and defaults safely
+curl -s -X POST http://localhost:3000/api/mail/send-alert \
+  -H "Content-Type: application/json" \
+  -d '{"email":"reader@example.com","title":"Breaking News\r\nBcc: evil@phish.com","link":"https://phishing-site.com/steal"}'
+# Expected: URL falls back strictly to https://currentnews.blog; title newlines stripped and HTML-escaped.
+```

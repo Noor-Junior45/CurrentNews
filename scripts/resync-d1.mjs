@@ -125,7 +125,7 @@ function mapRowToD1Article(row) {
 async function run() {
   const client = new Client({
     connectionString,
-    ssl: { rejectUnauthorized: false },
+    ssl: true,
   });
 
   try {

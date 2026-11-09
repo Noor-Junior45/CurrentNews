@@ -411,7 +411,7 @@ All `/api/admin/*` endpoints strictly require `Authorization: Bearer <ID_TOKEN>`
   {
     "success": true,
     "uid": "...",
-    "email": "mdhassan1738@gmail.com",
+    "email": "you@example.com",
     "role": "admin"
   }
   ```
@@ -475,7 +475,7 @@ All `/api/admin/*` endpoints strictly require `Authorization: Bearer <ID_TOKEN>`
 - **Payload:** `{ "id": string, "subscription": object }`
 - **Validation:** `id` must match `/^[A-Za-z0-9_-]{16,128}$/`, payload max 4KB, `subscription.endpoint` must begin with `https://`.
 
-## 9. Signed Internal Edge Sync Endpoints (`worker/src/index.ts`)
+## 9. Signed Internal Edge Sync Endpoints (Edge Worker API)
 
 All `/internal/*` routes require:
 - **Method:** `POST` strictly (401 on other methods)
@@ -552,7 +552,7 @@ All `/internal/*` routes require:
 - **Optimistic Locking:**
   - If existing server `version > clientVersion`, rejects with:
     - `409 Conflict`: `{ "success": false, "error": "This article was changed elsewhere, please reload", "code": "version_conflict", "serverVersion": number, "clientVersion": number }`
-## 13. Admin Host Routing & Edge Auth Leeway (`server.ts` & `worker/src/index.ts`)
+## 13. Admin Host Routing & Edge Auth Leeway (`server.ts` & Edge Worker API)
 
 ### Host `admin.currentnews.blog` Routing
 - **Header:** `X-Forwarded-Host: admin.currentnews.blog` or `Host: admin.currentnews.blog`
@@ -565,6 +565,49 @@ All `/internal/*` routes require:
 ### Edge Worker Clock Leeway (`verifyFirebaseIdToken`)
 - **Tokens:** Firebase ID tokens verified against Google public JWKs.
 - **Clock Drift Tolerance:** Allows 60 seconds leeway on `iat` (`iat > nowSec + 60`) and `auth_time` (`auth_time > nowSec + 60`) before rejection to prevent spurious failures across server clock skew.
+
+## 14. Security Headers, CSP, Rate Limits & Alert Mail (`server.ts` & `api/mail/send-alert.ts`)
+
+### Security Headers & Content Security Policy (Helmet)
+- **HSTS:** Enabled with `maxAge: 31536000` (1 year), `includeSubDomains: true`, `preload: true`.
+- **Script Sources:** `'self'`, `'unsafe-inline'`, `'unsafe-eval'`, `https://pagead2.googlesyndication.com`, `https://*.googlesyndication.com`, `https://*.google.com`, `https://*.doubleclick.net`, `https://www.googletagmanager.com`, `https://apis.google.com`.
+- **Image Sources:** `'self'`, `https://media.currentnews.blog`, `https:`, `data:`, `blob:`.
+- **Connect Sources:** `'self'`, `https://api.currentnews.blog`, `https://identitytoolkit.googleapis.com`, `https://securetoken.googleapis.com`, `https://*.googleapis.com`, `https://*.firebaseio.com`, `https://*.google.com`, `https://*.doubleclick.net`, `https://pagead2.googlesyndication.com`, `https://www.google-analytics.com`, `https://*.googletagmanager.com`, `ws:`, `wss:`.
+- **Frame Sources:** `'self'`, `https://www.youtube.com`, `https://youtube.com`, `https://www.youtube-nocookie.com`, `https://*.google.com`, `https://*.doubleclick.net`, `https://*.firebaseapp.com`, `https://googleads.g.doubleclick.net`.
+- **Frame Ancestors:** `'self'`, `https://*.google.com`, `https://*.aistudio.google.com`, `https://*.run.app`, `https://*.googleusercontent.com`, `https://*.cloud.google.com` (enables AI Studio preview embedding while blocking unauthorized 3rd-party clickjacking).
+- **Framing Control:** `xFrameOptions: false` (delegating framing restrictions to CSP `frame-ancestors`), `crossOriginOpenerPolicy: false`.
+- **Proxy Hops:** `app.set('trust proxy', 2)` for Google Cloud Load Balancer and Cloudflare reverse proxies.
+
+### Rate Limits (`express-rate-limit`)
+- **Global API Limiter:** 300 requests per 15 minutes per client IP applied across `/api/*`. Headers: `RateLimit: limit=300, remaining=..., reset=...`. Response on exceeded: HTTP 429 `{ "success": false, "error": "Too many requests from this IP, please try again after 15 minutes." }`.
+- **Alert Dispatch Limiter:** 5 requests per hour per client IP strictly applied on `POST /api/mail/send-alert`. Response on exceeded: HTTP 429 `{ "success": false, "error": "Too many alert requests from this IP, please try again after an hour." }`.
+
+### `POST /api/mail/send-alert`
+- **Method:** `POST`
+- **Rate Limit:** 5 requests per hour per IP
+- **Payload Shape:**
+  ```json
+  {
+    "email": "reader@example.com",
+    "title": "Breaking News Alert",
+    "link": "https://www.currentnews.blog/post/123"
+  }
+  ```
+- **Validation & Sanitization:**
+  - `email`: Required, trimmed, RFC regex validated; 400 on invalid format.
+  - `title`: Required, newlines stripped, HTML-escaped in both email subject, HTML template, and text body.
+  - `link`: Parsed with `new URL()`; strictly required to have hostname `currentnews.blog` or `www.currentnews.blog` (falls back to `'https://currentnews.blog'`).
+- **Response (200 OK):**
+  ```json
+  {
+    "success": true,
+    "message": "Automated breaking news alert email compiled and sent to reader@example.com via Resend API."
+  }
+  ```
+- **Error Responses:**
+  - `400 Bad Request`: `{ "success": false, "message": "Recipient email and subject title are required." }` or `{ "success": false, "message": "Invalid recipient email address format." }`
+  - `405 Method Not Allowed`: On non-POST/OPTIONS methods.
+  - `429 Too Many Requests`: On exceeding 5 requests/hour.
 
 
 

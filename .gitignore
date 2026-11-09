@@ -9,3 +9,5 @@ server.cjs
 .env*
 !.env.example
 *downloaded-logs*
+data/
+.aistudio/

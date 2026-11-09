@@ -94,16 +94,25 @@ export default async function handler(req: Request, res: Response) {
     return res.status(400).json({ success: false, message: 'Invalid recipient email address format.' });
   }
 
-  // Validate and sanitize link URL
+  // Validate and sanitize link URL: keep existing link check, parse with new URL(), require hostname currentnews.blog or www.currentnews.blog
   let safeLink = 'https://currentnews.blog';
   if (link && typeof link === 'string') {
     const rawLink = link.trim();
     if (/^https?:\/\//i.test(rawLink)) {
-      safeLink = rawLink;
+      try {
+        const parsed = new URL(rawLink);
+        if (parsed.hostname === 'currentnews.blog' || parsed.hostname === 'www.currentnews.blog') {
+          safeLink = parsed.toString();
+        }
+      } catch {
+        // Fallback to default safe domain if invalid URL
+      }
     }
   }
 
-  const safeTitle = escapeHtml(String(title).trim());
+  // Sanitize and escape title for both subject and HTML/text body (stripping newlines for header injection defense)
+  const cleanTitle = String(title).replace(/[\r\n]+/g, ' ').trim();
+  const safeTitle = escapeHtml(cleanTitle);
   const safeLinkEscaped = escapeHtml(safeLink);
 
   try {
@@ -234,8 +243,8 @@ export default async function handler(req: Request, res: Response) {
 </body>
 </html>`;
 
-    const textContent = `Welcome to Current News! ${title}. Read more at ${link || 'https://currentnews.blog'}`;
-    const result = await sendResendEmail(email, title, htmlContent, textContent);
+    const textContent = `Welcome to Current News! ${safeTitle}. Read more at ${safeLink}`;
+    const result = await sendResendEmail(trimmedEmail, safeTitle, htmlContent, textContent);
 
     console.log(`[VERCEL SERVERLESS RESEND API] Email successfully dispatched. Result:`, result);
     return res.status(200).json({

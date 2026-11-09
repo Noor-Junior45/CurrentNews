@@ -34,7 +34,7 @@
   - Placed 2 native ads inside articles (middle and bottom) and between feed cards with policy-compliant spacing and "Ad / Sponsored" labels.
 - **Phase 3 (Server Acceleration, Compressed Storage & Role Access):** [COMPLETED]
   - Client-side compressed story storage (`src/utils/compressedStorage.ts`) with LZW UTF-16 compression, giving instant (0ms) story loads on mobile phones and saving Firestore quota.
-  - Dynamic writer/admin access: anyone placing their email in `VITE_WRITERS` (or `VITE_WRITER_EMAILS`, `VITE_ADMIN_EMAILS`) gets instant authoring & admin access on Google sign-in.
+  - Role-based author & admin access via Firebase Custom Claims and server-side verification.
   - Completely cleaned `.env.example` of all `VITE_ADSENSE_*` and ad prompts so AI Studio / Cloud Run never prompts the user for ad variables.
 - **Phase 4 (Google Search Ranking & Advanced SEO Architecture):** [COMPLETED]
   - Full Schema.org `@graph` JSON-LD structured data on `index.html` featuring `WebSite` with Google Sitelinks Search Box (`potentialAction` / `SearchAction`) and `NewsMediaOrganization` with E-E-A-T credentials (ethics, corrections, diversity, masthead).
@@ -79,7 +79,7 @@
   - Applied across the Profile dashboard (`/profile`) and all individual sub-pages (`/settings`, `/liked`, `/delete-account`, `/admin`, `/about`, `/contact`, `/editorial-policy`, `/signin`, `/privacy`, `/terms`).
   - Verified 100% presence of all individual page view files in `src/views/`.
 - **Phase 17 (Firestore Quota Resilience & Security Rules Resolution):** [COMPLETED]
-  - Fixed `Failed to save pen name: Missing or insufficient permissions`: Added `match /users/{userId}` security rule in `firestore.rules` allowing authenticated users to manage their own pen name profiles, explicitly added `mdhassan1738@gmail.com` to admin checks, and registered the `User` schema in `firebase-blueprint.json`. Successfully deployed rules via `deploy_firebase`.
+  - Fixed `Failed to save pen name: Missing or insufficient permissions`: Added `match /users/{userId}` security rule in `firestore.rules` allowing authenticated users to manage their own pen name profiles, explicitly added `you@example.com` to admin checks, and registered the `User` schema in `firebase-blueprint.json`. Successfully deployed rules via `deploy_firebase`.
   - Added dual-layer caching for author pen names: `localStorage.setItem('current_news_pen_name_' + user.uid)` ensures pen names render instantly without requiring a network read and persist even during quota exhaustion.
   - Fixed `[Push Service] Count error: [FirebaseError: Quota limit exceeded]`: Replaced unbounded `getDocs(collection(db, 'push_subscriptions'))` with `getCountFromServer` aggregate queries, added a 5-minute memory cache, and implemented safe quota error interception returning `{ success: true, count, quotaLimited: true }` instead of HTTP 500.
   - Added zero-quota fallback in `AdminDashboardView.tsx` and `CurrentPublicationsView.tsx` to read from compressed local storage and Cloudflare R2 mirror when Firestore read units are exhausted.
@@ -90,9 +90,9 @@
   - Added admin migration endpoint `POST /api/articles/migrate-images` which successfully migrated 46 base64 images and re-indexed all 41 articles.
   - Zero-Firestore Reads for Feed & Related Posts: Removed all `getDoc`/`getDocs` calls on `posts` from `HomeView.tsx`, `BlogPostCard.tsx`, and the related-posts carousel in `PostDetailView.tsx`.
 - **Phase 19 (Cloudflare D1 & Edge Worker Migration — Decoupling Reader Data from Firestore):** [COMPLETED]
-  - Created `/worker` service with Cloudflare Worker (`/worker/src/index.ts`), D1 database schema (`/worker/schema.sql`), and `wrangler.toml` bound to `currentnews-db` under route `api.currentnews.blog/*`.
+  - Cloudflare Edge Worker service (managed in CurrentNews-Admin repository) with D1 database bound to `currentnews-db` under route `api.currentnews.blog/*`.
   - Token Auth: Edge Worker verifies Firebase Auth JWTs directly with Web Crypto API (`crypto.subtle`) using Google's public JWK set (`securetoken@system.gserviceaccount.com`).
-  - Strict Admin Authorization: Direct exact email matching against `ADMIN_EMAILS` (`mdhassan1738@gmail.com`).
+  - Strict Admin Authorization: Direct exact email matching against `ADMIN_EMAILS` (`you@example.com`).
   - Edge Cache & Rate Limiting: 30-second edge cache on `GET /stats?ids=...`, 30-minute deduplication on `POST /view/:postId` via Cloudflare Cache API, and IP rate limiting on writes.
   - Zero-Firestore Reader Operations: Replaced Firestore queries across `HomeView.tsx` (batch stats + my-reactions), `BlogPostCard.tsx`, `PostDetailView.tsx`, `Header.tsx`, `SettingsView.tsx`, `AudienceRegistryView.tsx`, `LikedView.tsx`, `AdminDashboardView.tsx`, `CurrentPublicationsView.tsx`, `DraftPublicationView.tsx`, `DeleteAccountView.tsx`, and `pushNotifications.ts`.
   - `src/firebase.ts` converted to export strictly `auth`; zero `firebase/firestore` calls remain in client and server code.
@@ -118,7 +118,7 @@
   - Client-side reaction store (`src/utils/reactionStore.ts`): optimistic local state with 1500ms trailing debounce after last tap, no-op cancellation if reverted, exponential backoff retry queue (`cn_react_queue_${uid}`), automatic flush on visibilitychange/pagehide/online, HTTP 401 handling, 10-minute session caching on `/my-reactions`, and count formula preventing stale count overwrites.
   - Shared UI integration: Heart-pop animation (scale 1.25, 150ms) on `BlogPostCard.tsx` and `PostDetailView.tsx`. 24h deduplicated view count reporting via `cn_viewed_${postId}`.
   - HomeView 3-minute `/stats` cache (`cn_stats_cache`), fetching only missing or stale IDs from the edge Worker.
-  - Cloudflare Worker Durable Object write coalescing (`StatsAggregator` in `worker/src/index.ts`): 30s alarm timer merges pending reaction/view deltas into a single D1 batch update (`ON CONFLICT(post_id) DO UPDATE SET likes=MAX(0, likes+excluded.likes)...`), direct D1 fallback on failure, edge caching on `GET /stats` (`s-maxage=60`), and admin `POST /admin/recount`.
+  - Cloudflare Worker Durable Object write coalescing (`StatsAggregator` in Edge Worker): 30s alarm timer merges pending reaction/view deltas into a single D1 batch update (`ON CONFLICT(post_id) DO UPDATE SET likes=MAX(0, likes+excluded.likes)...`), direct D1 fallback on failure, edge caching on `GET /stats` (`s-maxage=60`), and admin `POST /admin/recount`.
 - [x] **Phase 25 (Preview Entity Stripping & Uniform Desktop/Tablet Card Grid):** [COMPLETED]
   - Entity Sanitization: Implemented `cleanPreviewText` across `BlogPostCard.tsx`, `HomeView.tsx`, `PostDetailView.tsx`, and `extractPlainExcerpt` in `src/server/r2Articles.ts` and `scripts/migrate-from-r2.mjs`, stripping `&nbsp;?`, `&#160;?`, `\u00a0`, and all raw HTML entities into clean single whitespace. Deep cleaned local `data/feed.json`.
   - Big Screen & Tablet Uniform Card Dimensions: Enforced `sm:h-[265px] sm:max-h-[265px]` on `BlogPostCard` with reduced 2-line heading slots (`sm:text-[15px] lg:text-base sm:line-clamp-2 sm:h-[2.75rem]`), reduced 2-line description slots (`sm:text-xs lg:text-[13px] sm:line-clamp-2 sm:h-[2.35rem]`), and pinned bottom reaction bar. Mobile phone screen layout (`< sm`) is 100% preserved.
@@ -194,7 +194,7 @@
     5. `Published Image`: newly introduced metric displaying the exact count of photos attached and posted across published stories exclusively by that author.
 - [x] **Phase 44 (Login Flow, Cloudflare Worker Permissions & Newsroom Published Data Visibility):** [COMPLETED]
   - Audited full login flow (Firebase Web Google Sign-In & Native Android Play Services Google Account Chooser via `NativeGoogleAuthPlugin`).
-  - Resolved Cloudflare Worker authorization gap in `/worker/src/index.ts`: added `AUTHORIZED_WRITER_AND_ADMIN_EMAILS` (including `mdnoor4860@gmail.com`, `mdhassan1738@gmail.com`, `alifraja404@gmail.com`, and `@currentnews.blog` domains) so `GET /subscribers` and admin endpoints succeed for all authorized newsroom writers and admins instead of returning 403.
+  - Resolved Cloudflare Worker authorization gap in Edge Worker: added `AUTHORIZED_WRITER_AND_ADMIN_EMAILS` (including `you@example.com` and `@currentnews.blog` domains) so `GET /subscribers` and admin endpoints succeed for all authorized newsroom writers and admins instead of returning 403.
   - Resolved publications filtering in `CurrentPublicationsView.tsx` and `AdminDashboardView.tsx`: verified that all published newsroom data across the ledger is fully visible to administrators while preserving author-specific filtering for non-admin writers.
   - Verified subscriber metrics and subscriber directory visibility for all writers.
 - [x] **Phase 45 (Live Liked Articles Synchronization & Manuscript Full-Box Tap-to-Type Activation):** [COMPLETED]
@@ -221,7 +221,7 @@
   - Host Routing & Segregation: Configured middleware in `server.ts` segregating `admin.currentnews.blog` (serves only `/admin`, `/api/admin`, static assets, injects `X-Robots-Tag: noindex, nofollow`, redirects other paths to `/admin`) from `currentnews.blog` / `www` (301 redirects `/admin` to `admin.currentnews.blog`, returns 404 JSON for `/api/admin/*`). Bypasses host checks on `localhost` and `*.run.app`.
   - Database Lockdown: Replaced `firestore.rules` with `allow read, write: if false;` and deployed via `deploy_firebase`. Removed all Firestore reads and writes from `DraftPublicationView.tsx` and `CurrentPublicationsView.tsx`.
 - [x] **Phase 49 (Edge Worker Role Hardening, Durable Object Persistence & Android URL Resolution):** [COMPLETED]
-  - Cloudflare Worker Auth by Role (`worker/src/index.ts`): Extended `verifyFirebaseIdToken` to extract `{ uid, email, emailVerified, role }` and validate `iat` (not in future) and `auth_time` (present and valid). Replaced all email check functions with `isAdmin(user) = user.role === 'admin' && user.emailVerified === true`. Purged all hardcoded emails, `@currentnews.blog` suffix bypass, `ADMIN_EMAILS`, and `WRITERS` from worker code and `wrangler.toml`.
+  - Cloudflare Worker Auth by Role (Edge Worker): Extended `verifyFirebaseIdToken` to extract `{ uid, email, emailVerified, role }` and validate `iat` (not in future) and `auth_time` (present and valid). Replaced all email check functions with `isAdmin(user) = user.role === 'admin' && user.emailVerified === true`. Purged all hardcoded emails, `@currentnews.blog` suffix bypass, and `ADMIN_EMAILS` from worker code and configuration.
   - Admin Route Enforcement: Restricted `GET /subscribers`, `DELETE /admin/subscriber`, `POST /import`, and `POST /admin/recount` strictly to `isAdmin`. Enforced self-ownership and email verification on `/subscribe/check` and `DELETE /subscribe`.
   - Input Validation & Abuse Reduction: Strict regex validation on `postId` (`/^[A-Za-z0-9_-]{6,64}$/`) for stats/reactions, email validation & lowercase normalization on `/subscribe`, `id` regex (`/^[A-Za-z0-9_-]{16,128}$/`) and https endpoint checks on `/push/subscribe`, HTML & control char stripping on `/user/pen-name`. Added 16KB global request body size cap (5MB for `/import`).
   - Durable Object State Persistence: Enhanced `StatsAggregator` DO with `this.ctx.storage` persistence (`blockConcurrencyWhile` constructor hydration, `storage.put` on additions, atomic storage delete/update on successful D1 flush) to eliminate lost likes/views across DO evictions.
@@ -241,9 +241,9 @@
   - Deleted `/public/assets/aistudio/downloaded-logs-20261106-204203_c156b31e.json` (7MB log file) that was exceeding GitHub push limits.
   - Added `*downloaded-logs*` to `.gitignore` to prevent downloaded log attachments from blocking git pushes in the future.
 - [x] **Phase 52 (Neon to Cloudflare D1 Publish Pipeline & Outbox Sync):** [COMPLETED]
-  - D1 Reader Schema: Created `worker/migrations/0001_articles.sql` storing only published articles with slug, published, and category indexes.
-  - Internal Signed Endpoints (`worker/src/index.ts`): Implemented `/internal/publish`, `/internal/unpublish`, `/internal/bulk`, and `/internal/reconcile` protected with HMAC-SHA256 signatures (`SYNC_SECRET`), constant-time signature comparison, body size caps (1MB/5MB), and zero CORS headers.
-  - Public Reader Endpoints (`worker/src/index.ts`): Implemented `GET /articles` (keyset pagination, light fields), `GET /articles/:idOrSlug` (full parsed article), and `GET /articles/recent-ids` with 60s edge caching and 300s stale-while-revalidate.
+  - D1 Reader Schema: Created 0001_articles.sql (in CurrentNews-Admin repo) storing only published articles with slug, published, and category indexes.
+  - Internal Signed Endpoints (Edge Worker API): Implemented `/internal/publish`, `/internal/unpublish`, `/internal/bulk`, and `/internal/reconcile` protected with HMAC-SHA256 signatures (`SYNC_SECRET`), constant-time signature comparison, body size caps (1MB/5MB), and zero CORS headers.
+  - Public Reader Endpoints (Edge Worker API): Implemented `GET /articles` (keyset pagination, light fields), `GET /articles/:idOrSlug` (full parsed article), and `GET /articles/recent-ids` with 60s edge caching and 300s stale-while-revalidate.
   - Outbox Publisher (`server/sync/d1Publisher.ts`): Added `signedPost`, `publishArticleToD1`, `unpublishArticleFromD1`, and `syncPendingArticles(50)` with exponential backoff and 10s timeouts.
   - Neon Outbox Migration (`migrations/002_sync.sql`): Added `sync_pending`, `synced_version`, and partial outbox index.
   - Admin Endpoints: Added `POST /api/admin/sync/run` (admin role) and `POST /api/admin/sync-tick` (`X-Sync-Token` constant-time check).
@@ -259,13 +259,18 @@
   - PWA Isolation: Omitted `<link rel="manifest">` and Service Worker registration when `window.location.hostname.startsWith('admin.')`. Cleaned up stale registrations on admin portal. In `public/sw.js`, explicitly bypassed and blocked caching for any admin page or admin API response.
   - Load Balancer Probing Check: Inspected `src/utils/clientLoadBalancer.ts`. Probing begins automatically inside `ClientLoadBalancer.constructor()` at module load time; reported to user that no external call site exists to gate without modifying the locked file.
   - Auth Readiness (`src/utils/adminFetch.ts`): Awaits `auth.authStateReady()` before accessing `currentUser`. If no user is authenticated, halts early with `{ error: "Signing in...", code: "signing_in" }`. On any 401 response, calls `currentUser.getIdToken(true)` to force refresh and retries the request exactly once.
-  - Worker Auth Leeway (`worker/src/index.ts`): In `verifyFirebaseIdToken`, added 60-second clock drift leeway: rejects only when `iat > nowSec + 60` or `auth_time > nowSec + 60`.
+- [x] **Phase 56 (Security Hardening — Helmet CSP, Proxy Trust, Rate Limiting & Mail Sanitization):** [COMPLETED]
+  - Helmet CSP & HSTS: Configured `helmet` with strict CSP (`self` for scripts; `img-src` self, media CDN, `https:`, `data:`, `blob:`; `connect-src` self, D1/worker API, identitytoolkit, securetoken, Google APIs, AdSense, Analytics; `frame-src` YouTube, Google, DoubleClick, Firebase; HSTS with 1 year max-age, subdomains, and preload).
+  - Proxy Trust: Replaced `trust proxy: true` with `app.set('trust proxy', 2)` to accurately extract authentic client IPs through 2 reverse proxy hops (GFE / Cloudflare).
+  - Rate Limiting: Integrated `express-rate-limit` with 300 requests / 15 minutes across `/api/*` and 5 requests / hour on `POST /api/mail/send-alert`.
+  - Alert Mail Hardening (`api/mail/send-alert.ts`): Stripped newlines and carriage returns from `title` and HTML-escaped it for both email subject and body; enforced RFC email validation; parsed `link` with `new URL()` requiring hostname `currentnews.blog` or `www.currentnews.blog`.
+  - Database TLS Hardening: Purged `rejectUnauthorized: false` from all migration and seed scripts, requiring standard CA verification (`ssl: true`).
 - **Immediate Next Step:** Run `CHECKLIST.md` steps:
   1. Neon migrations: `export NEON_DATABASE_URL="..." && node scripts/migrate-neon.mjs`
-  2. D1 migration: `cd worker && npx wrangler d1 execute currentnews-db --remote --file=migrations/0001_articles.sql`
-  3. Worker secret: `cd worker && npx wrangler secret put SYNC_SECRET`
+  2. D1 migration: In CurrentNews-Admin repo, execute `migrations/0001_articles.sql` against remote D1 database
+  3. Worker secret: In CurrentNews-Admin repo, run `npx wrangler secret put SYNC_SECRET`
   4. Cloud Run secrets: `SYNC_SECRET`, `SYNC_TICK_TOKEN` in Secret Manager + `WORKER_BASE_URL`
-  5. Deploy worker: `cd worker && npx wrangler deploy`
+  5. Deploy worker: In CurrentNews-Admin repo, run `npx wrangler deploy`
   6. Cloud Scheduler: Create 5-minute HTTP job for `POST https://admin.currentnews.blog/api/admin/sync-tick`
   7. Resync D1: `node scripts/resync-d1.mjs`
 

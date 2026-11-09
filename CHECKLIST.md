@@ -18,16 +18,11 @@ node scripts/migrate-neon.mjs
 ---
 
 ## 2. Apply Cloudflare D1 Schema Migration
-Initialize the `articles` table and performance indexes on your Cloudflare D1 database:
+Initialize the `articles` table and performance indexes on your Cloudflare D1 database (from the `CurrentNews-Admin` repository):
 
 ```bash
-# From the root directory:
-cd worker
-
-# Execute 0001_articles.sql against remote D1 database
+# In CurrentNews-Admin repository:
 npx wrangler d1 execute currentnews-db --remote --file=migrations/0001_articles.sql
-
-cd ..
 ```
 
 ---
@@ -39,10 +34,8 @@ Store the HMAC signing secret securely in Cloudflare:
 # Generate a strong 64-character random hex string:
 openssl rand -hex 32
 
-# Store the secret in Cloudflare Worker (prompts to paste your secret):
-cd worker
+# In CurrentNews-Admin repository (prompts to paste your secret):
 npx wrangler secret put SYNC_SECRET
-cd ..
 ```
 
 ---
@@ -87,12 +80,11 @@ gcloud run services update currentnews \
 ---
 
 ## 5. Deploy Cloudflare Worker
-Deploy the updated edge worker with signed internal synchronization endpoints (`/internal/*`) and public reader routes (`/articles*`):
+Deploy the updated edge worker with signed internal synchronization endpoints (`/internal/*`) and public reader routes (`/articles*`) from the `CurrentNews-Admin` repository:
 
 ```bash
-cd worker
+# In CurrentNews-Admin repository:
 npx wrangler deploy
-cd ..
 ```
 
 ---

@@ -62,8 +62,8 @@
     - **Defense:** Enforced host segregation in `server.ts`: `admin.currentnews.blog` serves exclusively `/admin`, `/api/admin`, and static assets, and automatically injects `X-Robots-Tag: noindex, nofollow` on every response. Public hosts (`currentnews.blog` and `www`) issue 301 redirects for `/admin` and return HTTP 404 JSON for `/api/admin/*`. In `handleAdminCreateOrUpdateArticle` and `handleAdminDeleteArticle`, ownership is strictly checked (`author_uid === req.user.uid` for writers; only admins can modify or archive other reporters' work).
 
 15. **Vulnerability: Cloudflare Edge Worker Role Forgery & Hardcoded Email Desync**
-    - **Exploit Vector:** Edge worker (`worker/src/index.ts`) previously maintained static email lists and bypassed checks on `@currentnews.blog` email suffixes, allowing unverified or spoofed Google accounts to access `/subscribers` and trigger D1 imports.
-    - **Defense:** Upgraded `verifyFirebaseIdToken` with Web Crypto API to strictly extract `payload.role` and `payload.email_verified`. Enforced that `iat` cannot be in the future and `auth_time` must be present and valid. Defined `isAdmin(user) = user.role === 'admin' && user.emailVerified === true`. Purged all hardcoded email lists, environment variables (`ADMIN_EMAILS`, `WRITERS`), and suffix wildcards. Admin endpoints return 401 on missing tokens and 403 on non-admin roles.
+    - **Exploit Vector:** Edge worker previously maintained static email lists and bypassed checks on `@currentnews.blog` email suffixes, allowing unverified or spoofed Google accounts to access `/subscribers` and trigger D1 imports.
+    - **Defense:** Upgraded `verifyFirebaseIdToken` with Web Crypto API to strictly extract `payload.role` and `payload.email_verified`. Enforced that `iat` cannot be in the future and `auth_time` must be present and valid. Defined `isAdmin(user) = user.role === 'admin' && user.emailVerified === true`. Purged all hardcoded email lists, environment variables (`ADMIN_EMAILS`), and suffix wildcards. Admin endpoints return 401 on missing tokens and 403 on non-admin roles.
 
 16. **Vulnerability: Input Fuzzing, Unbounded D1 Row Injection & Memory Buffer Exhaustion**
     - **Exploit Vector:** Malicious callers generating arbitrary `postId` parameters on `/reaction/:postId` or `/view/:postId` to inject millions of junk rows into D1 `posts_stats`, or sending megabyte-scale JSON payloads to crash worker isolates.
@@ -76,5 +76,13 @@
 18. **Vulnerability: Sensitive Credential Leakage in Auth Failure Logs & Silent Token Dropping**
     - **Exploit Vector:** Unsanitized server logs printing raw Authorization headers, user emails, or database connection strings during authentication exceptions, exposing credentials in container log aggregators.
     - **Defense:** Strict sanitization in `requireRole.ts`: console warnings strictly emit `[auth] <code> <method> <path> hasHeader=<bool> projectId=<value> firebaseErrorCode=<error.code>`. Tokens, full emails, and database URLs are never logged.
+
+19. **Vulnerability: Email Header Injection, Open Redirect & Outbound Mail Flooding on `/api/mail/send-alert`**
+    - **Exploit Vector:** Attackers passing newline characters (`\r\n`) in `title` to inject arbitrary SMTP/Resend headers (BCC/CC), passing external phishing URLs in `link` to turn official emails into phishing lures, or rapidly spamming the endpoint to exhaust email quota and blacklist sending reputation.
+    - **Defense:** In `api/mail/send-alert.ts`, stripped all newlines and carriage returns from `title` (`replace(/[\r\n]+/g, ' ')`) and HTML-escaped it for both email subject, HTML template, and plain text body. Enforced strict URL parsing via `new URL()`, requiring `hostname` to be `currentnews.blog` or `www.currentnews.blog` (defaulting to safe root domain on mismatch). Attached a dedicated `express-rate-limit` limiter capping requests to 5 per hour per client IP.
+
+20. **Vulnerability: API Resource Exhaustion, Client IP Spoofing & Insecure Database TLS Verification**
+    - **Exploit Vector:** Attackers flooding public `/api/*` reader routes to cause CPU starvation, spoofing `X-Forwarded-For` headers to bypass rate limits when `trust proxy` was blindly set to `true`, and potential TLS Man-in-the-Middle on database connections configured with `rejectUnauthorized: false`.
+    - **Defense:** Mounted `express-rate-limit` with 300 requests per 15 minutes across `/api/*`. Replaced `app.set('trust proxy', true)` with `app.set('trust proxy', 2)` in `server.ts` to strictly trust the 2 rightmost reverse proxy hops (GFE / Cloudflare) and resolve authentic client IPs. Removed all instances of `rejectUnauthorized: false` across database connection scripts, requiring valid CA TLS verification. Added `helmet` with comprehensive CSP directives and HSTS enabled.
 
 

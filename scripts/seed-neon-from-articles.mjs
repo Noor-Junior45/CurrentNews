@@ -76,7 +76,7 @@ async function seedNeon() {
 
   const client = new Client({
     connectionString,
-    ssl: { rejectUnauthorized: false }
+    ssl: true
   });
 
   try {

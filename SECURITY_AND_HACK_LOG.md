@@ -85,4 +85,15 @@
     - **Exploit Vector:** Attackers flooding public `/api/*` reader routes to cause CPU starvation, spoofing `X-Forwarded-For` headers to bypass rate limits when `trust proxy` was blindly set to `true`, and potential TLS Man-in-the-Middle on database connections configured with `rejectUnauthorized: false`.
     - **Defense:** Mounted `express-rate-limit` with 300 requests per 15 minutes across `/api/*`. Replaced `app.set('trust proxy', true)` with `app.set('trust proxy', 2)` in `server.ts` to strictly trust the 2 rightmost reverse proxy hops (GFE / Cloudflare) and resolve authentic client IPs. Removed all instances of `rejectUnauthorized: false` across database connection scripts, requiring valid CA TLS verification. Added `helmet` with comprehensive CSP directives and HSTS enabled.
 
+21. **Vulnerability: Web Push SSRF, Key Forgery, Subscriber Table Flooding & Ephemeral Disk Loss**
+    - **Exploit Vector:** Attackers submitting arbitrary `endpoint` URLs on `/api/push/subscribe` pointing to internal AWS/GCP metadata services (`http://169.254.169.254/`), rogue webhooks, or massive payloads to flood database storage; generating rogue VAPID keys on server restart causing lost subscriber delivery; or storing push subscriptions on ephemeral container disk files (`data/push_subscriptions.json`) that vanish on Cloud Run instance recycling.
+    - **Defense:**
+      - Persistent Neon Postgres storage: Migrated push subscription storage to shared Neon table `push_subscriptions` (`id bigserial`, `endpoint unique`, `p256dh`, `auth`, `user_agent`, `created_at`). Subscribe uses `INSERT ... ON CONFLICT (endpoint) DO NOTHING` and unsubscribe uses `DELETE WHERE endpoint = $1`. Completely eliminated ephemeral JSON disk storage.
+      - Push Gateway SSRF Prevention: Enforced strict URL parsing on `endpoint`, requiring protocol `https:` and restricting hostnames exclusively to approved push delivery services: `fcm.googleapis.com`, `*.fcm.googleapis.com`, `*.push.apple.com`, `*.notify.windows.com`, and `updates.push.services.mozilla.com` / `*.updates.push.services.mozilla.com` with a 500-character ceiling.
+      - Cryptographic Key Sanitization: Validated `p256dh` (max 200 chars) and `auth` (max 50 chars) strictly against base64url regex (`^[A-Za-z0-9_-]+$`).
+      - Rate Limiting: Mounted a dedicated `pushLimiter` on `/api/push/subscribe` and `/api/push/unsubscribe` capping requests to 10 per hour per IP.
+      - VAPID Key Integrity: Public key is read strictly from `process.env.VAPID_PUBLIC_KEY`. Dynamic runtime key generation was eliminated, returning HTTP 503 if unconfigured. Broadcast and subscriber count routes were removed from the public reader application.
+
+
+
 

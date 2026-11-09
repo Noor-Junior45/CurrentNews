@@ -265,13 +265,20 @@
   - Rate Limiting: Integrated `express-rate-limit` with 300 requests / 15 minutes across `/api/*` and 5 requests / hour on `POST /api/mail/send-alert`.
   - Alert Mail Hardening (`api/mail/send-alert.ts`): Stripped newlines and carriage returns from `title` and HTML-escaped it for both email subject and body; enforced RFC email validation; parsed `link` with `new URL()` requiring hostname `currentnews.blog` or `www.currentnews.blog`.
   - Database TLS Hardening: Purged `rejectUnauthorized: false` from all migration and seed scripts, requiring standard CA verification (`ssl: true`).
+- [x] **Phase 58 (Persistent Neon Push Subscriptions & VAPID Hardening):** [COMPLETED]
+  - Persistent Neon PostgreSQL storage: Migrated push subscription storage to shared table `push_subscriptions` (`id bigserial`, `endpoint unique`, `p256dh`, `auth`, `user_agent`, `created_at`). Subscribe executes `INSERT ... ON CONFLICT (endpoint) DO NOTHING`; unsubscribe executes `DELETE FROM push_subscriptions WHERE endpoint = $1`. Completely purged ephemeral disk files `data/push_subscriptions.json` and `data/vapid_keys.json`.
+  - Strict VAPID Key Configuration: VAPID public key is read strictly from `process.env.VAPID_PUBLIC_KEY`. Dynamic key generation removed. Returns HTTP 503 if unconfigured.
+  - Endpoint & Cryptographic Validation: Restricted `endpoint` to `https://` with approved push delivery gateways (`fcm.googleapis.com`, `*.fcm.googleapis.com`, `*.push.apple.com`, `*.notify.windows.com`, `updates.push.services.mozilla.com`, `*.updates.push.services.mozilla.com`) under 500 characters. Enforced base64url regex (`^[A-Za-z0-9_-]+$`) on `p256dh` (max 200 chars) and `auth` (max 50 chars).
+  - Rate Limiting: Added `pushLimiter` with `express-rate-limit` capping `POST /api/push/subscribe` and `POST /api/push/unsubscribe` to 10 requests per hour per IP.
+  - Admin Boundary: Removed `/api/push/subscribers-count` and broadcast routes from this reader application. Documented `NEON_DATABASE_URL` (with role limited to INSERT/DELETE) and `VAPID_PUBLIC_KEY` in `.env.example`.
 - **Immediate Next Step:** Run `CHECKLIST.md` steps:
-  1. Neon migrations: `export NEON_DATABASE_URL="..." && node scripts/migrate-neon.mjs`
+  1. Neon migrations: `export NEON_DATABASE_URL="..." && node scripts/migrate-neon.mjs` (includes `migrations/003_push_subscriptions.sql`)
   2. D1 migration: In CurrentNews-Admin repo, execute `migrations/0001_articles.sql` against remote D1 database
   3. Worker secret: In CurrentNews-Admin repo, run `npx wrangler secret put SYNC_SECRET`
-  4. Cloud Run secrets: `SYNC_SECRET`, `SYNC_TICK_TOKEN` in Secret Manager + `WORKER_BASE_URL`
+  4. Cloud Run secrets: `SYNC_SECRET`, `SYNC_TICK_TOKEN`, `NEON_DATABASE_URL`, `VAPID_PUBLIC_KEY` in Secret Manager + `WORKER_BASE_URL`
   5. Deploy worker: In CurrentNews-Admin repo, run `npx wrangler deploy`
   6. Cloud Scheduler: Create 5-minute HTTP job for `POST https://admin.currentnews.blog/api/admin/sync-tick`
   7. Resync D1: `node scripts/resync-d1.mjs`
+
 
 

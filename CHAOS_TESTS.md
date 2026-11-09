@@ -123,26 +123,39 @@ curl -s -X POST http://localhost:3000/api/app/version \
     "forceUpdate": false
   }' | jq .
 # Expected: { "success": true, "message": "App version configuration updated successfully" }
-## 7. Push Notifications & FCM Ping All Devices Test Suite
+## 7. Web Push Notifications & Persistence Test Suite
 
 ```bash
 # 1. Fetch active VAPID public key
 curl -s http://localhost:3000/api/push/public-key | jq .
 # Expected: { "success": true, "publicKey": "..." }
+# If VAPID_PUBLIC_KEY is not set: HTTP 503 { "success": false, "error": "VAPID public key is not configured" }
 
-# 2. Check current push subscriber device count
-curl -s http://localhost:3000/api/push/subscribers-count | jq .
-# Expected: { "success": true, "count": <number> }
-
-# 3. Ping all subscribed devices via Firebase Cloud Messaging / Web Push
-curl -s -X POST http://localhost:3000/api/push/broadcast \
+# 2. Reject unapproved push endpoint domain (SSRF guard)
+curl -s -i -X POST http://localhost:3000/api/push/subscribe \
   -H "Content-Type: application/json" \
-  -d '{
-    "title": "Current News Alert",
-    "body": "Test ping broadcast to all active devices",
-    "url": "/"
-  }' | jq .
-# Expected: { "success": true, "message": "...", "sent": ..., "failed": ..., "purged": ... }
+  -d '{"subscription":{"endpoint":"https://evil.attacker.com/sink","keys":{"p256dh":"BNcRdreALRFXTkOOUHK18PeW5p","auth":"tBHItJI5svbQcxE5a5-42A"}}}'
+# Expected: HTTP/1.1 400 Bad Request
+# {"success":false,"error":"Invalid subscription endpoint: must be https and hosted by an authorized push gateway (fcm.googleapis.com, push.apple.com, notify.windows.com, or updates.push.services.mozilla.com) under 500 characters"}
+
+# 3. Reject non-base64url key characters
+curl -s -i -X POST http://localhost:3000/api/push/subscribe \
+  -H "Content-Type: application/json" \
+  -d '{"subscription":{"endpoint":"https://fcm.googleapis.com/fcm/send/token","keys":{"p256dh":"bad key!#$","auth":"tBHItJI5svbQcxE5a5-42A"}}}'
+# Expected: HTTP/1.1 400 Bad Request
+# {"success":false,"error":"Invalid subscription keys: p256dh must be base64url <= 200 chars and auth must be base64url <= 50 chars"}
+
+# 4. Push rate limit check (10 requests per hour per IP)
+curl -s -I -X POST http://localhost:3000/api/push/subscribe \
+  -H "Content-Type: application/json" \
+  -d '{"subscription":{"endpoint":"https://fcm.googleapis.com/fcm/send/token","keys":{"p256dh":"BNcRdreALRFXTkOOUHK18PeW5p","auth":"tBHItJI5svbQcxE5a5-42A"}}}' | grep -i 'ratelimit'
+# Expected:
+# RateLimit-Policy: 10;w=3600
+# RateLimit: limit=10, remaining=..., reset=...
+
+# 5. Verify admin routes /api/push/subscribers-count return 404 (moved to admin repo)
+curl -s -i http://localhost:3000/api/push/subscribers-count
+# Expected: HTTP/1.1 404 Not Found
 ```
 
 

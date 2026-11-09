@@ -609,6 +609,89 @@ All `/internal/*` routes require:
   - `405 Method Not Allowed`: On non-POST/OPTIONS methods.
   - `429 Too Many Requests`: On exceeding 5 requests/hour.
 
+## 15. Web Push Notification Contracts (`/api/push/*`)
+
+### `GET /api/push/public-key`
+- **Method:** `GET`
+- **Access:** Public
+- **Description:** Returns the application's VAPID public key needed by the browser to create a PushSubscription. Read strictly from `VAPID_PUBLIC_KEY` environment variable. Never generates keys at runtime.
+- **Response Shape (200 OK):**
+  ```json
+  {
+    "success": true,
+    "publicKey": "BEl62i..."
+  }
+  ```
+- **Error Shape (503 Service Unavailable):**
+  ```json
+  {
+    "success": false,
+    "error": "VAPID public key is not configured"
+  }
+  ```
+
+### `POST /api/push/subscribe`
+- **Method:** `POST`
+- **Rate Limit:** 10 requests per hour per IP (`pushLimiter`)
+- **Payload Shape:**
+  ```json
+  {
+    "subscription": {
+      "endpoint": "https://fcm.googleapis.com/fcm/send/...",
+      "keys": {
+        "p256dh": "BNcRdreALRFXTkOOUHK18PeW5p...",
+        "auth": "tBHItJI5svbQcxE5a5-42A"
+      }
+    }
+  }
+  ```
+- **Validation Rules:**
+  - `endpoint`: Must start with `https://`, length <= 500 characters, hostname must end with `fcm.googleapis.com`, `.push.apple.com`, `.notify.windows.com`, or `updates.push.services.mozilla.com`.
+  - `keys.p256dh`: Max 200 characters, strictly base64url characters (`^[A-Za-z0-9_-]+$`).
+  - `keys.auth`: Max 50 characters, strictly base64url characters (`^[A-Za-z0-9_-]+$`).
+- **Persistence (Neon PostgreSQL):**
+  - Stored in table `push_subscriptions` (`id bigserial`, `endpoint unique`, `p256dh`, `auth`, `user_agent`, `created_at`).
+  - Query: `INSERT INTO push_subscriptions (endpoint, p256dh, auth, user_agent, created_at) VALUES ($1, $2, $3, $4, NOW()) ON CONFLICT (endpoint) DO NOTHING`
+- **Response Shape (200 OK):**
+  ```json
+  {
+    "success": true,
+    "message": "Push notification subscription stored successfully"
+  }
+  ```
+- **Error Shapes:**
+  - `400 Bad Request`: Invalid payload, unapproved push service hostname, length exceeded, or non-base64url characters.
+  - `429 Too Many Requests`: Exceeded 10 requests/hour per IP.
+  - `503 Service Unavailable`: Neon database unconfigured (`NEON_DATABASE_URL` missing).
+
+### `POST /api/push/unsubscribe`
+- **Method:** `POST`
+- **Rate Limit:** 10 requests per hour per IP (`pushLimiter`)
+- **Payload Shape:**
+  ```json
+  {
+    "endpoint": "https://fcm.googleapis.com/fcm/send/..."
+  }
+  ```
+- **Validation Rules:**
+  - `endpoint`: Required string, must start with `https://`, length <= 500 characters, approved push gateway hostname.
+- **Persistence (Neon PostgreSQL):**
+  - Query: `DELETE FROM push_subscriptions WHERE endpoint = $1`
+- **Response Shape (200 OK):**
+  ```json
+  {
+    "success": true,
+    "message": "Push notification subscription removed successfully"
+  }
+  ```
+- **Error Shapes:**
+  - `400 Bad Request`: Missing or invalid endpoint.
+  - `429 Too Many Requests`: Exceeded 10 requests/hour per IP.
+
+### Note on Admin & Broadcast Endpoints
+- `/api/push/subscribers-count` and broadcast notification triggers have been permanently removed from this applet; push dispatching and subscriber metrics are restricted to the CurrentNews-Admin application.
+
+
 
 
 

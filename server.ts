@@ -16,8 +16,7 @@ import { handleSocialPreview } from './src/server/socialPreview.ts';
 import {
   handleGetVapidPublicKey,
   handleSubscribe,
-  handleUnsubscribe,
-  handleGetSubscribersCount
+  handleUnsubscribe
 } from './src/server/pushNotifications.ts';
 import { handleGetPosts, handleGetPostById, handleGetWriters } from './src/server/postsApi.ts';
 import { ensureR2ArticlesWarmup, getFeedFromR2, getDeletedArticleIds } from './src/server/r2Articles.ts';
@@ -148,6 +147,18 @@ async function startServer() {
     }
   });
 
+  // Strict rate limiter: 10 requests per hour per IP on /api/push/subscribe and /api/push/unsubscribe
+  const pushLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 10,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: {
+      success: false,
+      error: 'Too many push subscription requests from this IP, please try again after an hour.'
+    }
+  });
+
   // Apply general API rate limiter to all /api/* routes
   app.use('/api', apiLimiter);
 
@@ -256,9 +267,8 @@ async function startServer() {
 
   // Automated Push Notification API routes (background alerts subscription for readers)
   app.get('/api/push/public-key', handleGetVapidPublicKey);
-  app.post('/api/push/subscribe', handleSubscribe);
-  app.post('/api/push/unsubscribe', handleUnsubscribe);
-  app.get('/api/push/subscribers-count', handleGetSubscribersCount);
+  app.post('/api/push/subscribe', pushLimiter, asyncHandler(handleSubscribe));
+  app.post('/api/push/unsubscribe', pushLimiter, asyncHandler(handleUnsubscribe));
 
   // Fallback 404 handler for any unmatched /api/* route so it NEVER returns HTML to API clients
   app.all('/api/*', (_req, res) => {

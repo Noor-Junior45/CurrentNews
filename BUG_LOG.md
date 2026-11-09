@@ -172,6 +172,19 @@
   - **Root Cause:** Default `helmet()` enables `X-Frame-Options: SAMEORIGIN` and restricts CSP `frame-ancestors` strictly to `'self'`. When the applet dev URL (`*.run.app`) was loaded within the AI Studio embedded preview `<iframe>` on `aistudio.google.com`, the browser rejected framing due to mismatched parent origin.
   - **Permanent Guardrail:** In `server.ts`, disable `xFrameOptions: false`, set `crossOriginOpenerPolicy: false`, and explicitly configure CSP `frameAncestors: ["'self'", "https://*.google.com", "https://*.aistudio.google.com", "https://*.run.app", "https://*.googleusercontent.com", "https://*.cloud.google.com"]` so the application runs securely while permitting legitimate AI Studio preview and Google Cloud framing.
 
+- [x] **Bug ID & Summary:** BUG-039 — Helmet CSP Blocking Facebook Video Player Embeds, Facebook SDK, and Cloudflare R2 / Imgur Image Assets.
+  - **Root Cause:** The initial CSP configuration restricted `frame-src` strictly to YouTube and Google domains, and omitted `connect.facebook.net` and `facebook.com` from `script-src` and `connect-src`. This caused browsers to block Facebook video embeds and Facebook Social Plugins. Furthermore, `img-src` lacked explicit allowances for Cloudflare R2 staging domains and Imgur avatar hosts.
+  - **Permanent Guardrail:** Configured `server.ts` Helmet CSP directives with: `frame-src: ["'self'", "https://www.youtube.com", "https://youtube.com", "https://www.youtube-nocookie.com", "https://www.facebook.com", "https://facebook.com", "https://*.facebook.com", "https://*.google.com", "https://*.doubleclick.net", "https://*.firebaseapp.com"]`; `script-src: ["'self'", "'unsafe-inline'", "https://pagead2.googlesyndication.com", "https://*.googlesyndication.com", "https://*.google.com", "https://*.doubleclick.net", "https://connect.facebook.net", "https://*.facebook.net", "https://*.facebook.com"]`; `img-src: ["'self'", "data:", "blob:", "https://media.currentnews.blog", "https://*.r2.dev", "https://i.imgur.com", "https://*.imgur.com", "https:"]`; and `connect-src: ["'self'", "https://api.currentnews.blog", "https://media.currentnews.blog", "https://*.r2.dev", "https://*.facebook.com", "https://*.facebook.net", "https://*.fbcdn.net", "https://identitytoolkit.googleapis.com", ...]`.
+
+- [x] **Bug ID & Summary:** BUG-040 — Live Domain Image 404s from Accidental `/uploads/photo.jpg/img/` URL Path Fragments and Missing `data/` in Cloud Run Docker Image.
+  - **Root Cause:** 18 feed items and 64 article records stored image URLs with an accidental `/uploads/photo.jpg/img/` prefix, causing 404s when queried against R2. Additionally, Stage 2 of `Dockerfile` omitted `COPY --from=builder /app/data ./data`, causing local fallback image serving (`/img/*`) to fail if R2 was temporarily unreachable.
+  - **Permanent Guardrail:**
+    1. Sanitized all image URL paths in `data/feed.json` and `data/articles/*.json`, normalizing all paths to `/img/{id}-{n}.webp`.
+    2. Added `cleanImageUrl` and `getFallbackImageUrl` sanitization across `/api/posts` endpoints in `src/server/postsApi.ts`.
+    3. Added `COPY --from=builder /app/data ./data` to `Dockerfile` runner stage so Cloud Run containers maintain local webp fallback assets.
+    4. Mounted static root `/public` handler before dist fallback in `server.ts` so brand assets (`/CurrentNews.png`) always return HTTP 200.
+
+
 
 
 

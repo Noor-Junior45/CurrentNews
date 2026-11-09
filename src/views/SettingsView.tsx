@@ -56,8 +56,12 @@ export default function SettingsView() {
     // Sync notification and ads preferences
     const handleSync = async () => {
       if ('Notification' in window && Notification.permission === 'granted') {
+        setNotificationsEnabled(true);
         const isSubbed = await isUserPushSubscribed();
-        setNotificationsEnabled(isSubbed);
+        if (!isSubbed) {
+          // Keep string connected to Neon backend
+          subscribeUserToPush().catch(() => {});
+        }
       } else {
         setNotificationsEnabled(false);
       }

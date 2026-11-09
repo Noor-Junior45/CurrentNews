@@ -271,6 +271,13 @@
   - Endpoint & Cryptographic Validation: Restricted `endpoint` to `https://` with approved push delivery gateways (`fcm.googleapis.com`, `*.fcm.googleapis.com`, `*.push.apple.com`, `*.notify.windows.com`, `updates.push.services.mozilla.com`, `*.updates.push.services.mozilla.com`) under 500 characters. Enforced base64url regex (`^[A-Za-z0-9_-]+$`) on `p256dh` (max 200 chars) and `auth` (max 50 chars).
   - Rate Limiting: Added `pushLimiter` with `express-rate-limit` capping `POST /api/push/subscribe` and `POST /api/push/unsubscribe` to 10 requests per hour per IP.
   - Admin Boundary: Removed `/api/push/subscribers-count` and broadcast routes from this reader application. Documented `NEON_DATABASE_URL` (with role limited to INSERT/DELETE) and `VAPID_PUBLIC_KEY` in `.env.example`.
+- [x] **Phase 59 (Live Domain Images, Logo, Facebook Player & Push Auto-Prompt):** [COMPLETED]
+  - Native Push Permission Auto-Prompt on Site Open: In `src/utils/pushManager.ts`, added `initPushNotificationPermissionOnSiteOpen()` which auto-requests native browser permission on site open when `Notification.permission === 'default'`. If granted, sets `browser_notifications_enabled` to `'true'`, notifies settings via custom `settings-updated` DOM event, and registers subscription on the backend via `subscribeUserToPush()`. If permission was already granted, keeps setting ON and synchronizes subscription via `syncPushSubscriptionOnAppBoot()`.
+  - Settings UI Synchronization: Updated `Header.tsx` and `SettingsView.tsx` so notification toggle reflects `Notification.permission === 'granted'` and automatically connects the subscription string if not previously subscribed.
+  - Image Path Sanitation: Removed malformed `/uploads/photo.jpg/img/` URL fragments across `data/feed.json` and `data/articles/*.json`, normalizing all paths to `/img/{id}-{n}.webp`. Sanitized image URLs across `/api/posts` endpoints in `src/server/postsApi.ts`.
+  - Brand Logo & Fallback Assets: Mounted `/public` static middleware directly in `server.ts` before SPA fallback, guaranteeing `/CurrentNews.png` returns HTTP 200. Added brand avatar fallback in `PostDetailView.tsx` and `AboutView.tsx` defaulting to `/CurrentNews.png` on img error.
+  - Facebook Video Player & SDK CSP: Added `https://www.facebook.com`, `https://facebook.com`, `https://*.facebook.com` to `frame-src`, `connect.facebook.net` and `facebook.net` to `script-src`, and `*.facebook.com`, `*.fbcdn.net` to `connect-src` in Helmet CSP.
+  - Cloud Run Dockerfile: Added `COPY --from=builder /app/data ./data` to Stage 2 runner image to ensure all local webp image fallbacks are present in container production environments.
 - **Immediate Next Step:** Run `CHECKLIST.md` steps:
   1. Neon migrations: `export NEON_DATABASE_URL="..." && node scripts/migrate-neon.mjs` (includes `migrations/003_push_subscriptions.sql`)
   2. D1 migration: In CurrentNews-Admin repo, execute `migrations/0001_articles.sql` against remote D1 database
@@ -279,6 +286,7 @@
   5. Deploy worker: In CurrentNews-Admin repo, run `npx wrangler deploy`
   6. Cloud Scheduler: Create 5-minute HTTP job for `POST https://admin.currentnews.blog/api/admin/sync-tick`
   7. Resync D1: `node scripts/resync-d1.mjs`
+
 
 
 

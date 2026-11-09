@@ -139,7 +139,15 @@ export async function handleGetPosts(req: Request, res: Response) {
     : Math.max(1, Math.min(200, parseInt(limitParam, 10) || 100));
   const offset = (page - 1) * limit;
 
-  const chunk = posts.slice(offset, offset + limit);
+  const chunk = posts.slice(offset, offset + limit).map(p => {
+    const cleanImg = cleanImageUrl(p.imageUrl);
+    return {
+      ...p,
+      imageUrl: cleanImg,
+      imageUrlFallback: getFallbackImageUrl(cleanImg, p.imageUrlFallback),
+      imageUrls: Array.isArray(p.imageUrls) ? p.imageUrls.map(cleanImageUrl) : []
+    };
+  });
   const hasMore = offset + limit < posts.length;
 
   return res.status(200).json({

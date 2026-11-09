@@ -84,6 +84,7 @@ export default function AboutView() {
                 src="https://i.imgur.com/gq2X5nE.jpeg" 
                 alt="Editor-in-Chief" 
                 className="w-12 h-12 rounded-full object-cover border border-slate-300 dark:border-slate-700 shrink-0" 
+                onError={(e) => { e.currentTarget.src = '/CurrentNews.png'; }}
               />
               <div>
                 <h4 className="font-display font-bold text-sm text-slate-900 dark:text-white">Managing Editorial Desk</h4>

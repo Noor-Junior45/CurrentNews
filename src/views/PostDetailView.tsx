@@ -904,6 +904,7 @@ export default function PostDetailView() {
               alt="Current News Avatar" 
               className="h-7 w-7 sm:h-8 sm:w-8 rounded-full object-cover shrink-0 border border-stone-300 dark:border-stone-700"
               referrerPolicy="no-referrer"
+              onError={(e) => { e.currentTarget.src = '/CurrentNews.png'; }}
             />
             <span className="font-bold text-black dark:text-white">
               {post.authorName || globalPenName || 'Current News'}

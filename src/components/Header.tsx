@@ -200,9 +200,9 @@ export default function Header() {
     const handleSync = () => {
       const val = localStorage.getItem('google_ads_personalized_consent');
       setAdsConsent((val as 'granted' | 'denied') || 'pending');
+      const isGranted = 'Notification' in window && Notification.permission === 'granted';
       setNotificationsEnabled(
-        localStorage.getItem('browser_notifications_enabled') === 'true' && 
-        ('Notification' in window && Notification.permission === 'granted')
+        isGranted && localStorage.getItem('browser_notifications_enabled') !== 'false'
       );
       if (user?.email) {
         const cached = localStorage.getItem('cn_sub_' + user.email.toLowerCase());

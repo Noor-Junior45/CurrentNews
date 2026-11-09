@@ -61,11 +61,17 @@ async function startServer() {
             "https://*.google.com",
             "https://*.doubleclick.net",
             "https://www.googletagmanager.com",
-            "https://apis.google.com"
+            "https://apis.google.com",
+            "https://connect.facebook.net",
+            "https://*.facebook.net",
+            "https://*.facebook.com"
           ],
           imgSrc: [
             "'self'",
             "https://media.currentnews.blog",
+            "https://*.r2.dev",
+            "https://i.imgur.com",
+            "https://*.imgur.com",
             "https:",
             "data:",
             "blob:"
@@ -73,6 +79,8 @@ async function startServer() {
           connectSrc: [
             "'self'",
             "https://api.currentnews.blog",
+            "https://media.currentnews.blog",
+            "https://*.r2.dev",
             "https://identitytoolkit.googleapis.com",
             "https://securetoken.googleapis.com",
             "https://*.googleapis.com",
@@ -82,6 +90,9 @@ async function startServer() {
             "https://pagead2.googlesyndication.com",
             "https://www.google-analytics.com",
             "https://*.googletagmanager.com",
+            "https://*.facebook.com",
+            "https://*.facebook.net",
+            "https://*.fbcdn.net",
             "ws:",
             "wss:"
           ],
@@ -90,6 +101,9 @@ async function startServer() {
             "https://www.youtube.com",
             "https://youtube.com",
             "https://www.youtube-nocookie.com",
+            "https://www.facebook.com",
+            "https://facebook.com",
+            "https://*.facebook.com",
             "https://*.google.com",
             "https://*.doubleclick.net",
             "https://*.firebaseapp.com",
@@ -304,7 +318,9 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
+    const publicPath = path.join(process.cwd(), 'public');
+    app.use(express.static(publicPath, { maxAge: '1h' }));
+    app.use(express.static(distPath, { maxAge: '1h' }));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });

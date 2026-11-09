@@ -94,6 +94,15 @@
       - Rate Limiting: Mounted a dedicated `pushLimiter` on `/api/push/subscribe` and `/api/push/unsubscribe` capping requests to 10 per hour per IP.
       - VAPID Key Integrity: Public key is read strictly from `process.env.VAPID_PUBLIC_KEY`. Dynamic runtime key generation was eliminated, returning HTTP 503 if unconfigured. Broadcast and subscriber count routes were removed from the public reader application.
 
+22. **Vulnerability: CSP Video Player & Social Plugin Blocking / Uncontrolled Wildcard Leakage**
+    - **Exploit Vector:** Overly restrictive Content Security Policy (`frame-src 'self' https://*.youtube.com`) breaking third-party news media video embeds (Facebook reels/videos, Facebook Social Plugins SDK) or developers attempting to fix broken media embeds by using wildcards (`frame-src *` or `script-src *`) which introduces severe XSS and clickjacking vulnerabilities.
+    - **Defense:** Avoided wildcard directives. Whitelisted only verified vendor hostnames in `server.ts` Helmet CSP:
+      - `frame-src`: `https://www.facebook.com`, `https://facebook.com`, `https://*.facebook.com`, `https://www.youtube.com`, `https://youtube.com`, `https://www.youtube-nocookie.com`.
+      - `script-src`: `https://connect.facebook.net`, `https://*.facebook.net`, `https://*.facebook.com` alongside existing Google AdSense and analytics scripts.
+      - `connect-src`: `https://*.facebook.com`, `https://*.facebook.net`, `https://*.fbcdn.net`.
+      - Auto-Prompt Notification Guard: `initPushNotificationPermissionOnSiteOpen()` gracefully checks for native browser capability (`'Notification' in window`) and default permission state, preventing permission prompt hijacking and automatically syncing reader settings upon user grant without UI degradation.
+
+
 
 
 

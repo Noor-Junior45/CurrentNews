@@ -4,7 +4,7 @@ import Header from './components/Header';
 import Footer from './components/Footer';
 import ConsentBanner from './components/ConsentBanner';
 import AndroidBackGestureHandler from './components/AndroidBackGestureHandler';
-import { syncPushSubscriptionOnAppBoot } from './utils/pushManager';
+import { initPushNotificationPermissionOnSiteOpen } from './utils/pushManager';
 import HomeView from './views/HomeView';
 import PostDetailView from './views/PostDetailView';
 import LikedView from './views/LikedView';
@@ -107,13 +107,14 @@ function ScrollToTop() {
 
 export default function App() {
   useEffect(() => {
-    // Register PWA service worker for notifications and offline support (omitted on admin host)
+    // Register PWA service worker for notifications and prompt/sync permissions on site open (omitted on admin host)
     const isAdminHost = typeof window !== 'undefined' && window.location.hostname.startsWith('admin.');
     if (!isAdminHost && 'serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').then(() => {
-        syncPushSubscriptionOnAppBoot();
+        initPushNotificationPermissionOnSiteOpen();
       }).catch((err) => {
         console.debug('Service Worker registration skipped:', err);
+        initPushNotificationPermissionOnSiteOpen();
       });
     }
 

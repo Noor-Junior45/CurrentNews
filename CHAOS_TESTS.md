@@ -230,3 +230,26 @@ curl -s -X POST http://localhost:3000/api/mail/send-alert \
   -d '{"email":"reader@example.com","title":"Breaking News\r\nBcc: evil@phish.com","link":"https://phishing-site.com/steal"}'
 # Expected: URL falls back strictly to https://currentnews.blog; title newlines stripped and HTML-escaped.
 ```
+
+## 9. Media Assets, Facebook & Video Player CSP Tests
+
+```bash
+# 1. Verify Facebook iframe & script allowances in Helmet CSP
+curl -s -I http://localhost:3000/healthz | grep -i 'content-security-policy' | grep -o 'https://\*\.facebook\.com'
+# Expected: https://*.facebook.com
+
+# 2. Verify Facebook SDK script domain allowance
+curl -s -I http://localhost:3000/healthz | grep -i 'content-security-policy' | grep -o 'https://connect\.facebook\.net'
+# Expected: https://connect.facebook.net
+
+# 3. Verify static brand logo serves HTTP 200 with PNG Content-Type
+curl -s -I http://localhost:3000/CurrentNews.png | grep -iE 'http/1.1|content-type'
+# Expected:
+# HTTP/1.1 200 OK
+# content-type: image/png
+
+# 4. Verify feed API outputs clean sanitized image paths (no malformed /uploads/photo.jpg/ fragments)
+curl -s http://localhost:3000/api/posts?limit=5 | grep -o '/uploads/photo.jpg/img/'
+# Expected: (empty - 0 matches)
+```
+

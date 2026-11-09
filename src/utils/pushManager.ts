@@ -177,9 +177,50 @@ export async function syncPushSubscriptionOnAppBoot(): Promise<void> {
           }),
         }).catch(() => {});
         localStorage.setItem('browser_notifications_enabled', 'true');
+        window.dispatchEvent(new Event('settings-updated'));
       }
     } catch (e) {
       console.debug('[Push] Background sync error:', e);
     }
   }
 }
+
+/**
+ * Triggers native browser notification permission prompt when a user opens the site.
+ * If granted, registers push subscription with backend, saves local state, and syncs
+ * with settings toggle so the button inside Settings tab is ON.
+ * If already granted, ensures the subscription string is connected to Neon backend
+ * and verifies the Settings toggle button is ON.
+ */
+export async function initPushNotificationPermissionOnSiteOpen(): Promise<void> {
+  if (!isPushSupported()) return;
+
+  // Case 1: Permission is already granted - keep button open and verify subscription string
+  if (Notification.permission === 'granted') {
+    localStorage.setItem('browser_notifications_enabled', 'true');
+    window.dispatchEvent(new Event('settings-updated'));
+    await syncPushSubscriptionOnAppBoot();
+    return;
+  }
+
+  // Case 2: Permission has not been asked yet ('default') - prompt native permission
+  if (Notification.permission === 'default') {
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission === 'granted') {
+        localStorage.setItem('browser_notifications_enabled', 'true');
+        window.dispatchEvent(new Event('settings-updated'));
+        const res = await subscribeUserToPush();
+        if (res.success) {
+          console.log('[Push] Native permission granted, notification string connected.');
+        }
+      } else {
+        localStorage.setItem('browser_notifications_enabled', 'false');
+        window.dispatchEvent(new Event('settings-updated'));
+      }
+    } catch (err) {
+      console.debug('[Push] Native permission prompt deferred:', err);
+    }
+  }
+}
+

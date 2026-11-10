@@ -219,6 +219,13 @@
     2. Set hero poster headline to relaxed `leading-[1.3] sm:leading-[1.28] md:leading-[1.24]` with `py-1` and `overflow-visible`, ensuring Devanagari script renders with 100% full matra visibility.
     3. Replaced hardcoded title slicing with native CSS `min-w-0 flex-1 truncate`, ensuring single-line ellipsis on mobile phones and natural long headline previews on tablet and laptop screens without altering font size.
 
+- [x] **Bug ID & Summary:** BUG-044 — Cloud Build Docker failure: `COPY failed: stat app/data: file does not exist`.
+  - **Root Cause:**
+    `data/` is explicitly listed in `.gitignore` and was not tracked in git (articles and images migrated to Neon DB and Cloudflare R2). In `Dockerfile` Stage 2 (runner stage), `COPY --from=builder /app/data ./data` attempted to copy `/app/data` from the builder stage. Because `/app/data` was not in the build context, Cloud Build failed at step 16 with exit code 1.
+  - **Permanent Guardrail:**
+    Updated `Dockerfile` and `CLOUD_RUN_DEPLOY.md` to remove `COPY --from=builder /app/data ./data` and replaced it with `RUN mkdir -p data/img` in the runner stage. This ensures `/app/data/img` exists at runtime for Express static caching (`app.use('/img', express.static(...))`) without depending on local directory existence during container builds.
+
+
 
 
 

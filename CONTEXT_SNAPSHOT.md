@@ -277,7 +277,7 @@
   - Image Path Sanitation: Removed malformed `/uploads/photo.jpg/img/` URL fragments across `data/feed.json` and `data/articles/*.json`, normalizing all paths to `/img/{id}-{n}.webp`. Sanitized image URLs across `/api/posts` endpoints in `src/server/postsApi.ts`.
   - Brand Logo & Fallback Assets: Mounted `/public` static middleware directly in `server.ts` before SPA fallback, guaranteeing `/CurrentNews.png` returns HTTP 200. Added brand avatar fallback in `PostDetailView.tsx` and `AboutView.tsx` defaulting to `/CurrentNews.png` on img error.
   - Facebook Video Player & SDK CSP: Added `https://www.facebook.com`, `https://facebook.com`, `https://*.facebook.com` to `frame-src`, `connect.facebook.net` and `facebook.net` to `script-src`, and `*.facebook.com`, `*.fbcdn.net` to `connect-src` in Helmet CSP.
-  - Cloud Run Dockerfile: Added `COPY --from=builder /app/data ./data` to Stage 2 runner image to ensure all local webp image fallbacks are present in container production environments.
+  - Cloud Run Dockerfile: Configured Stage 2 runner image with `RUN mkdir -p data/img` so Cloud Run containers dynamically maintain local webp fallback directories without requiring `data/` in git or build context.
 - [x] **Phase 60 (Unified Two-Tier Navbar Design with Blush Theme):** [COMPLETED]
   - Unified Two-Tier Navbar: Updated 1st line (`header#main-header`) and 2nd line (`div#category-filter-header`) to both share background.
   - Seamless Boundary: Eliminated dividing horizontal line and shadow between 1st line and 2nd line on home page (`border-b-0 shadow-none`), while preserving the single bottom dividing line at the bottom of the 2nd line in the exact same line colour.

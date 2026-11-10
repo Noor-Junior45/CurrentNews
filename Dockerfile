@@ -32,9 +32,11 @@ RUN npm ci --omit=dev || npm install --omit=dev
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/server.cjs ./server.cjs
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/data ./data
 COPY --from=builder /app/api ./api
 COPY --from=builder /app/firebase-applet-config.json ./firebase-applet-config.json
+
+# Ensure runtime directories exist for local caching, articles, and image fallbacks
+RUN mkdir -p data/img data/articles
 
 # Set permissions and health check port
 EXPOSE 8080

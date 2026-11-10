@@ -8,6 +8,7 @@ The following files, components, and logic structures represent finalized UI and
    - Default author byline unified to "Current News".
    - Public reader feed grid layout, responsive typography, filter category tabs, and pick-up reading progress card.
    - Dynamic page-by-page navigator and pagination scroll preservation.
+   - Top Articles Section (`#top-articles-box-area`): Replaced bottom stacked category list with Top 4 most liked/read dispatches formatted as a numbered list with truncated headline action buttons.
 
 2. **`src/views/PostDetailView.tsx`**
    - Reading paper warm beige background (`bg-[#f7f4ed]` / dark: `#161412`).
@@ -23,6 +24,7 @@ The following files, components, and logic structures represent finalized UI and
 
 4. **`src/components/Header.tsx` & `src/components/Footer.tsx`**
    - Navigation header and footer with conditional display per `PROFILE_PAGES`.
+   - Fixed Two-Tier Navbar: Line 1 (`#main-header`) fixed at `top-0 left-0 right-0 z-50` with document flow spacer (`#header-fixed-spacer`) and Line 2 (`#category-filter-header`) styled with `#fbf1e5` beige background, elegant curved bottom edge (`rounded-b-2xl sm:rounded-b-3xl shadow-xs`), Playfair Display & Lora brand typography, and preserved category button font and styles. When inside articles (Line 2 hidden), a left-aligned 3-line menu button opens a beige half-screen side drawer with all category buttons.
    - Footer copyright typography: `© 2026 Current News. All rights reserved.` with all "Live (Independent Ledger)" suffixes removed.
 
 5. **`src/components/AndroidBackGestureHandler.tsx` & `android/app/src/main/java/blog/currentnews/app/MainActivity.kt`**

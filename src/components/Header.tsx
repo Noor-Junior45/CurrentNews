@@ -26,10 +26,12 @@ import {
   MoonStar,
   FileText,
   ShieldCheck,
-  Trash2
+  Trash2,
+  Menu,
+  ChevronRight
 } from 'lucide-react';
 import { GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import GlassThemeToggle from './ThemeToggle';
 import { subscribeUserToPush, unsubscribeUserFromPush, isUserPushSubscribed } from '../utils/pushManager';
 
@@ -94,6 +96,8 @@ const ToggleSwitch: React.FC<ToggleSwitchProps> = ({
   );
 };
 
+const SIDE_MENU_CATEGORIES = ['All', 'General', 'Politics', 'Tech', 'Sports', 'Opinion', 'Business', 'Health', 'World', 'Jharkhand'];
+
 export default function Header() {
   const { user, loading, isAdmin } = useAuthState();
   const navigate = useNavigate();
@@ -102,6 +106,12 @@ export default function Header() {
   const location = useLocation();
   const [headerSearch, setHeaderSearch] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isSideMenuOpen, setIsSideMenuOpen] = useState(false);
+
+  // Auto-close side menu on route change
+  useEffect(() => {
+    setIsSideMenuOpen(false);
+  }, [location.pathname, location.search]);
 
   // --- Settings Modal State & Toggles ---
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -386,26 +396,55 @@ export default function Header() {
     }
   };
 
+  const isHome = location.pathname === '/' || location.pathname === '';
+  const [isScrolledPastLine2, setIsScrolledPastLine2] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsScrolledPastLine2(window.scrollY > 68);
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    handleScroll();
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const isLine2Hidden = !isHome || isScrolledPastLine2;
+
   return (
-    <header className="sticky top-0 z-50 bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-700 shadow-xs adsbygoogle-noablate" id="main-header">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between">
+    <>
+      <header className={`fixed top-0 left-0 right-0 w-full z-50 bg-[#fbf1e5] ${isLine2Hidden ? 'rounded-b-2xl sm:rounded-b-3xl border-b border-slate-300/70 dark:border-slate-800/80 shadow-xs' : 'border-b-0 shadow-none rounded-none'} transition-all duration-200 adsbygoogle-noablate`} id="main-header">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between">
         
         {/* Brand Name & Newsroom Navigation */}
-        <div className="flex items-center space-x-5 sm:space-x-8 min-w-0">
+        <div className="flex items-center space-x-2 sm:space-x-3 min-w-0">
+          {/* 3 horizontal line menu trigger: appears on article pages AND on home page when Line 2 of navbar hides on scroll */}
+          {isLine2Hidden && (
+            <button
+              type="button"
+              onClick={() => setIsSideMenuOpen(true)}
+              className="h-10 w-10 -ml-1 sm:-ml-2 p-2 rounded-xl text-slate-800 hover:text-black hover:bg-black/5 active:scale-95 transition-all cursor-pointer flex items-center justify-center shrink-0 group focus:outline-hidden animate-in fade-in duration-200"
+              aria-label="Open categories side menu"
+              title="Categories & Sections"
+              id="header-side-menu-trigger"
+            >
+              <Menu className="h-5 w-5 text-slate-900" />
+            </button>
+          )}
+
           <Link 
             to="/" 
             onClick={() => {
               sessionStorage.removeItem('current_news_return_scroll');
               window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
             }}
-            className="flex items-center text-slate-900 dark:text-white hover:opacity-90 transition-opacity min-w-0" 
+            className="flex items-center text-slate-900 hover:opacity-90 transition-opacity min-w-0" 
             id="header-brand-link"
           >
             <div className="flex flex-col min-w-0">
-              <span className="font-display font-bold text-base sm:text-lg md:text-xl tracking-tight leading-none uppercase text-slate-950 dark:text-white">
+              <span className="font-playfair font-black text-lg sm:text-xl md:text-2xl tracking-tight leading-none uppercase text-slate-950">
                 Current News
               </span>
-              <span className="text-[9px] sm:text-[10px] text-slate-500 dark:text-slate-400 font-semibold font-mono uppercase tracking-wider truncate">
+              <span className="font-lora text-[10px] sm:text-[11px] text-slate-700 font-semibold tracking-wider uppercase truncate mt-0.5">
                 Independent Ledger
               </span>
             </div>
@@ -418,7 +457,7 @@ export default function Header() {
           {/* Elegant Magnifying Glass Button triggers overlay like YouTube */}
           <button
             onClick={() => setIsSearchOpen(true)}
-            className="h-11 w-11 rounded-full text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors cursor-pointer flex items-center justify-center"
+            className="h-11 w-11 rounded-full text-slate-700 hover:text-slate-950 dark:text-slate-700 dark:hover:text-slate-950 hover:bg-black/5 dark:hover:bg-black/5 transition-colors cursor-pointer flex items-center justify-center"
             id="header-search-trigger"
             title="Open dispatch search panel"
           >
@@ -435,12 +474,12 @@ export default function Header() {
             )}
 
             {loading ? (
-              <div className="h-11 w-11 rounded-full bg-slate-100 dark:bg-slate-800 animate-pulse border border-slate-200 dark:border-slate-700" />
+              <div className="h-11 w-11 rounded-full bg-slate-200/60 dark:bg-slate-200/60 animate-pulse border border-slate-300" />
             ) : (
               /* The trigger circle button - navigates directly to dedicated Profile page */
               <button 
                 onClick={() => navigate('/profile')}
-                className="h-11 w-11 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border-2 border-slate-200 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-500 overflow-hidden text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white shadow-xs transition-all duration-200 flex items-center justify-center cursor-pointer relative z-50 focus:outline-hidden"
+                className="h-11 w-11 rounded-full bg-white/80 hover:bg-white dark:bg-white/80 dark:hover:bg-white border-2 border-slate-300 dark:border-slate-300 hover:border-slate-500 dark:hover:border-slate-500 overflow-hidden text-slate-700 hover:text-slate-900 shadow-xs transition-all duration-200 flex items-center justify-center cursor-pointer relative z-50 focus:outline-hidden"
                 id="header-profile-trigger"
                 title={user ? `Account: ${user.displayName || user.email}` : "Editorial Portal Access"}
               >
@@ -458,7 +497,7 @@ export default function Header() {
                     </div>
                   )
                 ) : (
-                  <User className="h-5 w-5 text-slate-500 dark:text-slate-400" />
+                  <User className="h-5 w-5 text-slate-700 dark:text-slate-700" />
                 )}
               </button>
             )}
@@ -973,5 +1012,114 @@ export default function Header() {
         </div>
       )}
     </header>
+      {/* Fixed navbar height spacer keeping page content aligned directly under the header */}
+      <div className="h-18 w-full shrink-0 pointer-events-none" aria-hidden="true" id="header-fixed-spacer" />
+
+      {/* Beige Side Drawer Menu (active when user is inside articles and Line 2 is hidden) */}
+      <AnimatePresence>
+        {isSideMenuOpen && (
+          <div className="fixed inset-0 z-[100] flex" id="article-side-menu-overlay">
+            {/* Backdrop Blur Overlay */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={() => setIsSideMenuOpen(false)}
+              className="fixed inset-0 bg-black/40 backdrop-blur-xs cursor-pointer"
+              aria-label="Close menu"
+            />
+
+            {/* Left-Side Drawer: Half-screen width on mobile (w-[72vw] max-w-[280px] sm:w-80) with beige background */}
+            <motion.aside
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={{ type: 'spring', damping: 28, stiffness: 320 }}
+              className="relative z-10 w-[72vw] max-w-[280px] sm:w-80 h-full bg-[#fbf1e5] border-r border-[#e8dbcc] dark:border-slate-800 shadow-2xl flex flex-col overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+              id="article-side-menu-panel"
+            >
+              {/* Drawer Header with Brand Title & Close Button */}
+              <div className="p-4 sm:p-5 border-b border-[#e8dbcc]/80 flex items-center justify-between shrink-0 bg-[#fbf1e5]/90 backdrop-blur-xs sticky top-0 z-10">
+                <div className="flex flex-col">
+                  <span className="font-playfair font-black text-base sm:text-lg text-slate-950 uppercase leading-none tracking-tight">
+                    Current News
+                  </span>
+                  <span className="font-lora text-[9.5px] sm:text-[10px] text-slate-600 uppercase tracking-wider font-semibold mt-1">
+                    Newsroom Sections
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsSideMenuOpen(false)}
+                  className="h-8 w-8 rounded-full text-slate-600 hover:text-slate-900 hover:bg-black/5 transition-colors cursor-pointer flex items-center justify-center active:scale-90"
+                  title="Close categories menu"
+                  id="side-menu-close-button"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* All Categories Navigation List */}
+              <div className="p-3 sm:p-4 flex-1 space-y-1" id="side-menu-categories-list">
+                <div className="text-[10px] font-mono font-bold tracking-widest text-slate-500 uppercase px-3 py-1 mb-1">
+                  Browse by Category
+                </div>
+                {SIDE_MENU_CATEGORIES.map((cat) => {
+                  const currentCategoryParam = searchParams.get('category') || 'All';
+                  const isCurrent = currentCategoryParam.toLowerCase() === cat.toLowerCase();
+
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => {
+                        setIsSideMenuOpen(false);
+                        sessionStorage.removeItem('current_news_return_scroll');
+                        if (cat === 'All') {
+                          navigate('/');
+                        } else {
+                          navigate(`/?category=${encodeURIComponent(cat)}`);
+                        }
+                        window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+                      }}
+                      className={`w-full min-h-[44px] py-2.5 px-3.5 text-xs font-bold tracking-wider uppercase transition-all duration-150 cursor-pointer rounded-xl flex items-center justify-between text-left group active:scale-98 ${
+                        isCurrent
+                          ? 'bg-amber-100/90 text-black border border-amber-400/50 shadow-2xs font-extrabold'
+                          : 'bg-transparent text-slate-900 hover:bg-black/5 border border-transparent'
+                      }`}
+                      id={`side-menu-cat-tab-${cat.toLowerCase()}`}
+                    >
+                      <span className="font-bold text-slate-900 group-hover:text-black">
+                        {cat}
+                      </span>
+                      <ChevronRight className="h-4 w-4 text-slate-400 group-hover:text-slate-700 transition-transform group-hover:translate-x-0.5" />
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Bottom Return to Home Top Feed Action */}
+              <div className="p-4 border-t border-[#e8dbcc]/80 bg-[#fbf1e5] shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSideMenuOpen(false);
+                    sessionStorage.removeItem('current_news_return_scroll');
+                    navigate('/');
+                    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+                  }}
+                  className="w-full py-2.5 px-3 rounded-xl bg-slate-900 text-white hover:bg-black text-xs font-bold uppercase tracking-wider transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs active:scale-98"
+                  id="side-menu-return-home-button"
+                >
+                  <Newspaper className="h-4 w-4" />
+                  <span>Return to Home Feed</span>
+                </button>
+              </div>
+            </motion.aside>
+          </div>
+        )}
+      </AnimatePresence>
+    </>
   );
 }

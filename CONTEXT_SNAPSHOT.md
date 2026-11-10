@@ -278,6 +278,23 @@
   - Brand Logo & Fallback Assets: Mounted `/public` static middleware directly in `server.ts` before SPA fallback, guaranteeing `/CurrentNews.png` returns HTTP 200. Added brand avatar fallback in `PostDetailView.tsx` and `AboutView.tsx` defaulting to `/CurrentNews.png` on img error.
   - Facebook Video Player & SDK CSP: Added `https://www.facebook.com`, `https://facebook.com`, `https://*.facebook.com` to `frame-src`, `connect.facebook.net` and `facebook.net` to `script-src`, and `*.facebook.com`, `*.fbcdn.net` to `connect-src` in Helmet CSP.
   - Cloud Run Dockerfile: Added `COPY --from=builder /app/data ./data` to Stage 2 runner image to ensure all local webp image fallbacks are present in container production environments.
+- [x] **Phase 60 (Unified Two-Tier Navbar Design with Blush Theme):** [COMPLETED]
+  - Unified Two-Tier Navbar: Updated 1st line (`header#main-header`) and 2nd line (`div#category-filter-header`) to both share background.
+  - Seamless Boundary: Eliminated dividing horizontal line and shadow between 1st line and 2nd line on home page (`border-b-0 shadow-none`), while preserving the single bottom dividing line at the bottom of the 2nd line in the exact same line colour.
+  - Full-Bleed Alignment: Styled Line 2 with full-viewport width (`style={{ width: '100vw', marginLeft: 'calc(-50vw + 50%)' }}`) and inner grid container (`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8`) matching Line 1 to the pixel.
+  - Preserved Button Designs: All category tab buttons (`cat-tab-*`), active amber underlines (`border-amber-600/90`), count badges, search trigger, and profile button shapes remain 100% intact.
+- [x] **Phase 61 (Fixed Navbar & Article Under-Scroll with #ffe8d6 Warm Peach Theme):** [COMPLETED]
+  - Fixed Navbar: Configured `#main-header` with `fixed top-0 left-0 right-0 w-full z-50` and mounted a 72px document flow spacer (`#header-fixed-spacer`).
+  - Smooth Article Under-Scroll: Individual article pages (`PostDetailView.tsx`) start immediately below the navbar at 72px without any header clipping or overlap, and as the user scrolls, all article content, images, paragraphs, and media scroll smoothly underneath the fixed navbar.
+  - Color Synchronization: Updated Line 2 (`#category-filter-header`) and `index.css` to match user's `#ffe8d6` warm peach/apricot theme.
+- [x] **Phase 62 (Navbar #fbf1e5 Beige Theme, Curved Bottom, Playfair/Lora Fonts & Side Menu Drawer):** [COMPLETED]
+  - Beige Palette: Updated `#main-header`, `#category-filter-header`, and `src/index.css` to warm editorial beige `#fbf1e5`.
+  - Curved Navbar Bottom: Added `rounded-b-2xl sm:rounded-b-3xl border-b border-slate-300/70 dark:border-slate-800/80 shadow-xs` to the bottom of the navbar. When page content scrolls under it, it flows under the elegant curved edge seamlessly.
+  - Typography: Imported and applied Google Fonts `Playfair Display` for "Current News" and `Lora` for "Independent Ledger", while preserving standard sans-serif uppercase bold font on all category button labels.
+  - Left-Side Drawer Menu: On article reading pages (where Line 2 is hidden), added a three-line menu trigger (`#header-side-menu-trigger`) on the left of "Current News". Clicking it opens a smooth spring-animated left-side drawer (`w-[72vw] max-w-[280px] sm:w-80`) with `#fbf1e5` beige background and backdrop blur, displaying all category navigation buttons with instant feed filtering.
+- [x] **Phase 63 (Home Page 3-Line Menu on Scroll & Bottom Top Articles Section):** [COMPLETED]
+  - Home Page 3-Line Menu Trigger on Scroll: Updated `Header.tsx` to detect when Line 2 of navbar scrolls out of view (`window.scrollY > 68`). When Line 2 is hidden, the 3-horizontal-line menu button smoothly appears on the left of "Current News" on the home page and Line 1 curves its bottom edge (`rounded-b-2xl sm:rounded-b-3xl shadow-xs`).
+  - Top Articles Section (`#top-articles-box-area`): Removed the bottom stacked category section from `HomeView.tsx` and replaced it with a Top 4 most liked/read stories section formatted as a numbered list (`Top Articles: 1. <truncated headline>...`) with interactive headline buttons that instantly open the respective article.
 - **Immediate Next Step:** Run `CHECKLIST.md` steps:
   1. Neon migrations: `export NEON_DATABASE_URL="..." && node scripts/migrate-neon.mjs` (includes `migrations/003_push_subscriptions.sql`)
   2. D1 migration: In CurrentNews-Admin repo, execute `migrations/0001_articles.sql` against remote D1 database

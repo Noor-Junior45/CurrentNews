@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Playfair+Display:ital,wght@0,600;0,700;0,800;0,900;1,600&family=Space+Grotesk:wght@500;600;700&display=swap');
 @import "tailwindcss";
 
 @variant dark (&:where(.dark, .dark *));
@@ -7,6 +7,14 @@
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Space Grotesk", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+.font-playfair {
+  font-family: "Playfair Display", Georgia, serif;
+}
+
+.font-lora {
+  font-family: "Lora", Georgia, serif;
 }
 
 /* Custom modern transitions and scrollbars */
@@ -275,7 +283,6 @@ html.dark #app-root-container {
   background-color: #0f172a;
 }
 
-html.dark #main-header,
 html.dark #main-footer,
 html.dark .bg-white,
 html.dark [id^="post-card-"],
@@ -348,8 +355,18 @@ html.dark #card-reactions {
   border-top-color: #334155 !important;
 }
 
-html.dark #main-header {
+html.dark #main-header:not(.border-b-0) {
   border-bottom: 1px solid #334155 !important;
+}
+
+#main-header,
+#category-filter-header {
+  background-color: #fbf1e5 !important;
+}
+
+#main-header.border-b-0 {
+  border-bottom: none !important;
+  box-shadow: none !important;
 }
 
 html.dark #main-footer {

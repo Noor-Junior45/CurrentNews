@@ -538,27 +538,33 @@ export default function HomeView() {
     }
   }, [currentPage, filteredPosts.length, selectedCategory, searchTerm]);
 
+  // Top 4 most liked or read stories for bottom "Top Articles" section
+  const topArticles = useMemo(() => {
+    return [...posts]
+      .filter(p => p.status !== 'draft')
+      .sort((a, b) => {
+        const aLikes = (statsMap[a.id]?.likes ?? a.likes ?? 0);
+        const aViews = (statsMap[a.id]?.views ?? a.views ?? 0);
+        const bLikes = (statsMap[b.id]?.likes ?? b.likes ?? 0);
+        const bViews = (statsMap[b.id]?.views ?? b.views ?? 0);
+        const aScore = aLikes * 2 + aViews;
+        const bScore = bLikes * 2 + bViews;
+        if (bScore !== aScore) return bScore - aScore;
+        return new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime();
+      })
+      .slice(0, 4);
+  }, [posts, statsMap]);
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-0" id="homepage-view">
 
-      {isOfflineCached && (
-        <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-900/60 rounded-xl p-3 px-4 mb-4 flex items-center justify-between gap-3 text-amber-900 dark:text-amber-200 text-xs font-medium mt-4" id="offline-banner">
-          <div className="flex items-center gap-2">
-            <WifiOff className="h-4 w-4 text-amber-500 shrink-0 animate-pulse" />
-            <span><strong>Offline Mode:</strong> Displaying cached news dispatches from your last visit. Please reconnect to view live dispatches.</span>
-          </div>
-          <button 
-            onClick={fetchPosts}
-            className="bg-amber-600 hover:bg-amber-700 text-white px-2.5 py-1 rounded-md text-[10px] font-bold uppercase transition-colors shrink-0 cursor-pointer"
-          >
-            Reconnect
-          </button>
-        </div>
-      )}
-
-      {/* Category Filter Tabs positioned below the main header, above Today's Dispatch */}
-      <div className="sticky top-[72px] z-40 bg-slate-50/95 backdrop-blur-md border-b border-slate-200/80 dark:bg-slate-900/95 dark:border-slate-800/80 py-2 mb-8 shadow-3xs px-4 -mx-4 sm:-mx-8 lg:-mx-8" id="category-filter-header">
-        <div className="max-w-7xl mx-auto flex items-center space-x-1 sm:space-x-1.5 overflow-x-auto pb-0.5 scroll-smooth no-scrollbar [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]" id="category-filter-tabs">
+      {/* Category Filter Tabs positioned directly below the main header as line 2 of the unified navbar */}
+      <div 
+        className="relative z-30 bg-[#fbf1e5] border-b border-slate-300/70 dark:border-slate-800/80 rounded-b-2xl sm:rounded-b-3xl py-2 mb-8 shadow-xs" 
+        style={{ width: '100vw', marginLeft: 'calc(-50vw + 50%)' }}
+        id="category-filter-header"
+      >
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center space-x-1 sm:space-x-1.5 overflow-x-auto pb-0.5 scroll-smooth no-scrollbar [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]" id="category-filter-tabs">
           {['All', 'General', 'Politics', 'Tech', 'Sports', 'Opinion', 'Business', 'Health', 'World'].map((cat) => {
             const count = posts.filter(p => {
               if (p.status === 'draft') return false;
@@ -602,6 +608,21 @@ export default function HomeView() {
           })}
         </div>
       </div>
+
+      {isOfflineCached && (
+        <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-900/60 rounded-xl p-3 px-4 mb-6 flex items-center justify-between gap-3 text-amber-900 dark:text-amber-200 text-xs font-medium" id="offline-banner">
+          <div className="flex items-center gap-2">
+            <WifiOff className="h-4 w-4 text-amber-500 shrink-0 animate-pulse" />
+            <span><strong>Offline Mode:</strong> Displaying cached news dispatches from your last visit. Please reconnect to view live dispatches.</span>
+          </div>
+          <button 
+            onClick={fetchPosts}
+            className="bg-amber-600 hover:bg-amber-700 text-white px-2.5 py-1 rounded-md text-[10px] font-bold uppercase transition-colors shrink-0 cursor-pointer"
+          >
+            Reconnect
+          </button>
+        </div>
+      )}
       
       {/* 🏛️ Professional Editorial Hero Section — Animated Multi-Poster Showcase (Beige, Blue & Brown Theme) */}
       <section 
@@ -923,44 +944,52 @@ export default function HomeView() {
             </div>
           </div>
 
-          {/* Dedicated Tag Filter Area: White background box matching page background, touching both sides of screen, text-only buttons stacked vertically with margin gap from screen */}
-          <div 
-            className="mt-8 mb-0 py-7 bg-white dark:bg-slate-950 rounded-none border-0 w-screen relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw] box-border" 
-            id="tag-filter-box-area"
-          >
-            <div className="max-w-7xl mx-auto px-6 sm:px-10 lg:px-12">
-              <div className="flex items-center space-x-2.5 mb-4">
-                <span className="w-1 h-3.5 bg-emerald-500 rounded-xs shrink-0"></span>
-                <h3 className="font-display font-bold text-sm sm:text-base text-slate-900 dark:text-white">
-                  Categories
-                </h3>
-              </div>
+          {/* Top Articles Section: Replaced bottom category section with top 4 most liked/read stories */}
+          {topArticles.length > 0 && (
+            <div 
+              className="mt-8 mb-0 py-8 bg-white dark:bg-slate-950 rounded-none border-0 w-screen relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw] box-border" 
+              id="top-articles-box-area"
+            >
+              <div className="max-w-7xl mx-auto px-6 sm:px-10 lg:px-12">
+                <div className="flex items-center space-x-2.5 mb-4">
+                  <span className="w-1.5 h-4 bg-emerald-600 rounded-xs shrink-0"></span>
+                  <h3 className="font-serif font-black text-base sm:text-lg text-slate-950 dark:text-white tracking-tight">
+                    Top Articles:
+                  </h3>
+                </div>
 
-              <div className="flex flex-col items-start space-y-1 pl-1.5 sm:pl-3" id="stacked-tag-filter-buttons">
-                {['All', 'General', 'Politics', 'Tech', 'Sports', 'Opinion', 'Business', 'Health', 'World'].map((cat) => {
-                  const isSelected = selectedCategory.toLowerCase() === cat.toLowerCase();
-                  return (
-                    <button
-                      key={cat}
-                      onClick={() => {
-                        setSelectedCategory(cat);
-                        setCurrentPage(1);
-                        document.getElementById('posts-grid')?.scrollIntoView({ behavior: 'smooth' });
-                      }}
-                      className={`min-h-[44px] w-full text-left bg-transparent border-0 py-2.5 text-xs sm:text-sm transition-colors cursor-pointer inline-flex items-center ${
-                        isSelected
-                          ? 'text-emerald-600 dark:text-emerald-400 font-bold'
-                          : 'text-slate-700 hover:text-emerald-600 dark:text-slate-300 dark:hover:text-emerald-400 font-medium'
-                      }`}
-                      id={`stacked-tag-${cat.toLowerCase()}`}
-                    >
-                      <span>{cat}</span>
-                    </button>
-                  );
-                })}
+                <div className="flex flex-col items-start space-y-2 pl-1 sm:pl-2" id="top-articles-list">
+                  {topArticles.map((item, index) => {
+                    const truncatedTitle = item.title.length > 44 ? item.title.slice(0, 42).trim() + '...' : item.title;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => {
+                          try {
+                            sessionStorage.setItem('current_news_return_search', location.search || '');
+                            sessionStorage.setItem('current_news_return_page', String(currentPage));
+                            sessionStorage.setItem('current_news_return_scroll', String(window.scrollY));
+                            saveCompressedStory(item);
+                          } catch (_) {}
+                          navigate(`/post/${item.id}/${slugify(item.title)}`, { state: { previewPost: item } });
+                        }}
+                        className="w-full text-left bg-transparent border-0 py-1.5 text-sm sm:text-base text-slate-800 dark:text-slate-200 hover:text-emerald-700 dark:hover:text-emerald-400 transition-colors cursor-pointer inline-flex items-center gap-2 group active:scale-[0.99]"
+                        id={`top-article-btn-${item.id}`}
+                      >
+                        <span className="font-bold text-slate-900 dark:text-white shrink-0 font-mono text-xs sm:text-sm">
+                          {index + 1}.
+                        </span>
+                        <span className="font-serif font-medium text-slate-900 dark:text-slate-100 group-hover:text-emerald-700 dark:group-hover:text-emerald-400 truncate">
+                          {truncatedTitle}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* Bottom Editorial Navigation (About, Editorial Policy, Contact) positioned between Categories and Footer */}
           <div className="w-screen relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw] bg-white dark:bg-slate-950 border-t border-slate-100 dark:border-slate-800/80 py-5 box-border" id="bottom-editorial-nav-section">

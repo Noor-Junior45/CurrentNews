@@ -295,14 +295,20 @@
 - [x] **Phase 63 (Home Page 3-Line Menu on Scroll & Bottom Top Articles Section):** [COMPLETED]
   - Home Page 3-Line Menu Trigger on Scroll: Updated `Header.tsx` to detect when Line 2 of navbar scrolls out of view (`window.scrollY > 68`). When Line 2 is hidden, the 3-horizontal-line menu button smoothly appears on the left of "Current News" on the home page and Line 1 curves its bottom edge (`rounded-b-2xl sm:rounded-b-3xl shadow-xs`).
   - Top Articles Section (`#top-articles-box-area`): Removed the bottom stacked category section from `HomeView.tsx` and replaced it with a Top 4 most liked/read stories section formatted as a numbered list (`Top Articles: 1. <truncated headline>...`) with interactive headline buttons that instantly open the respective article.
-- **Immediate Next Step:** Run `CHECKLIST.md` steps:
-  1. Neon migrations: `export NEON_DATABASE_URL="..." && node scripts/migrate-neon.mjs` (includes `migrations/003_push_subscriptions.sql`)
-  2. D1 migration: In CurrentNews-Admin repo, execute `migrations/0001_articles.sql` against remote D1 database
-  3. Worker secret: In CurrentNews-Admin repo, run `npx wrangler secret put SYNC_SECRET`
-  4. Cloud Run secrets: `SYNC_SECRET`, `SYNC_TICK_TOKEN`, `NEON_DATABASE_URL`, `VAPID_PUBLIC_KEY` in Secret Manager + `WORKER_BASE_URL`
-  5. Deploy worker: In CurrentNews-Admin repo, run `npx wrangler deploy`
-  6. Cloud Scheduler: Create 5-minute HTTP job for `POST https://admin.currentnews.blog/api/admin/sync-tick`
-  7. Resync D1: `node scripts/resync-d1.mjs`
+- [x] **Phase 64 (Reader Security Hardening — Mail Relay Removal, Webhook Lock & DOMPurify):** [COMPLETED]
+  - Removed Public Mail Relay: Deleted `api/mail/send-alert.ts`, removed `/api/mail/send-alert` route, rate limiter, and imports from `server.ts`. Removed client-side calls in `Header.tsx` and removed contact form UI from `ContactView.tsx` (now routing readers to direct email). Unmatched `/api/mail/send-alert` requests return 404 JSON.
+  - Locked Inbound Mail Webhook: Restricted `/api/mail/inbound` strictly to GET and POST; removed wildcard `Access-Control-Allow-Origin: *`; enforced constant-time `crypto.timingSafeEqual` comparison against `INBOUND_WEBHOOK_SECRET` (returns 401 on missing or invalid secret). Updated all contact/DMCA addresses to `help@currentnews.blog`.
+  - Browser-Side HTML Sanitization: Added `src/utils/sanitizeHtml.ts` using DOMPurify with strict whitelist (only YouTube https iframes allowed, strips style and on* attributes, enforces `rel="noopener noreferrer nofollow"` and `target="_blank"`, preserves Quill `ql-*` classes). Integrated before `dangerouslySetInnerHTML` in `ProgressiveArticleBody.tsx` and `LikedView.tsx`.
+  - Scoped Image CORS: Confined `Access-Control-Allow-Origin: *` headers strictly to static image asset routes (`/img` and `/uploads`).
+  - Documentation Sanitization: Cleaned connection strings in `CHECKLIST.md` and `docs/NEON.md` to `NEON_DATABASE_URL=<set in Secret Manager>`. Regenerated `package-lock.json` with `npm ci` passing.
+- [x] **Phase 65 (Embed Player Viewport Purification):** [COMPLETED]
+  - Removed Redundant Bottom Bars: Removed the bottom action bars ("YouTube Video ready to play / Watch on YouTube" and "Facebook Reel/Video/Post ready to play / Watch on Facebook") and disclaimer text below the video player containers in `src/components/EmbedHandler.tsx`.
+- [x] **Phase 67 (Hero Poster Visibility, Default Editorial Backdrop, Responsive Top Articles & Demo Cleanup):** [COMPLETED]
+  - Top Articles Responsive Headings: Replaced hardcoded `slice(0, 42)` string slicing with native CSS `min-w-0 flex-1 truncate`. Mobile phone screens (< 640px) fit as much headline as available before appending native dots `...`; tablet and laptop screens show longer full headlines. Kept exact font size and family (`font-serif font-medium text-slate-900 dark:text-slate-100`).
+  - Hero Poster Refinements: Removed the "Featured Dispatch" text badge completely. Fixed Hindi Devanagari text matra clipping by increasing line height to `leading-[1.3] sm:leading-[1.28] md:leading-[1.24]`, adding `py-1`, and allowing `overflow-visible`. Placed "Read Full Report →" on the right side of the poster on wider screens via responsive flex alignment.
+  - Default Editorial Photo: Generated and mounted high-resolution editorial newsroom backdrop (`public/editorial-default-poster.jpg`) so stories without an image render with an authentic journalistic background.
+  - Demo Articles Cleanup & Tombstone: Purged `post_1793979188690_fibeqk` ("Hi, i am editing this again") and `post_1794056976447_h5095f` ("i am editing demo2") from `data/feed.json` and `data/articles/feed.json`. Added them to `data/deleted_articles.json` and `SEED_DELETED_IDS` in `src/utils/compressedStorage.ts` and `src/server/r2Articles.ts`. Excluded deleted articles from `api/rss.xml.ts` and added automatic remote sync via `/api/articles/deleted` so reader client storage never resurrects deleted demo stories.
+- **Immediate Next Step:** Production deployment verification on Google Cloud Run.
 
 
 

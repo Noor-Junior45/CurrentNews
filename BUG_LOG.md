@@ -184,6 +184,42 @@
     3. Added `COPY --from=builder /app/data ./data` to `Dockerfile` runner stage so Cloud Run containers maintain local webp fallback assets.
     4. Mounted static root `/public` handler before dist fallback in `server.ts` so brand assets (`/CurrentNews.png`) always return HTTP 200.
 
+- [x] **Bug ID & Summary:** BUG-041 — YouTube Video Player Configuration Error (Error 153) and Facebook Video Player Referrer Isolation.
+  - **Root Cause:** 
+    1. Helmet's default middleware in `server.ts` outputs `Referrer-Policy: no-referrer`. Because YouTube and Facebook embedded iframes require an HTTP `Referer` header to authenticate the host domain, YouTube immediately aborted player initialization and displayed "Video player configuration error" (YouTube Error 153).
+    2. Embedded YouTube and Facebook iframes lacked explicit `referrerPolicy="strict-origin-when-cross-origin"` attributes.
+    3. `index.html` lacked the `<meta name="referrer" content="strict-origin-when-cross-origin">` declaration.
+  - **Permanent Guardrail:**
+    1. Configured Helmet in `server.ts` with `referrerPolicy: { policy: "strict-origin-when-cross-origin" }`.
+    2. Added `<meta name="referrer" content="strict-origin-when-cross-origin" />` to `<head>` in `index.html`.
+    3. Updated `EmbedHandler.tsx` to set `referrerPolicy="strict-origin-when-cross-origin"` and `loading="eager"` on both YouTube and Facebook iframes.
+    4. Switched YouTube iframe domain to `https://www.youtube-nocookie.com/embed/${ytVideoId}?rel=0&playsinline=1&enablejsapi=1` to eliminate third-party cookie restrictions across modern privacy browsers.
+    5. Added quick-action direct playback bars ("Watch Video on YouTube" and "Watch Video on Facebook") and inline reload triggers so readers in restricted webviews or privacy networks can always watch videos seamlessly.
+
+- [x] **Bug ID & Summary:** BUG-042 — Public Mail Relay Exposure, Inbound Mail CORS Misconfiguration & Unsanitized Browser Article HTML Rendering.
+  - **Root Cause:**
+    1. `/api/mail/send-alert` permitted unauthenticated public clients to trigger transactional emails with arbitrary titles and recipients, exposing a public mail relay.
+    2. `/api/mail/inbound` had permissive `Access-Control-Allow-Origin: *` headers and accepted all HTTP methods without secret authentication.
+    3. Reader articles rendered raw `chunk.html` via `dangerouslySetInnerHTML` without client-side DOMPurify sanitization.
+    4. Documentation contained sample connection strings with usernames and passwords.
+  - **Permanent Guardrail:**
+    1. Completely deleted `/api/mail/send-alert` and `api/mail/send-alert.ts`. Any requests return standard 404 JSON. Removed form UI that triggered it.
+    2. Restricted `/api/mail/inbound` strictly to GET and POST, removed permissive CORS headers, and enforced constant-time secret authentication using `crypto.timingSafeEqual` against `INBOUND_WEBHOOK_SECRET` (returning 401 when missing or wrong).
+    3. Created `src/utils/sanitizeHtml.ts` with DOMPurify: allows safe tags (`h1-h6`, `p`, `img`, `table`, etc.), YouTube-only https iframes, http/https schemes, strips inline style and on* attributes, forces `rel="noopener noreferrer nofollow"`, and preserves all Quill `ql-*` classes.
+    4. Confined `Access-Control-Allow-Origin: *` strictly to static image routes (`/img` and `/uploads`).
+    5. Cleaned connection strings in `CHECKLIST.md` and `docs/NEON.md` to `NEON_DATABASE_URL=<set in Secret Manager>`.
+
+- [x] **Bug ID & Summary:** BUG-043 — Deleted Demo Articles Resurrected on Reader and Hindi Headline Matra Clipping in Hero Poster.
+  - **Root Cause:**
+    1. Demo articles (`post_1793979188690_fibeqk` and `post_1794056976447_h5095f`) deleted from the admin tab still existed on disk in `data/feed.json` and `data/articles/feed.json`, and on Cloudflare R2 (`post_1793731462909_88he4y`). The reader client's `getDeletedStoryIds()` only read localStorage without syncing remote tombstoned IDs, causing demo posts to re-appear.
+    2. Hero poster headline had ultra-tight `leading-[1.18]` without vertical padding, causing top and bottom Devanagari vowel matras (`े`, `ै`, `ो`, `ौ`, `ं`, `ु`, `ू`) to be clipped by CSS line-clamp overflow boundaries.
+    3. Bottom Top Articles list had hardcoded `slice(0, 42)` truncation, preventing tablet and laptop screens from showing longer headlines.
+  - **Permanent Guardrail:**
+    1. Purged demo posts from `data/feed.json` and `data/articles/feed.json`, added `SEED_DELETED_IDS` in `src/utils/compressedStorage.ts` and `src/server/r2Articles.ts`, filtered deleted IDs in `api/rss.xml.ts`, and added `syncDeletedStoriesFromRemote()` in `HomeView.tsx` so tombstoned articles are immediately and permanently purged from client memory.
+    2. Set hero poster headline to relaxed `leading-[1.3] sm:leading-[1.28] md:leading-[1.24]` with `py-1` and `overflow-visible`, ensuring Devanagari script renders with 100% full matra visibility.
+    3. Replaced hardcoded title slicing with native CSS `min-w-0 flex-1 truncate`, ensuring single-line ellipsis on mobile phones and natural long headline previews on tablet and laptop screens without altering font size.
+
+
 
 
 

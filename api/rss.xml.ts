@@ -78,12 +78,29 @@ export default async function handler(req: Request, res: Response) {
       return result;
     };
 
+    const deletedIds = new Set<string>([
+      'post_1793731462909_88he4y',
+      'post_1793979188690_fibeqk',
+      'post_1794056976447_h5095f',
+    ]);
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const delPath = path.join(process.cwd(), 'data', 'deleted_articles.json');
+      if (fs.existsSync(delPath)) {
+        const fileData = JSON.parse(fs.readFileSync(delPath, 'utf-8'));
+        if (Array.isArray(fileData)) fileData.forEach((id: string) => deletedIds.add(id));
+      }
+    } catch (_) {}
+
     const items: any[] = [];
     if (Array.isArray(queryResult)) {
       for (const item of queryResult) {
         if (item.document) {
           const fields = parseFirestoreFields(item.document.fields);
           const id = item.document.name.split("/").pop();
+          if (id && deletedIds.has(id)) continue;
+          if (fields.status === 'draft') continue;
           items.push({ id, ...fields });
         }
       }

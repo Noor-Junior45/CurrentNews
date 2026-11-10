@@ -21,9 +21,9 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE O
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO currentnews_app;
 ```
 
-Construct the connection string:
+Set the connection string in environment:
 ```
-postgresql://currentnews_app:YOUR_STRONG_RANDOM_PASSWORD@ep-xyz.region.aws.neon.tech/neondb?sslmode=require
+NEON_DATABASE_URL=<set in Secret Manager>
 ```
 
 ## 3. Secret Manager & Environment Configuration

@@ -344,21 +344,6 @@ export default function Header() {
         localStorage.setItem('cn_sub_' + user.email.toLowerCase(), 'true');
         localStorage.setItem('newsletter_subscribed', 'true');
         window.dispatchEvent(new Event('settings-updated'));
-
-        // Send backend simulated welcome email
-        try {
-          await fetch('/api/mail/send-alert', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              email: user.email,
-              title: "Welcome to Current News Alerts!",
-              link: getCanonicalSiteOrigin()
-            })
-          });
-        } catch (err) {
-          console.warn('Backend mail API offline:', err);
-        }
       }
     } catch (err) {
       console.error('Newsletter settings sync failed:', err);

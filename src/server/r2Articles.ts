@@ -151,18 +151,23 @@ function getLocalDataDir(): string {
 const DELETED_ARTICLES_FILE = path.join(process.cwd(), 'data', 'deleted_articles.json');
 
 export function getDeletedArticleIds(): Set<string> {
+  const set = new Set<string>([
+    'post_1793731462909_88he4y',
+    'post_1793979188690_fibeqk',
+    'post_1794056976447_h5095f',
+  ]);
   try {
     if (fs.existsSync(DELETED_ARTICLES_FILE)) {
       const raw = fs.readFileSync(DELETED_ARTICLES_FILE, 'utf-8');
       const arr = JSON.parse(raw);
       if (Array.isArray(arr)) {
-        return new Set(arr.filter(Boolean));
+        arr.filter(Boolean).forEach((id: string) => set.add(id));
       }
     }
   } catch (err) {
     console.debug('[R2 Articles] Read deleted articles notice:', err);
   }
-  return new Set();
+  return set;
 }
 
 export function markArticleDeleted(postId: string): void {

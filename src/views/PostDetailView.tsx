@@ -112,6 +112,8 @@ export default function PostDetailView() {
   // Resume Reading & Cache State
   const [savedResumeProgress, setSavedResumeProgress] = useState<ReadingProgressRecord | null>(null);
   const [showResumeBanner, setShowResumeBanner] = useState<boolean>(false);
+  const [bannerTimeLeft, setBannerTimeLeft] = useState<number>(8);
+  const [isBannerHovered, setIsBannerHovered] = useState<boolean>(false);
 
   // Check saved reading progress when post is loaded
   useEffect(() => {
@@ -123,6 +125,25 @@ export default function PostDetailView() {
       }
     }
   }, [post?.id]);
+
+  // Auto-dismiss timer for "Pick up where you left off" popup
+  useEffect(() => {
+    if (!showResumeBanner) return;
+    setBannerTimeLeft(8);
+
+    const interval = setInterval(() => {
+      if (isBannerHovered) return;
+      setBannerTimeLeft((prev) => {
+        if (prev <= 1) {
+          setShowResumeBanner(false);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [showResumeBanner, isBannerHovered]);
 
   // Track scrolling progress in background cache
   useEffect(() => {
@@ -1296,33 +1317,50 @@ export default function PostDetailView() {
         {showResumeBanner && savedResumeProgress && (
           <aside 
             aria-label="Resume reading notification" 
-            className="fixed bottom-6 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-md z-40 bg-slate-950/95 dark:bg-slate-900/95 text-white p-3.5 rounded-2xl shadow-2xl backdrop-blur-md border border-slate-700/80 flex items-center justify-between gap-3 animate-in fade-in slide-in-from-bottom-4 duration-300"
+            onMouseEnter={() => setIsBannerHovered(true)}
+            onMouseLeave={() => setIsBannerHovered(false)}
+            className="fixed bottom-6 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-md z-40 bg-slate-950/95 dark:bg-slate-900/95 text-white p-3.5 rounded-2xl shadow-2xl backdrop-blur-md border border-slate-700/80 flex flex-col gap-2.5 animate-in fade-in slide-in-from-bottom-4 duration-300"
           >
-            <div className="flex items-center gap-2.5 overflow-hidden">
-              <div className="w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/30">
-                <Bookmark className="w-4 h-4" />
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 overflow-hidden">
+                <div className="w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/30">
+                  <Bookmark className="w-4 h-4" />
+                </div>
+                <div className="overflow-hidden">
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-xs font-bold text-white truncate">Pick up where you left off</p>
+                    <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded-md border border-amber-500/20 shrink-0">
+                      {bannerTimeLeft}s
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-300">You read {savedResumeProgress.progress}% of this story</p>
+                </div>
               </div>
-              <div className="overflow-hidden">
-                <p className="text-xs font-bold text-white truncate">Pick up where you left off</p>
-                <p className="text-[11px] text-slate-300">You read {savedResumeProgress.progress}% of this story</p>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleJumpToSavedPosition}
+                  className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-950 text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer"
+                >
+                  Resume
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowResumeBanner(false)}
+                  className="p-1.5 text-slate-400 hover:text-white rounded-lg transition-colors cursor-pointer"
+                  aria-label="Dismiss reading resume notice"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={handleJumpToSavedPosition}
-                className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-950 text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer"
-              >
-                Resume
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowResumeBanner(false)}
-                className="p-1.5 text-slate-400 hover:text-white rounded-lg transition-colors cursor-pointer"
-                aria-label="Dismiss reading resume notice"
-              >
-                <X className="w-4 h-4" />
-              </button>
+
+            {/* Subtle animated auto-dismiss progress bar */}
+            <div className="w-full bg-slate-800/80 h-1 rounded-full overflow-hidden">
+              <div 
+                className="bg-amber-500 h-full rounded-full transition-all duration-1000 ease-linear"
+                style={{ width: `${(bannerTimeLeft / 8) * 100}%` }}
+              />
             </div>
           </aside>
         )}

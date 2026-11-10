@@ -388,20 +388,26 @@ export function decompressFromUTF16(compressed: string): string {
 }
 
 const DELETED_STORIES_KEY = 'cn_deleted_articles_v1';
+export const SEED_DELETED_IDS: string[] = [
+  'post_1793731462909_88he4y',
+  'post_1793979188690_fibeqk',
+  'post_1794056976447_h5095f',
+];
 
 export function getDeletedStoryIds(): Set<string> {
+  const set = new Set<string>(SEED_DELETED_IDS);
   try {
     const raw = localStorage.getItem(DELETED_STORIES_KEY);
     if (raw) {
       const arr = JSON.parse(raw);
       if (Array.isArray(arr)) {
-        return new Set(arr.filter(Boolean));
+        arr.filter(Boolean).forEach((id: string) => set.add(id));
       }
     }
   } catch {
     // Graceful fallback
   }
-  return new Set();
+  return set;
 }
 
 export function markStoryDeletedLocally(id: string): void {
@@ -413,6 +419,30 @@ export function markStoryDeletedLocally(id: string): void {
   } catch {
     // Graceful fallback
   }
+}
+
+/**
+ * Syncs tombstoned deleted article IDs from backend /api/articles/deleted
+ * and purges any deleted articles from local browser storage.
+ */
+export async function syncDeletedStoriesFromRemote(): Promise<Set<string>> {
+  try {
+    const res = await fetch('/api/articles/deleted');
+    if (res.ok) {
+      const ids: string[] = await res.json();
+      if (Array.isArray(ids) && ids.length > 0) {
+        const set = getDeletedStoryIds();
+        ids.forEach(id => {
+          if (id) set.add(id);
+        });
+        localStorage.setItem(DELETED_STORIES_KEY, JSON.stringify(Array.from(set)));
+        return set;
+      }
+    }
+  } catch {
+    // Silently continue
+  }
+  return getDeletedStoryIds();
 }
 
 /**

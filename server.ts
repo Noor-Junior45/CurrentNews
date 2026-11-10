@@ -5,8 +5,6 @@ import dotenv from 'dotenv';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 
-// Modular route handlers
-import sendAlertHandler from './api/mail/send-alert.ts';
 import inboundHandler from './api/mail/inbound.ts';
 import rssHandler from './api/rss.xml.ts';
 import adsHandler from './api/ads.txt.ts';
@@ -93,6 +91,9 @@ async function startServer() {
             "https://*.facebook.com",
             "https://*.facebook.net",
             "https://*.fbcdn.net",
+            "https://*.youtube.com",
+            "https://*.youtube-nocookie.com",
+            "https://*.googlevideo.com",
             "ws:",
             "wss:"
           ],
@@ -100,7 +101,9 @@ async function startServer() {
             "'self'",
             "https://www.youtube.com",
             "https://youtube.com",
+            "https://*.youtube.com",
             "https://www.youtube-nocookie.com",
+            "https://*.youtube-nocookie.com",
             "https://www.facebook.com",
             "https://facebook.com",
             "https://*.facebook.com",
@@ -125,6 +128,7 @@ async function startServer() {
           formAction: ["'self'"]
         }
       },
+      referrerPolicy: { policy: "strict-origin-when-cross-origin" },
       xFrameOptions: false,
       crossOriginEmbedderPolicy: false,
       crossOriginOpenerPolicy: false,
@@ -149,17 +153,6 @@ async function startServer() {
     }
   });
 
-  // Strict rate limiter: 5 requests per hour per IP on POST /api/mail/send-alert
-  const sendAlertLimiter = rateLimit({
-    windowMs: 60 * 60 * 1000,
-    max: 5,
-    standardHeaders: 'draft-7',
-    legacyHeaders: false,
-    message: {
-      success: false,
-      error: 'Too many alert requests from this IP, please try again after an hour.'
-    }
-  });
 
   // Strict rate limiter: 10 requests per hour per IP on /api/push/subscribe and /api/push/unsubscribe
   const pushLimiter = rateLimit({
@@ -246,16 +239,24 @@ async function startServer() {
     res.json({ success: true, deletedIds: deleted });
   }));
   app.get('/api/writers', asyncHandler(handleGetWriters));
-  app.use('/img', express.static(path.join(process.cwd(), 'data', 'img'), { maxAge: '1y', immutable: true }));
+  app.use('/img', express.static(path.join(process.cwd(), 'data', 'img'), {
+    maxAge: '1y',
+    immutable: true,
+    setHeaders: (res) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+  }));
 
   // Server-driven App Update endpoint (Google Play Store / Cloud Run reader version check)
   app.get('/api/app/version', asyncHandler(handleGetAppVersion));
 
-  // Public contact & alert mail endpoint with dedicated rate limit
-  app.post('/api/mail/send-alert', sendAlertLimiter, asyncHandler(sendAlertHandler));
-
-  // Inbound mail endpoint for webhook notifications
-  app.all('/api/mail/inbound', asyncHandler(inboundHandler));
+  // Inbound mail endpoint for webhook notifications (accepts strictly GET and POST, no wildcard CORS)
+  app.all('/api/mail/inbound', (req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'POST') {
+      return res.status(405).json({ success: false, error: 'Method Not Allowed' });
+    }
+    return next();
+  }, asyncHandler(inboundHandler));
 
   // Dynamically serve dynamic XML Sitemap endpoint
   app.all('/sitemap.xml', asyncHandler(sitemapHandler));
@@ -306,8 +307,12 @@ async function startServer() {
   // Dynamic Open Graph and Twitter Card tags injection for social crawlers (Facebook, X, WhatsApp, LinkedIn, Discord, Telegram, etc.)
   app.use(handleSocialPreview);
 
-  // Serve uploaded media files directly from local storage
-  app.use('/uploads', express.static(path.join(process.cwd(), 'public', 'uploads')));
+  // Serve uploaded media files directly from local storage with static image CORS
+  app.use('/uploads', express.static(path.join(process.cwd(), 'public', 'uploads'), {
+    setHeaders: (res) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+  }));
 
   // Connect Vite configuration dynamically to support dev vs prod modes
   if (process.env.NODE_ENV !== "production") {

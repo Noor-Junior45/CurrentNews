@@ -9,7 +9,7 @@ Run the initial schema (`migrations/001_init.sql`) and outbox synchronization sc
 
 ```bash
 # In your local shell or Cloud Shell with NEON_DATABASE_URL exported:
-export NEON_DATABASE_URL="postgres://currentnews_app:<password>@<ep-xyz>.us-east-2.aws.neon.tech/currentnews?sslmode=require"
+export NEON_DATABASE_URL=<set in Secret Manager>
 
 # Execute all migrations in order
 node scripts/migrate-neon.mjs

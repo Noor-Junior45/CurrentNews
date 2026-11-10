@@ -1,21 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { Mail, Send, CheckCircle2, AlertCircle, Phone, MapPin, Clock, ShieldAlert } from 'lucide-react';
+import React, { useEffect } from 'react';
+import { Mail, Clock, ShieldAlert, FileText, Send, CheckCircle2 } from 'lucide-react';
 import ProfilePageNavbar from '../components/ProfilePageNavbar';
-import { getCanonicalSiteOrigin } from '../utils/shareUrl';
-import { webUrl } from '../utils/webBase';
-
 import { updateDocumentSEO } from '../utils/seo';
 
 export default function ContactView() {
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    subject: 'editorial',
-    message: ''
-  });
-  const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
-  const [errorMsg, setErrorMsg] = useState('');
-
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' });
     updateDocumentSEO({
@@ -24,45 +12,6 @@ export default function ContactView() {
       canonicalPath: '/contact'
     });
   }, []);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.name.trim() || !formData.email.trim() || !formData.message.trim()) {
-      setErrorMsg('Please complete all required fields.');
-      setStatus('error');
-      return;
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(formData.email.trim())) {
-      setErrorMsg('Please enter a valid email address.');
-      setStatus('error');
-      return;
-    }
-
-    setStatus('submitting');
-    setErrorMsg('');
-
-    // Simulate sending to backend / mail alert
-    try {
-      await fetch(webUrl('/api/mail/send-alert'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: formData.email,
-          title: `Contact Submission: [${formData.subject.toUpperCase()}] from ${formData.name}`,
-          link: getCanonicalSiteOrigin()
-        })
-      }).catch(() => {
-        // Fallback gracefully if mail provider is unavailable
-      });
-
-      setStatus('success');
-      setFormData({ name: '', email: '', subject: 'editorial', message: '' });
-    } catch {
-      setStatus('success'); // Still acknowledge user submission
-    }
-  };
 
   return (
     <div className="min-h-screen bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100" id="contact-us-view">
@@ -91,10 +40,10 @@ export default function ContactView() {
                   <span>Editorial Desk</span>
                 </h3>
                 <a 
-                  href="mailto:support@guashoomin.resend.app" 
+                  href="mailto:help@currentnews.blog" 
                   className="text-xs font-semibold text-slate-900 dark:text-white hover:text-emerald-600 dark:hover:text-emerald-400 break-all"
                 >
-                  support@guashoomin.resend.app
+                  help@currentnews.blog
                 </a>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                   General inquiries, press releases & commentary
@@ -106,9 +55,12 @@ export default function ContactView() {
                   <ShieldAlert className="w-3.5 h-3.5" />
                   <span>Corrections Desk</span>
                 </h3>
-                <p className="text-xs font-semibold text-slate-900 dark:text-white">
+                <a
+                  href="mailto:corrections@currentnews.blog"
+                  className="text-xs font-semibold text-slate-900 dark:text-white hover:text-rose-600 dark:hover:text-rose-400"
+                >
                   corrections@currentnews.blog
-                </p>
+                </a>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                   Factual discrepancies & attribution updates
                 </p>
@@ -130,116 +82,64 @@ export default function ContactView() {
 
             <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-900/60 text-xs text-amber-900 dark:text-amber-200">
               <strong className="block font-bold mb-1">Confidential Whistleblower Tips:</strong>
-              We uphold reporter-source confidentiality under standard shield frameworks. Please specify if your transmission requires encrypted channels.
+              We uphold reporter-source confidentiality under standard shield frameworks. Please specify in your email subject if your transmission requires encrypted channels.
             </div>
           </div>
 
-          {/* Interactive Contact Form */}
+          {/* Direct Editorial Communication Channels */}
           <div className="md:col-span-2">
-            <div className="p-6 sm:p-8 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
-              <h2 className="font-display font-bold text-lg text-slate-900 dark:text-white mb-2">
-                Send a Message to the Editors
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mb-6 font-sans">
-                Fields marked with an asterisk (*) are mandatory. We respond to all verified inquiries within 24 to 48 business hours.
-              </p>
+            <div className="p-6 sm:p-8 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-6">
+              <div>
+                <h2 className="font-display font-bold text-lg text-slate-900 dark:text-white mb-2">
+                  Direct Inquiries & Dispatches
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-sans leading-relaxed">
+                  To ensure verification and integrity, our newsroom accepts story submissions, corrections, and press releases exclusively through direct email to our editorial team.
+                </p>
+              </div>
 
-              {status === 'success' ? (
-                <div className="p-6 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-center space-y-3">
-                  <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto" />
-                  <h3 className="font-display font-bold text-base text-emerald-900 dark:text-emerald-100">
-                    Dispatch Received Successfully
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/40">
+                  <h3 className="text-xs font-bold text-slate-900 dark:text-white mb-1.5 flex items-center gap-1.5">
+                    <FileText className="w-4 h-4 text-emerald-600" />
+                    <span>Story Leads & Press Releases</span>
                   </h3>
-                  <p className="text-xs text-emerald-800 dark:text-emerald-200 max-w-md mx-auto">
-                    Thank you for contacting Current News Live. Your message has been routed to the appropriate desk editor.
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400 mb-3">
+                    Include source documents, media assets, and verified citations.
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => setStatus('idle')}
-                    className="mt-2 text-xs font-bold text-emerald-700 dark:text-emerald-300 underline cursor-pointer"
+                  <a
+                    href="mailto:help@currentnews.blog?subject=Editorial%20Submission"
+                    className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline"
                   >
-                    Send another inquiry
-                  </button>
+                    <span>Email Editorial Desk</span>
+                    <Send className="w-3 h-3" />
+                  </a>
                 </div>
-              ) : (
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  {errorMsg && (
-                    <div className="p-3 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 flex items-center gap-2 text-rose-700 dark:text-rose-300 text-xs">
-                      <AlertCircle className="w-4 h-4 shrink-0" />
-                      <span>{errorMsg}</span>
-                    </div>
-                  )}
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                        Your Name *
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={formData.name}
-                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        placeholder="e.g. Jane Doe"
-                        className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                        Email Address *
-                      </label>
-                      <input
-                        type="email"
-                        required
-                        value={formData.email}
-                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                        placeholder="e.g. jane@example.com"
-                        className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                      Inquiry Department *
-                    </label>
-                    <select
-                      value={formData.subject}
-                      onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
-                      className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
-                    >
-                      <option value="editorial">Editorial Inquiries & News Coverage</option>
-                      <option value="corrections">Factual Correction Request</option>
-                      <option value="tip">Investigative News Tip</option>
-                      <option value="syndication">Syndication & Content Licensing</option>
-                      <option value="general">General Support & Feedback</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                      Your Message / Details *
-                    </label>
-                    <textarea
-                      required
-                      rows={5}
-                      value={formData.message}
-                      onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-                      placeholder="Please provide complete context, URLs to affected stories, and relevant documentation..."
-                      className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:outline-hidden resize-y"
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={status === 'submitting'}
-                    className="w-full sm:w-auto px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition-colors inline-flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/40">
+                  <h3 className="text-xs font-bold text-slate-900 dark:text-white mb-1.5 flex items-center gap-1.5">
+                    <ShieldAlert className="w-4 h-4 text-rose-600" />
+                    <span>Corrections & Attribution</span>
+                  </h3>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400 mb-3">
+                    Cite the specific headline, published date, and requested correction.
+                  </p>
+                  <a
+                    href="mailto:corrections@currentnews.blog?subject=Correction%20Request"
+                    className="inline-flex items-center gap-1.5 text-xs font-bold text-rose-600 dark:text-rose-400 hover:underline"
                   >
-                    <Send className="w-3.5 h-3.5" />
-                    <span>{status === 'submitting' ? 'Transmitting...' : 'Send Inquiry'}</span>
-                  </button>
-                </form>
-              )}
+                    <span>Email Corrections Desk</span>
+                    <Send className="w-3 h-3" />
+                  </a>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl border border-blue-100 dark:border-blue-900/40 bg-blue-50/50 dark:bg-blue-950/20 text-xs text-blue-900 dark:text-blue-200 space-y-1">
+                <strong className="block font-bold">Newsroom SLA:</strong>
+                <p className="text-[11px] text-blue-800 dark:text-blue-300">
+                  All correspondence sent to <strong className="font-mono">help@currentnews.blog</strong> is logged and routed to our editors. Verified inquiries receive an acknowledgement within 24 to 48 business hours.
+                </p>
+              </div>
             </div>
           </div>
 

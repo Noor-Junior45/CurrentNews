@@ -24,7 +24,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Link, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { getRecentInProgressArticles, clearReadingProgress, ReadingProgressRecord } from '../utils/readingProgress';
 import { updateDocumentSEO } from '../utils/seo';
-import { getCompressedStories, saveCompressedStories, saveCompressedStory, getDeletedStoryIds } from '../utils/compressedStorage';
+import { getCompressedStories, saveCompressedStories, saveCompressedStory, getDeletedStoryIds, syncDeletedStoriesFromRemote } from '../utils/compressedStorage';
 import { safeFormatDate } from '../utils/dateHelper';
 import { clientLoadBalancer } from '../utils/clientLoadBalancer';
 
@@ -360,6 +360,11 @@ export default function HomeView() {
   };
 
   useEffect(() => {
+    syncDeletedStoriesFromRemote().then((remoteDeleted) => {
+      if (remoteDeleted && remoteDeleted.size > 0) {
+        setPosts(prev => prev.filter(p => p && p.id && !remoteDeleted.has(p.id)));
+      }
+    });
     fetchPosts();
   }, []);
 
@@ -663,7 +668,7 @@ export default function HomeView() {
                     id={`hero-poster-slide-${activePoster.id}`}
                   >
                     {/* Background Poster Image */}
-                    {activePoster.imageUrl ? (
+                    {activePoster.imageUrl && activePoster.imageUrl.trim().length > 0 ? (
                       <img
                         src={cleanImageUrl(activePoster.imageUrl)}
                         alt={activePoster.title}
@@ -671,27 +676,29 @@ export default function HomeView() {
                         className="absolute inset-0 w-full h-full object-cover transition-transform duration-1000 ease-out group-hover:scale-[1.03]"
                       />
                     ) : (
-                      <div className="absolute inset-0 bg-gradient-to-br from-[#2D1F13] via-[#1E293B] to-[#0F172A] flex items-center justify-center p-8">
-                        <Newspaper className="w-36 h-36 text-[#B5A490]/25" />
+                      <div className="absolute inset-0 overflow-hidden bg-slate-900">
+                        <img
+                          src="/editorial-default-poster.jpg"
+                          alt={activePoster.title || 'Current News Editorial'}
+                          className="w-full h-full object-cover transition-transform duration-1000 ease-out group-hover:scale-[1.03] opacity-90"
+                        />
+                        <div className="absolute inset-0 bg-[#0F172A]/40 mix-blend-multiply" />
                       </div>
                     )}
 
                     {/* Rich Multi-Layer Scrim: Guarantees 100% WCAG AA contrast across light, beige, dark, or photographic backgrounds */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-[#1F1914] via-[#1F1914]/70 via-40% to-black/25" />
-                    <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-transparent to-transparent hidden sm:block" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#1F1914] via-[#1F1914]/75 via-45% to-black/30" />
+                    <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/25 to-transparent hidden sm:block" />
 
                     {/* Content Overlay */}
-                    <div className="relative z-10 p-4 sm:p-8 lg:p-12 flex flex-col justify-end h-full max-w-4xl">
+                    <div className="relative z-10 p-4 sm:p-8 lg:p-12 flex flex-col justify-end h-full w-full box-border">
                       <div className="flex items-center gap-2 mb-2 sm:mb-3.5">
                         <span className="bg-[#1E3A8A] text-white text-[10px] sm:text-[11px] font-bold uppercase tracking-wider px-2 sm:px-3 py-0.5 sm:py-1 rounded shadow-sm">
                           {activePoster.category || 'Featured Lead'}
                         </span>
-                        <span className="text-[10px] sm:text-xs font-mono text-[#E8DEC8] font-medium tracking-wide">
-                          Featured Dispatch
-                        </span>
                       </div>
 
-                      <h1 className="font-display font-extrabold text-lg xs:text-xl sm:text-2xl md:text-3xl lg:text-5xl text-white group-hover:text-blue-100 transition-colors leading-[1.18] mb-2 sm:mb-4 line-clamp-2 sm:line-clamp-3 drop-shadow-sm">
+                      <h1 className="font-display font-extrabold text-lg xs:text-xl sm:text-2xl md:text-3xl lg:text-5xl text-white group-hover:text-blue-100 transition-colors leading-[1.3] sm:leading-[1.28] md:leading-[1.24] py-1 mb-2 sm:mb-4 line-clamp-2 sm:line-clamp-3 drop-shadow-sm max-w-4xl overflow-visible">
                         {activePoster.title}
                       </h1>
 
@@ -699,7 +706,7 @@ export default function HomeView() {
                         {getHtmlTextPreview(activePoster.content, 180)}
                       </p>
 
-                      <div className="pt-2.5 sm:pt-4 border-t border-white/20 flex flex-wrap items-center justify-between gap-2 sm:gap-4 text-xs text-[#E8DEC8]">
+                      <div className="pt-2.5 sm:pt-4 border-t border-white/20 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs text-[#E8DEC8] w-full">
                         <div className="flex items-center gap-2 font-mono text-[10px] sm:text-xs">
                           <span className="text-white font-semibold">
                             {activePoster.authorName || 'Current News'}
@@ -708,7 +715,7 @@ export default function HomeView() {
                           <span>{safeFormatDate(activePoster.createdAt)}</span>
                         </div>
 
-                        <span className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-1.5 sm:py-2.5 bg-white text-[#1E3A8A] font-bold text-[11px] sm:text-xs lg:text-sm rounded-lg sm:rounded-xl group-hover:bg-[#1E3A8A] group-hover:text-white transition-all shadow-md">
+                        <span className="inline-flex self-start sm:self-auto sm:ml-auto items-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-1.5 sm:py-2.5 bg-white text-[#1E3A8A] font-bold text-[11px] sm:text-xs lg:text-sm rounded-lg sm:rounded-xl group-hover:bg-[#1E3A8A] group-hover:text-white transition-all shadow-md shrink-0">
                           <span>Read Full Report</span>
                           <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                         </span>
@@ -958,9 +965,8 @@ export default function HomeView() {
                   </h3>
                 </div>
 
-                <div className="flex flex-col items-start space-y-2 pl-1 sm:pl-2" id="top-articles-list">
+                <div className="flex flex-col items-start space-y-2 pl-1 sm:pl-2 w-full" id="top-articles-list">
                   {topArticles.map((item, index) => {
-                    const truncatedTitle = item.title.length > 44 ? item.title.slice(0, 42).trim() + '...' : item.title;
                     return (
                       <button
                         key={item.id}
@@ -974,14 +980,15 @@ export default function HomeView() {
                           } catch (_) {}
                           navigate(`/post/${item.id}/${slugify(item.title)}`, { state: { previewPost: item } });
                         }}
-                        className="w-full text-left bg-transparent border-0 py-1.5 text-sm sm:text-base text-slate-800 dark:text-slate-200 hover:text-emerald-700 dark:hover:text-emerald-400 transition-colors cursor-pointer inline-flex items-center gap-2 group active:scale-[0.99]"
+                        className="w-full min-w-0 text-left bg-transparent border-0 py-1.5 text-sm sm:text-base text-slate-800 dark:text-slate-200 hover:text-emerald-700 dark:hover:text-emerald-400 transition-colors cursor-pointer flex items-center gap-2 group active:scale-[0.99] overflow-hidden"
                         id={`top-article-btn-${item.id}`}
+                        title={item.title}
                       >
                         <span className="font-bold text-slate-900 dark:text-white shrink-0 font-mono text-xs sm:text-sm">
                           {index + 1}.
                         </span>
-                        <span className="font-serif font-medium text-slate-900 dark:text-slate-100 group-hover:text-emerald-700 dark:group-hover:text-emerald-400 truncate">
-                          {truncatedTitle}
+                        <span className="font-serif font-medium text-slate-900 dark:text-slate-100 group-hover:text-emerald-700 dark:group-hover:text-emerald-400 truncate min-w-0 flex-1">
+                          {item.title}
                         </span>
                       </button>
                     );

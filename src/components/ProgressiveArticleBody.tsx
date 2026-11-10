@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import AdMobNativeAd from './AdMobNativeAd';
+import { sanitizeArticleHtml } from '../utils/sanitizeHtml';
 
 interface ProgressiveArticleBodyProps {
   contentHtml: string;
@@ -155,7 +156,7 @@ export default function ProgressiveArticleBody({
               }`}
             >
               <div
-                dangerouslySetInnerHTML={{ __html: chunk.html }}
+                dangerouslySetInnerHTML={{ __html: sanitizeArticleHtml(chunk.html) }}
                 className="article-rich-text prose max-w-none break-word break-words"
               />
             </div>

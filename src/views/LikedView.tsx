@@ -12,6 +12,7 @@ import { api } from '../utils/api';
 import { clientLoadBalancer } from '../utils/clientLoadBalancer';
 import { getCompressedStory } from '../utils/compressedStorage';
 import { reactionStore } from '../utils/reactionStore';
+import { sanitizeArticleHtml } from '../utils/sanitizeHtml';
 
 export default function LikedView() {
   const navigate = useNavigate();
@@ -210,7 +211,7 @@ export default function LikedView() {
           {likedPosts.map((post) => {
             // Get raw text preview
             const tempDiv = document.createElement('div');
-            tempDiv.innerHTML = post.content || '';
+            tempDiv.innerHTML = sanitizeArticleHtml(post.content || '');
             const rawText = tempDiv.textContent || tempDiv.innerText || '';
             const preview = rawText.substring(0, 140).trim() + (rawText.length > 140 ? '...' : '');
 

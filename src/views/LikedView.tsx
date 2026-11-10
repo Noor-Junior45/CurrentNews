@@ -272,7 +272,7 @@ export default function LikedView() {
                       )}
                     </div>
 
-                    <h3 className="font-sans font-bold text-sm sm:text-base text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors tracking-tight leading-snug line-clamp-2">
+                    <h3 className="font-sans font-bold text-sm sm:text-base text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors leading-[1.4] py-0.5 line-clamp-2">
                       {post.title}
                     </h3>
 

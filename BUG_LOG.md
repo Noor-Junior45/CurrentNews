@@ -219,11 +219,17 @@
     2. Set hero poster headline to relaxed `leading-[1.3] sm:leading-[1.28] md:leading-[1.24]` with `py-1` and `overflow-visible`, ensuring Devanagari script renders with 100% full matra visibility.
     3. Replaced hardcoded title slicing with native CSS `min-w-0 flex-1 truncate`, ensuring single-line ellipsis on mobile phones and natural long headline previews on tablet and laptop screens without altering font size.
 
-- [x] **Bug ID & Summary:** BUG-044 — Cloud Build Docker failure: `COPY failed: stat app/data: file does not exist`.
+- [x] **Bug ID & Summary:** BUG-045 — Devanagari vowel matras (`े`, `ै`, `ो`, `ौ`, `ं`, `ु`, `ू`) clipped on phone screen in article cards.
   - **Root Cause:**
-    `data/` is explicitly listed in `.gitignore` and was not tracked in git (articles and images migrated to Neon DB and Cloudflare R2). In `Dockerfile` Stage 2 (runner stage), `COPY --from=builder /app/data ./data` attempted to copy `/app/data` from the builder stage. Because `/app/data` was not in the build context, Cloud Build failed at step 16 with exit code 1.
+    1. In `BlogPostCard.tsx`, the card title had `leading-snug` (tight line height of 1.375) and `tracking-tight` (-0.025em letter-spacing), causing glyph collision on mobile screens.
+    2. Zero vertical padding (`py-0`) combined with `line-clamp-2` caused the bounding box's `overflow: hidden` to clip top vowel matras (`े`, `ै`, `ो`, `ौ`, `ं`) at the upper clamp boundary and bottom vowel matras (`ु`, `ू`, `्`) at the lower clamp boundary.
+    3. The font stack lacked explicit `"Noto Sans Devanagari"` support, causing fallback font height mismatches on mobile devices.
   - **Permanent Guardrail:**
-    Updated `Dockerfile` and `CLOUD_RUN_DEPLOY.md` to remove `COPY --from=builder /app/data ./data` and replaced it with `RUN mkdir -p data/img` in the runner stage. This ensures `/app/data/img` exists at runtime for Express static caching (`app.use('/img', express.static(...))`) without depending on local directory existence during container builds.
+    1. In `BlogPostCard.tsx`, updated title heading to `leading-[1.45] sm:leading-[1.38]`, removed `tracking-tight`, added `py-1`, and moved clean `line-clamp-2` to the block heading with `sm:min-h-[2.9rem]`.
+    2. Added `py-0.5` to excerpt description `<p>` and metadata spans to protect Devanagari text in multi-line clamp.
+    3. Added `Noto Sans Devanagari` to Google Fonts import and font stacks in `src/index.css` for cross-device Devanagari rendering.
+    4. Applied matching relaxed leading and `py-0.5` padding across `LikedView.tsx`, `HomeView.tsx`, and `PostDetailView.tsx`.
+
 
 
 

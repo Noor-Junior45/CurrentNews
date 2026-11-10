@@ -177,26 +177,26 @@ export default function BlogPostCard({ post, globalPenName, cardStats, isLikedBy
       <div className="p-4 sm:p-5 flex flex-col flex-1 justify-between select-text sm:h-full">
         
         <div className="flex flex-col">
-          {/* Heading of article */}
-          <h3 className="font-display font-bold text-lg sm:text-[15px] lg:text-base text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 tracking-tight leading-snug mb-1.5 sm:mb-2 transition-colors sm:line-clamp-2 sm:h-[2.75rem]">
-            <span onClick={handleOpenPost} className="text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors line-clamp-2 sm:line-clamp-2">
+          {/* Heading of article: Relaxed leading, vertical padding, and clean line-clamp ensure Devanagari vowel matras (े, ै, ो, ौ, ं, ु, ू) are 100% visible on phone screens */}
+          <h3 className="font-display font-bold text-lg sm:text-[15px] lg:text-base text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 leading-[1.45] sm:leading-[1.38] py-1 mb-1 sm:mb-1.5 transition-colors line-clamp-2 sm:min-h-[2.9rem] overflow-hidden">
+            <span onClick={handleOpenPost} className="text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
               {cleanTitle}
             </span>
           </h3>
 
           {/* Writer name (no avatar), Date, Tag badge, YouTube & Facebook icons in the same line */}
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs mb-2 sm:mb-2.5 font-sans shrink-0">
-            <span className="font-semibold text-slate-800 dark:text-slate-200 truncate max-w-[120px] sm:max-w-[130px]">
+            <span className="font-semibold text-slate-800 dark:text-slate-200 truncate max-w-[120px] sm:max-w-[130px] py-0.5">
               {displayedAuthor}
             </span>
             <span className="text-slate-300 dark:text-slate-600 select-none">•</span>
-            <span className="text-slate-500 dark:text-slate-400 font-mono text-[11px] sm:text-xs shrink-0">
+            <span className="text-slate-500 dark:text-slate-400 font-mono text-[11px] sm:text-xs shrink-0 py-0.5">
               {publishDate}
             </span>
 
             {/* Tag text between date and social media logos without background box */}
             <span className="text-slate-300 dark:text-slate-600 select-none">•</span>
-            <span className="card-category-tag text-xs font-semibold text-indigo-600 dark:text-indigo-400 capitalize truncate max-w-[85px]">
+            <span className="card-category-tag text-xs font-semibold text-indigo-600 dark:text-indigo-400 capitalize truncate max-w-[85px] py-0.5">
               {post.category || 'General'}
             </span>
 
@@ -220,8 +220,8 @@ export default function BlogPostCard({ post, globalPenName, cardStats, isLikedBy
             )}
           </div>
 
-          {/* Excerpt / Summary Description */}
-          <p className="text-sm sm:text-xs lg:text-[13px] text-slate-600 dark:text-slate-300 line-clamp-3 sm:line-clamp-2 sm:h-[2.35rem] leading-relaxed mb-3 sm:mb-2 overflow-hidden">
+          {/* Excerpt / Summary Description: Added py-0.5 to prevent bottom matra clipping on multiline clamp */}
+          <p className="text-sm sm:text-xs lg:text-[13px] text-slate-600 dark:text-slate-300 line-clamp-3 sm:line-clamp-2 sm:min-h-[2.4rem] leading-relaxed py-0.5 mb-3 sm:mb-2 overflow-hidden">
             {previewText || <span className="italic text-slate-400 dark:text-slate-500">No text preview available.</span>}
           </p>
         </div>

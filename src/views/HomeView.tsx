@@ -769,7 +769,7 @@ export default function HomeView() {
                       {item.progress}% read
                     </span>
                   </div>
-                  <h4 className="text-xs font-bold text-slate-900 dark:text-white line-clamp-2 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
+                  <h4 className="text-xs font-bold text-slate-900 dark:text-white line-clamp-2 py-0.5 leading-[1.38] group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
                     {item.title}
                   </h4>
                 </div>
@@ -987,7 +987,7 @@ export default function HomeView() {
                         <span className="font-bold text-slate-900 dark:text-white shrink-0 font-mono text-xs sm:text-sm">
                           {index + 1}.
                         </span>
-                        <span className="font-serif font-medium text-slate-900 dark:text-slate-100 group-hover:text-emerald-700 dark:group-hover:text-emerald-400 truncate min-w-0 flex-1">
+                        <span className="font-serif font-medium text-slate-900 dark:text-slate-100 group-hover:text-emerald-700 dark:group-hover:text-emerald-400 truncate min-w-0 flex-1 py-0.5 leading-[1.38]">
                           {item.title}
                         </span>
                       </button>

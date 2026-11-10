@@ -1251,7 +1251,7 @@ export default function PostDetailView() {
                         {relatedPost.authorName || globalPenName || 'Current News'}
                       </span>
                     </div>
-                    <h4 className="font-display font-bold text-slate-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 text-base sm:text-lg leading-snug line-clamp-2 transition-colors duration-150 mb-2">
+                    <h4 className="font-display font-bold text-slate-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 text-base sm:text-lg leading-[1.42] py-0.5 line-clamp-2 transition-colors duration-150 mb-2">
                       {relatedPost.title}
                     </h4>
                     <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-2 sm:line-clamp-3 leading-relaxed mb-3 grow font-sans">

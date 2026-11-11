@@ -235,6 +235,20 @@ export function sanitizePostImages<T extends {
       sanitized.imageUrl = ytThumb;
       sanitized.imageUrlFallback = ytThumb;
     }
+  } else if (Array.isArray(sanitized.imageUrls) && sanitized.imageUrls.length > 0) {
+    const firstGallery = sanitized.imageUrls.find(u => u && typeof u === 'string' && isLikelyImageUrl(u));
+    if (firstGallery) {
+      const clean = cleanImageUrl(firstGallery);
+      sanitized.imageUrl = clean;
+      sanitized.imageUrlFallback = getFallbackImageUrl(clean);
+    }
+  } else if (sanitized.content && typeof sanitized.content === 'string') {
+    const match = sanitized.content.match(/<img[^>]+src=["']([^"']+)["']/i);
+    if (match && match[1] && isLikelyImageUrl(match[1])) {
+      const clean = cleanImageUrl(match[1]);
+      sanitized.imageUrl = clean;
+      sanitized.imageUrlFallback = getFallbackImageUrl(clean);
+    }
   }
 
   // 2. Process gallery imageUrls
@@ -260,22 +274,74 @@ export function sanitizePostImages<T extends {
   // Also clean any malformed image tags or URLs inside content
   if (sanitized.content && typeof sanitized.content === 'string') {
     sanitized.content = sanitized.content.replace(
-      /https:\/\/(?:https\/\/)?media\.currentnews\.blog\/uploads\/photo\.jpg\/uploads\//g,
+      /(?:https?[:/]*)*media\.currentnews\.blog\/uploads\/photo\.jpg\/uploads\//gi,
       'https://media.currentnews.blog/uploads/'
     );
     sanitized.content = sanitized.content.replace(
-      /https:\/\/(?:https\/\/)?media\.currentnews\.blog\/uploads\/photo\.jpg\/img\//g,
+      /(?:https?[:/]*)*media\.currentnews\.blog\/uploads\/photo\.jpg\/img\//gi,
       'https://media.currentnews.blog/img/'
     );
     sanitized.content = sanitized.content.replace(
-      /https:\/\/https\/\/media\.currentnews\.blog\//g,
+      /https:\/\/(?:https:?\/\/)+media\.currentnews\.blog\//gi,
       'https://media.currentnews.blog/'
     );
     sanitized.content = sanitized.content.replace(
-      /https:\/\/https\/\/pub-[a-zA-Z0-9]+\.r2\.dev\//g,
+      /https:\/\/(?:https:?\/\/)+pub-[a-zA-Z0-9]+\.r2\.dev\//gi,
       'https://pub-03dd1274c4824531a1478f20e0485d75.r2.dev/'
     );
+    // Dynamically clean every <img src="..."> in the content body
+    sanitized.content = sanitized.content.replace(/<img[^>]+src=["']([^"']+)["'][^>]*>/gi, (imgTag, srcUrl) => {
+      const cleanSrc = cleanImageUrl(srcUrl);
+      if (cleanSrc && cleanSrc !== srcUrl) {
+        return imgTag.replace(srcUrl, cleanSrc);
+      }
+      return imgTag;
+    });
   }
 
   return sanitized;
+}
+
+/**
+ * Resolves the primary cover photo for an article across all possible fields:
+ * 1. post.imageUrl / post.image_url
+ * 2. post.imageUrls[0] / post.image_urls[0]
+ * 3. post.imageUrlFallback / post.image_url_fallback
+ * 4. First <img> found inside post.content
+ * Returns the cleaned URL if found, or an empty string if the article has no photo.
+ */
+export function getPostCoverImage(post?: any): string {
+  if (!post || typeof post !== 'object') return '';
+
+  const raw = post.imageUrl || post.image_url;
+  if (raw && typeof raw === 'string' && raw.trim().length > 0) {
+    const cleaned = cleanImageUrl(raw);
+    if (cleaned) return cleaned;
+  }
+
+  const gallery = Array.isArray(post.imageUrls) ? post.imageUrls : (Array.isArray(post.image_urls) ? post.image_urls : []);
+  if (gallery && gallery.length > 0) {
+    for (const img of gallery) {
+      if (img && typeof img === 'string' && img.trim().length > 0) {
+        const cleaned = cleanImageUrl(img);
+        if (cleaned) return cleaned;
+      }
+    }
+  }
+
+  const fallback = post.imageUrlFallback || post.image_url_fallback;
+  if (fallback && typeof fallback === 'string' && fallback.trim().length > 0) {
+    const cleaned = cleanImageUrl(fallback);
+    if (cleaned) return cleaned;
+  }
+
+  if (post.content && typeof post.content === 'string') {
+    const match = post.content.match(/<img[^>]+src=["']([^"']+)["']/i);
+    if (match && match[1]) {
+      const cleaned = cleanImageUrl(match[1]);
+      if (cleaned) return cleaned;
+    }
+  }
+
+  return '';
 }

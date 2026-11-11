@@ -253,10 +253,18 @@ class ClientLoadBalancer {
 
         const resp = await fetch(requestUrl, {
           signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+          headers: { 'Accept': 'application/json' },
         });
 
-        if (resp.ok) {
-          const json = await resp.json();
+        const contentType = resp.headers.get('content-type') || '';
+        if (resp.ok && contentType.includes('application/json')) {
+          const rawText = await resp.text();
+          const trimmed = rawText.trim();
+          if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+            this.recordFailure(node.id);
+            continue;
+          }
+          const json = JSON.parse(trimmed);
           let rawPosts: any[] = [];
 
           if (node.type === 'edge-d1') {
@@ -361,9 +369,19 @@ class ClientLoadBalancer {
             ? `${node.baseUrl}/posts/${id}`
             : `${node.baseUrl}/articles/${id}.json`);
 
-        const resp = await fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
-        if (resp.ok) {
-          const json = await resp.json();
+        const resp = await fetch(url, {
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+          headers: { 'Accept': 'application/json' },
+        });
+        const contentType = resp.headers.get('content-type') || '';
+        if (resp.ok && contentType.includes('application/json')) {
+          const rawText = await resp.text();
+          const trimmed = rawText.trim();
+          if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+            this.recordFailure(node.id);
+            continue;
+          }
+          const json = JSON.parse(trimmed);
           const target = node.type === 'edge-d1'
             ? mapD1ArticleToPost(json?.article)
             : (node.type === 'origin-api' ? json?.post : json);

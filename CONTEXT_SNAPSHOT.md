@@ -321,7 +321,17 @@
   - Multi-Tier Article Resolution in `src/server/postsApi.ts`: Updated `handleGetPostById` to check (a) in-memory cache, (b) Cloudflare Edge Worker at `WORKER_BASE_URL` or `https://api.currentnews.blog` (`GET /articles/:id` with 4s timeout), (c) R2 and local disk as final fallback.
   - Consistent D1 Schema Mapping: Implemented `mapD1ArticleToPost` mapping `title`, `content`, `category`, `hashtags`, `imageUrl`, `imageUrlFallback`, `imageUrls`, `imageUrlsFallback`, `imagePosition`, `galleryPositions`, `youtubeUrl`, `facebookUrl`, `authorName`, `createdAt`, `updatedAt`, `status: "published"`.
   - Feed Fallback: Updated `handleGetPosts` to fall back to Worker `GET /articles?limit=100` if R2 and disk return no articles, preserving the 60-second in-memory cache.
-  - Strict Published Filter & 404 Safety: Ensured only articles with `status: "published"` are returned, tombstoned/deleted articles return 404, missing articles consistently return `{ success: false, error: "Article not found" }`, and missing articles never trigger HTTP 500.
+- [x] **Phase 73 (Worker Safe JSON Parsing & HTML Response Interception):** [COMPLETED]
+  - Diagnosed and fixed `[Posts API] Worker article fetch deferred/failed: SyntaxError: Unexpected token '<', "<!doctype "... is not valid JSON` in `src/server/postsApi.ts` and `src/utils/clientLoadBalancer.ts`.
+  - Added explicit `Accept: 'application/json'` request header on all Worker fetch calls.
+  - Guarded response parsing with `resp.headers.get('content-type')?.includes('application/json')` and string inspection (`rawText.trim().startsWith('{')` / `[`).
+- [x] **Phase 74 (Dynamic Hero Poster Article Photo & Editorial Fallback):** [COMPLETED]
+  - Created `getPostCoverImage(post)` in `src/utils/imageUrl.ts` to inspect `imageUrl`, `image_url`, `imageUrls[0]`, `imageUrlFallback`, and `content` `<img>` tags.
+  - Updated `HomeView.tsx` hero showcase poster: renders the article's real photo when present (with `onError` fallback to `/editorial-default-poster.jpg`), and cleanly renders the default editorial poster when no image is present.
+- [x] **Phase 75 (Article Image Breakdown & Malformed URL Sanitization):** [COMPLETED]
+  - Diagnosed root cause of article image breakdown in `PQRf0KBMW81Cl7VFNyJL` ("सऊदी अरब में दो बांग्लादेशी नागरिकों..."): legacy HTML stored `https://https://media.currentnews.blog/uploads/photo.jpg/img/...` with double protocols that browsers could not resolve as hostnames.
+  - Added DOMPurify `IMG` hook in `src/utils/sanitizeHtml.ts` and enhanced `src/utils/imageUrl.ts` and `PostDetailView.tsx` to automatically self-heal all inline `<img src="...">` URLs using `cleanImageUrl()`.
+  - Audited and sanitized all 41 articles and 49 images in `data/articles/*.json`; verified that 100% of the 45 unique CDN image URLs return HTTP 200 OK.
 - **Immediate Next Step:** Production deployment verification on Google Cloud Run.
 
 

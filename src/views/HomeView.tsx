@@ -4,7 +4,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { api, PostStats } from '../utils/api';
 import { reactionStore } from '../utils/reactionStore';
 import { Post, slugify } from '../types';
-import { sanitizePostImages, cleanImageUrl } from '../utils/imageUrl';
+import { sanitizePostImages, cleanImageUrl, getPostCoverImage } from '../utils/imageUrl';
 import BlogPostCard from '../components/BlogPostCard';
 import AdSpace from '../components/AdSpace';
 import AdMobNativeAd from '../components/AdMobNativeAd';
@@ -430,10 +430,13 @@ export default function HomeView() {
   // Use category-filtered dispatches if available; gracefully fallback to publishedPosts if a category has 0 posts
   const activePosterPool = categoryPostsForPoster.length > 0 ? categoryPostsForPoster : publishedPosts;
 
-  const postsWithImage = activePosterPool.filter((p) => p.imageUrl && p.imageUrl.trim().length > 0);
+  const postsWithImage = activePosterPool.filter((p) => {
+    const cover = getPostCoverImage(p);
+    return cover && cover.trim().length > 0;
+  });
   const posterPosts = (postsWithImage.length >= 3 
     ? postsWithImage 
-    : [...postsWithImage, ...activePosterPool.filter(p => !p.imageUrl || !p.imageUrl.trim().length)]
+    : [...postsWithImage, ...activePosterPool.filter(p => !getPostCoverImage(p))]
   ).slice(0, 6);
 
   const [currentPosterIndex, setCurrentPosterIndex] = useState(0);
@@ -670,23 +673,31 @@ export default function HomeView() {
                     id={`hero-poster-slide-${activePoster.id}`}
                   >
                     {/* Background Poster Image */}
-                    {activePoster.imageUrl && activePoster.imageUrl.trim().length > 0 ? (
-                      <img
-                        src={cleanImageUrl(activePoster.imageUrl)}
-                        alt={activePoster.title}
-                        referrerPolicy="no-referrer"
-                        className="absolute inset-0 w-full h-full object-cover transition-transform duration-1000 ease-out group-hover:scale-[1.03]"
-                      />
-                    ) : (
-                      <div className="absolute inset-0 overflow-hidden bg-slate-900">
+                    {(() => {
+                      const posterCover = getPostCoverImage(activePoster);
+                      return posterCover ? (
                         <img
-                          src="/editorial-default-poster.jpg"
-                          alt={activePoster.title || 'Current News Editorial'}
-                          className="w-full h-full object-cover transition-transform duration-1000 ease-out group-hover:scale-[1.03] opacity-90"
+                          src={posterCover}
+                          alt={activePoster.title}
+                          referrerPolicy="no-referrer"
+                          onError={(e) => {
+                            const target = e.currentTarget;
+                            target.onerror = null;
+                            target.src = '/editorial-default-poster.jpg';
+                          }}
+                          className="absolute inset-0 w-full h-full object-cover transition-transform duration-1000 ease-out group-hover:scale-[1.03]"
                         />
-                        <div className="absolute inset-0 bg-[#0F172A]/40 mix-blend-multiply" />
-                      </div>
-                    )}
+                      ) : (
+                        <div className="absolute inset-0 overflow-hidden bg-slate-900">
+                          <img
+                            src="/editorial-default-poster.jpg"
+                            alt={activePoster.title || 'Current News Editorial'}
+                            className="w-full h-full object-cover transition-transform duration-1000 ease-out group-hover:scale-[1.03] opacity-90"
+                          />
+                          <div className="absolute inset-0 bg-[#0F172A]/40 mix-blend-multiply" />
+                        </div>
+                      );
+                    })()}
 
                     {/* Rich Multi-Layer Scrim: Guarantees 100% WCAG AA contrast across light, beige, dark, or photographic backgrounds */}
                     <div className="absolute inset-0 bg-gradient-to-t from-[#1F1914] via-[#1F1914]/75 via-45% to-black/30" />

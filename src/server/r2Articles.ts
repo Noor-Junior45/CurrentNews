@@ -224,21 +224,39 @@ export function extractPlainExcerpt(htmlOrText: string, maxLength = 200): string
  */
 export function toLightArticle(post: any): any {
   if (!post || !post.id) return null;
-  const cleanImg = cleanImageUrl(post.imageUrl);
+  let rawImg = post.imageUrl || post.image_url || '';
+  if (!rawImg && Array.isArray(post.imageUrls) && post.imageUrls.length > 0) {
+    rawImg = post.imageUrls[0];
+  }
+  if (!rawImg && Array.isArray(post.image_urls) && post.image_urls.length > 0) {
+    rawImg = post.image_urls[0];
+  }
+  if (!rawImg && (post.imageUrlFallback || post.image_url_fallback)) {
+    rawImg = post.imageUrlFallback || post.image_url_fallback;
+  }
+  if (!rawImg && post.content && typeof post.content === 'string') {
+    const match = post.content.match(/<img[^>]+src=["']([^"']+)["']/i);
+    if (match && match[1]) {
+      rawImg = match[1];
+    }
+  }
+  const cleanImg = cleanImageUrl(rawImg);
+  const rawImageUrls = Array.isArray(post.imageUrls) ? post.imageUrls : (Array.isArray(post.image_urls) ? post.image_urls : []);
+  const cleanImageUrls = rawImageUrls.map(cleanImageUrl).filter(Boolean);
 
   return {
     id: post.id,
     title: post.title || '',
     category: post.category || 'General',
-    authorName: post.authorName || 'Current News',
-    authorEmail: post.authorEmail || '',
-    authorId: post.authorId || '',
-    createdAt: post.createdAt || new Date().toISOString(),
+    authorName: post.authorName || post.author_name || 'Current News',
+    authorEmail: post.authorEmail || post.author_email || '',
+    authorId: post.authorId || post.author_id || '',
+    createdAt: post.createdAt || post.created_at || post.publishedAt || post.published_at || new Date().toISOString(),
     status: post.status || 'published',
     imageUrl: cleanImg,
-    imageUrls: Array.isArray(post.imageUrls) ? post.imageUrls.map(cleanImageUrl) : [],
-    youtubeUrl: post.youtubeUrl || '',
-    facebookUrl: post.facebookUrl || '',
+    imageUrls: cleanImageUrls.length > 0 ? cleanImageUrls : (cleanImg ? [cleanImg] : []),
+    youtubeUrl: post.youtubeUrl || post.youtube_url || '',
+    facebookUrl: post.facebookUrl || post.facebook_url || '',
     hashtags: Array.isArray(post.hashtags) ? post.hashtags : [],
     likes: typeof post.likes === 'number' ? post.likes : 0,
     dislikes: typeof post.dislikes === 'number' ? post.dislikes : 0,
@@ -388,10 +406,13 @@ export function loadLocalFeed(): any[] {
             const light = toLightArticle(fullArticle);
             if (light) {
               if (map.has(fullArticle.id)) {
-                // Merge enriched fields like authorEmail, authorId
+                // Merge enriched fields like authorEmail, authorId, imageUrl, imageUrls
                 const existing = map.get(fullArticle.id);
                 map.set(fullArticle.id, {
                   ...existing,
+                  ...light,
+                  imageUrl: light.imageUrl || existing.imageUrl || '',
+                  imageUrls: (light.imageUrls && light.imageUrls.length > 0) ? light.imageUrls : (existing.imageUrls || []),
                   authorEmail: existing.authorEmail || light.authorEmail || '',
                   authorId: existing.authorId || light.authorId || '',
                   authorName: existing.authorName || light.authorName || 'Current News',
@@ -945,10 +966,12 @@ function mergeFeedWithLocalAndCache(remoteArticles: any[]): any[] {
     if (!postMap.has(p.id)) {
       postMap.set(p.id, light);
     } else {
-      // Enrich existing CDN item with authorEmail and authorId if CDN had stripped them
+      // Enrich existing CDN item with authorEmail, authorId, imageUrl, and imageUrls if CDN had stripped them
       const existing = postMap.get(p.id);
       postMap.set(p.id, {
         ...existing,
+        imageUrl: existing.imageUrl || light.imageUrl || '',
+        imageUrls: (existing.imageUrls && existing.imageUrls.length > 0) ? existing.imageUrls : (light.imageUrls || []),
         authorEmail: existing.authorEmail || light.authorEmail || '',
         authorId: existing.authorId || light.authorId || '',
         authorName: existing.authorName || light.authorName || 'Current News',

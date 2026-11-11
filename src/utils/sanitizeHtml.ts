@@ -1,4 +1,5 @@
 import DOMPurify from 'dompurify';
+import { cleanImageUrl } from './imageUrl';
 
 const ALLOWED_TAGS = [
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
@@ -45,6 +46,19 @@ function ensureHooks() {
       if (!valid) {
         node.remove();
       }
+    }
+
+    // Normalize and self-heal image src attributes
+    if (node.tagName === 'IMG') {
+      const rawSrc = node.getAttribute('src');
+      if (rawSrc) {
+        const cleanedSrc = cleanImageUrl(rawSrc);
+        if (cleanedSrc) {
+          node.setAttribute('src', cleanedSrc);
+        }
+      }
+      node.setAttribute('loading', 'lazy');
+      node.setAttribute('decoding', 'async');
     }
 
     // Enforce URL scheme restrictions (only http and https allowed)

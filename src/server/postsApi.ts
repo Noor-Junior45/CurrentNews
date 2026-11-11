@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import type { Request, Response } from 'express';
 import { cleanImageUrl, getFallbackImageUrl } from '../utils/imageUrl.ts';
-import { getFeedFromR2, getArticleFromR2, getDeletedArticleIds, registerOnArticleDeletedHook } from './r2Articles.ts';
+import { getFeedFromR2, getArticleFromR2, getDeletedArticleIds, registerOnArticleDeletedHook, loadLocalFeed } from './r2Articles.ts';
 
 interface CachedPost {
   id: string;
@@ -92,12 +92,18 @@ export function invalidatePostsCache(): void {
 
 function getDiskFeed(): CachedPost[] {
   try {
+    const local = loadLocalFeed();
+    if (local && Array.isArray(local) && local.length > 0) {
+      return local;
+    }
     const feedFile = path.join(process.cwd(), 'data', 'feed.json');
     if (fs.existsSync(feedFile)) {
       const data = JSON.parse(fs.readFileSync(feedFile, 'utf-8'));
       if (Array.isArray(data)) {
         const deletedIds = getDeletedArticleIds();
-        return data.filter(p => p && p.id && !deletedIds.has(p.id) && (p.status || 'published').toLowerCase() === 'published');
+        return data
+          .map(mapD1ArticleToPost)
+          .filter(p => p && p.id && !deletedIds.has(p.id) && (p.status || 'published').toLowerCase() === 'published');
       }
     }
   } catch (e) {
@@ -160,22 +166,28 @@ export async function handleGetPosts(req: Request, res: Response) {
         try {
           const workerBase = (process.env.WORKER_BASE_URL || 'https://api.currentnews.blog').replace(/\/+$/, '');
           const resp = await fetch(`${workerBase}/articles?limit=100`, {
+            headers: { 'Accept': 'application/json' },
             signal: AbortSignal.timeout(4000),
           });
-          if (resp.ok) {
-            const json = await resp.json() as any;
-            const rawArticles = Array.isArray(json?.articles)
-              ? json.articles
-              : (Array.isArray(json) ? json : []);
-            const mapped = rawArticles
-              .map(mapD1ArticleToPost)
-              .filter((p: CachedPost) => p && p.id && (p.status || 'published').toLowerCase() === 'published');
-            if (mapped.length > 0) {
-              loadedPosts = mapped;
+          const contentType = resp.headers.get('content-type') || '';
+          if (resp.ok && contentType.includes('application/json')) {
+            const rawText = await resp.text();
+            const trimmed = rawText.trim();
+            if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+              const json = JSON.parse(trimmed) as any;
+              const rawArticles = Array.isArray(json?.articles)
+                ? json.articles
+                : (Array.isArray(json) ? json : []);
+              const mapped = rawArticles
+                .map(mapD1ArticleToPost)
+                .filter((p: CachedPost) => p && p.id && (p.status || 'published').toLowerCase() === 'published');
+              if (mapped.length > 0) {
+                loadedPosts = mapped;
+              }
             }
           }
-        } catch (workerErr) {
-          console.debug('[Posts API] Worker feed fallback deferred:', workerErr);
+        } catch {
+          console.debug('[Posts API] Worker feed fallback deferred');
         }
       }
 
@@ -333,20 +345,26 @@ export async function handleGetPostById(req: Request, res: Response) {
       try {
         const workerBase = (process.env.WORKER_BASE_URL || 'https://api.currentnews.blog').replace(/\/+$/, '');
         const resp = await fetch(`${workerBase}/articles/${encodeURIComponent(id)}`, {
+          headers: { 'Accept': 'application/json' },
           signal: AbortSignal.timeout(4000),
         });
-        if (resp.ok) {
-          const json = await resp.json() as any;
-          const rawArticle = json?.article || json;
-          if (rawArticle && rawArticle.id && !deletedIds.has(rawArticle.id)) {
-            const rawStatus = (rawArticle.status || 'published').toLowerCase();
-            if (rawStatus === 'published') {
-              post = mapD1ArticleToPost(rawArticle);
+        const contentType = resp.headers.get('content-type') || '';
+        if (resp.ok && contentType.includes('application/json')) {
+          const rawText = await resp.text();
+          const trimmed = rawText.trim();
+          if (trimmed.startsWith('{')) {
+            const json = JSON.parse(trimmed) as any;
+            const rawArticle = json?.article || json;
+            if (rawArticle && rawArticle.id && !deletedIds.has(rawArticle.id)) {
+              const rawStatus = (rawArticle.status || 'published').toLowerCase();
+              if (rawStatus === 'published') {
+                post = mapD1ArticleToPost(rawArticle);
+              }
             }
           }
         }
-      } catch (workerErr) {
-        console.debug('[Posts API] Worker article fetch deferred/failed:', workerErr);
+      } catch {
+        console.debug('[Posts API] Worker article fetch deferred');
       }
     }
 

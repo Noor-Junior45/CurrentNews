@@ -249,6 +249,34 @@
 - [x] **Bug ID & Summary:** BUG-049 — Reader Single Article Endpoint Returning 404 For Stories Residing Exclusively in Cloudflare D1.
   - **Root Cause:** When the client's direct Worker call failed or failed over to the reader's Express origin `GET /api/posts/:id` (`handleGetPostById`), the server only checked in-memory cache and R2/disk files. Stories published exclusively to Cloudflare D1 and not mirrored on disk showed "Article not found".
   - **Permanent Guardrail:** In `src/server/postsApi.ts`, updated `handleGetPostById` resolution order to: (a) in-memory cache, (b) Cloudflare Edge Worker at `WORKER_BASE_URL` or `https://api.currentnews.blog` (`GET /articles/:id` with 4s timeout), (c) R2/disk as last fallback. Mapped `json.article` to the standard Post shape (`mapD1ArticleToPost`), strictly returned only `status: "published"`, honored tombstoned IDs, and guaranteed standard JSON 404 `{ success: false, error: "Article not found" }` with zero 500 exceptions. Updated `handleGetPosts` to fall back to Worker `GET /articles` with 60s cache.
+- [x] **Bug ID & Summary:** BUG-050 — Cloudflare Edge Worker HTML Response Throws `SyntaxError: Unexpected token '<', "<!doctype "... is not valid JSON` in Posts API.
+  - **Root Cause:** In `src/server/postsApi.ts` (and `src/utils/clientLoadBalancer.ts`), calls to `https://api.currentnews.blog/articles/:id` or `/articles` were checked only with `if (resp.ok)`. When Cloudflare's edge proxy or fallback routes returned an HTML document (`<!doctype html>...` with `content-type: text/html; charset=utf-8`) instead of JSON, direct `resp.json()` threw an uncaught `SyntaxError: Unexpected token '<'`, which flooded the logs and triggered runtime error banners.
+  - **Permanent Guardrail:**
+    1. Sent explicit `Accept: 'application/json'` request header on all Worker fetch calls.
+    2. Verified `resp.headers.get('content-type')?.includes('application/json')` before attempting to read the response body.
+    3. Read raw text and verified `rawText.trim().startsWith('{')` (or `[` for lists) before passing to `JSON.parse`.
+    4. Suppressed noisy error logs in catch blocks with non-breaking `console.debug`, ensuring clean 404 JSON fallbacks without console errors. Applied identical safeguards to client-side `fetchPosts` and `fetchArticleById` in `clientLoadBalancer.ts`.
+
+- [x] **Bug ID & Summary:** BUG-051 — Hero Showcase Poster Showing Default Photo for All Articles Even When Articles Had Photos.
+  - **Root Cause:**
+    1. In `src/server/r2Articles.ts`, `toLightArticle(post)` checked only `post.imageUrl`, failing to map snake_case `post.image_url`, `imageUrls[0]`, `imageUrlFallback`, or `content` `<img>` tags.
+    2. `loadLocalFeed()` in `src/server/r2Articles.ts` did not enrich `existing.imageUrl` from individual full article JSON files (`data/articles/${id}.json`).
+    3. `getDiskFeed()` in `src/server/postsApi.ts` returned `data/feed.json` without mapping `image_url` to camelCase `imageUrl`, returning empty string for all posts.
+    4. In `HomeView.tsx`, the poster carousel checked only `activePoster.imageUrl`, missing articles whose photos resided in `imageUrls`, `imageUrlFallback`, or content.
+  - **Permanent Guardrail:**
+    1. Created `getPostCoverImage(post)` in `src/utils/imageUrl.ts` to inspect `imageUrl`, `image_url`, `imageUrls[0]`, `image_url_fallback`, and `content` `<img>` tags with sanitization and validation.
+    2. Updated `HomeView.tsx` hero showcase to use `getPostCoverImage(activePoster)`: renders the article's own photo when present (with `onError` fallback to `/editorial-default-poster.jpg`), and cleanly renders the default editorial poster when no image is present.
+    3. Enhanced `toLightArticle` and `loadLocalFeed` in `r2Articles.ts` and `getDiskFeed` in `postsApi.ts` to enrich and map `imageUrl` and `imageUrls` across all disk feeds, rebuilding `data/feed.json` and `data/articles/feed.json`.
+
+- [x] **Bug ID & Summary:** BUG-052 — Article Body Images Initially Visible Then Breaking Due to Corrupted Double-Protocol Prefix (`https://https://...` and `/uploads/photo.jpg/img/`).
+  - **Root Cause:**
+    1. During legacy image URL migration, 20 article manuscripts in `data/articles/*.json` had inline `<img src="...">` tags written with duplicate protocols (`https://https://media.currentnews.blog/uploads/photo.jpg/img/...`).
+    2. When opening an article, the preview post rendered the cleaned hero photo initially; then `clientLoadBalancer.fetchArticleById` loaded the full manuscript containing the raw malformed URL. Browsers failed to resolve `https://https:` as a valid hostname, causing the image to break after a second.
+    3. `src/utils/imageUrl.ts` and `src/utils/sanitizeHtml.ts` lacked inline DOMPurify hooks to self-heal existing `<img src="...">` attributes in article HTML.
+  - **Permanent Guardrail:**
+    1. In `src/utils/sanitizeHtml.ts`, added a dedicated DOMPurify `afterSanitizeAttributes` hook that intercepts all `IMG` elements and cleans `src` through `cleanImageUrl(rawSrc)`.
+    2. In `src/utils/imageUrl.ts` (`sanitizePostImages`) and `PostDetailView.tsx` (`renderArticleContent`), added regex passes to sanitize all `<img src="...">` tags inside `content` dynamically.
+    3. Ran a repository-wide audit and sanitization script across all 41 articles and 49 images in `data/articles/*.json`, eliminating all corrupted double protocols and verifying that 100% of the 45 unique CDN image URLs return HTTP 200 OK.
 
 
 

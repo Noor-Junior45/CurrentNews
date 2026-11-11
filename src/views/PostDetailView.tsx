@@ -775,6 +775,15 @@ export default function PostDetailView() {
 
     contentHtml = replaceBareUrls(contentHtml);
 
+    // Self-heal and clean all embedded <img src="..."> tags in contentHtml
+    contentHtml = contentHtml.replace(/<img[^>]+src=["']([^"']+)["'][^>]*>/gi, (imgTag, srcUrl) => {
+      const cleanSrc = cleanImageUrl(srcUrl);
+      if (cleanSrc && cleanSrc !== srcUrl) {
+        return imgTag.replace(srcUrl, cleanSrc);
+      }
+      return imgTag;
+    });
+
     // Sanitize any hardcoded inline dark colors (e.g. black text from Quill or pasted content)
     // and inline white background colors so the article is guaranteed visible in dark mode
     contentHtml = contentHtml

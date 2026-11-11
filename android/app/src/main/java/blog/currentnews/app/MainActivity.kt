@@ -7,11 +7,15 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import android.view.View
 import android.webkit.CookieManager
 import android.webkit.WebSettings
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import com.getcapacitor.BridgeActivity
 import java.security.MessageDigest
 
@@ -24,14 +28,34 @@ class MainActivity : BridgeActivity() {
     private var popupDialog: Dialog? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Modern Android 15 (API 35+) Edge-to-Edge display support with backwards compatibility
+        enableEdgeToEdge()
+
         // Register Native Google Auth Plugin with device account chooser
         registerPlugin(NativeGoogleAuthPlugin::class.java)
 
         super.onCreate(savedInstanceState)
+        setupEdgeToEdgeInsets()
         printFingerprintsToLogcat()
         requestNotificationPermission()
         setupNativeWebViewSettings()
         setupNativeBackGestureHandler()
+    }
+
+    /**
+     * Handles window insets (status bar, navigation bar, and display cutouts)
+     * as required by Android 15 (API 35+) edge-to-edge guidelines so webview content
+     * is never obscured by the system status bar, notch cutouts, or gesture navigation bar.
+     */
+    private fun setupEdgeToEdgeInsets() {
+        val rootView = findViewById<View>(android.R.id.content) ?: return
+        ViewCompat.setOnApplyWindowInsetsListener(rootView) { view, windowInsets ->
+            val insets = windowInsets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
+            )
+            view.setPadding(insets.left, insets.top, insets.right, insets.bottom)
+            windowInsets
+        }
     }
 
     /**

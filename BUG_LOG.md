@@ -230,6 +230,22 @@
     3. Added `Noto Sans Devanagari` to Google Fonts import and font stacks in `src/index.css` for cross-device Devanagari rendering.
     4. Applied matching relaxed leading and `py-0.5` padding across `LikedView.tsx`, `HomeView.tsx`, and `PostDetailView.tsx`.
 
+- [x] **Bug ID & Summary:** BUG-046 — Jharkhand and World categories failing to load articles from 3-line menu drawer and drawer overflowing screen height.
+  - **Root Cause:**
+    1. In `postsApi.ts` and `HomeView.tsx`, the `isJharkhand` filter checked only romanized English terms (`jharkhand`, `ranchi`, `dhanbad`, etc.), failing to match Hindi Devanagari news copy ("झारखंड", "गोड्डा", "रांची", "बसंतराय", "हनवारा", "महागामा"), causing Jharkhand category requests to return 0 articles.
+    2. In `HomeView.tsx`, `fetchPosts` requested `category: selectedCategory` from the load balancer, discarding the rest of the in-memory catalog and preventing subsequent switches back to other categories.
+    3. The side menu drawer buttons had rigid `min-h-[44px]` with wide padding, causing the drawer panel to exceed viewport height on small and standard mobile screens and requiring vertical scrolling.
+  - **Permanent Guardrail:**
+    1. Implemented comprehensive Devanagari and regional keyword recognition in `checkPostCategoryMatch` (`HomeView.tsx`) and `handleGetPosts` (`postsApi.ts`), reliably matching 26+ Jharkhand dispatches and international World dispatches.
+    2. Configured `fetchArticlesFeed` in `HomeView.tsx` to retrieve the complete catalog (`category: 'All'`) so all categories are instantly available in-memory for 0ms transitions.
+    3. Styled drawer category buttons with compact proportional sizing (`py-1 sm:py-1.2 px-2.5 text-[10.5px] sm:text-xs`) and evenly spaced flex distribution (`flex-1 justify-evenly`), fitting all 14 categories within ~440px total height and eliminating vertical scrolling across all mobile device screen ratios.
+
+- [x] **Bug ID & Summary:** BUG-047 — Android Capacitor Version Code Stagnation Blocking Google Play Store Update Uploads.
+  - **Root Cause:** `android/app/build.gradle.kts` had `versionCode = 1` and `versionName = "1.0.0"`. Google Play Console strictly blocks release updates if the version code is equal to or less than the previously released APK/AAB bundle code.
+- [x] **Bug ID & Summary:** BUG-048 — Android 15 (Target SDK 35+) Deprecated System Bar APIs & Insets Collision Warning in Google Play Console.
+  - **Root Cause:** In Android 15, apps targeting SDK 35+ enforce edge-to-edge by default. `android:statusBarColor` and `android:windowLightStatusBar` in `themes.xml` were deprecated, triggering the Play Store Console warning: `"Your app uses deprecated APIs or parameters for edge-to-edge"` and `"Edge-to-edge may not display for all users"`. Without insets handling, webview content risked being obscured behind status bars and gesture navigation bars.
+  - **Permanent Guardrail:** Replaced deprecated theme parameters in `themes.xml` with transparent system bars (`@android:color/transparent`), invoked modern `enableEdgeToEdge()` in `MainActivity.kt` `onCreate`, added `ViewCompat.setOnApplyWindowInsetsListener` to pad status bar, navigation bar, and display cutouts (`systemBars() or displayCutout()`), and added `viewport-fit=cover` to `index.html`. Bumped app version to 4 (1.0.3).
+
 
 
 

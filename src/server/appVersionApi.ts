@@ -20,8 +20,8 @@ const VERSION_FILE = path.join(DATA_DIR, 'app-version.json');
 
 // Default initial production version state
 const DEFAULT_VERSION_CONFIG: AppVersionConfig = {
-  latestVersion: "1.0.1",
-  latestVersionCode: 2,
+  latestVersion: "1.0.3",
+  latestVersionCode: 4,
   minSupportedVersion: "1.0.0",
   minSupportedVersionCode: 1,
   title: "New Live Edition Available",

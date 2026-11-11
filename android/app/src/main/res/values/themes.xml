@@ -9,9 +9,9 @@
         <item name="colorSecondary">@color/accent</item>
         <item name="colorSecondaryVariant">@color/accent</item>
         <item name="colorOnSecondary">#FFFFFF</item>
-        <!-- Status bar color for app -->
-        <item name="android:statusBarColor">#FFFFFF</item>
-        <item name="android:windowLightStatusBar" tools:targetApi="m">true</item>
+        <!-- Android 15 (API 35+) Edge-to-Edge: Transparent system bars managed via enableEdgeToEdge() -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowBackground">@color/background</item>
 
         <!-- Android 12+ (API 31-36) Native Launch / SplashScreen Configuration -->

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'current-news-live-v1';
+const CACHE_NAME = 'current-news-live-v2';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -35,18 +35,60 @@ self.addEventListener('activate', (event) => {
 
 // Fetch Event (Required for PWA installability)
 self.addEventListener('fetch', (event) => {
-  // Let the browser handle external analytics/ads scripts directly
-  if (event.request.url.includes('google-analytics') || event.request.url.includes('doubleclick') || event.request.url.includes('pagead2')) {
+  const reqUrl = event.request.url;
+
+  // Let browser handle external analytics, ads, and all admin pages/API requests directly
+  // Never cache any admin page, admin API response, or requests on admin host
+  try {
+    const parsed = new URL(reqUrl);
+    if (
+      parsed.hostname.startsWith('admin.') ||
+      parsed.pathname.startsWith('/admin') ||
+      parsed.pathname.startsWith('/api/') ||
+      reqUrl.includes('google-analytics') ||
+      reqUrl.includes('doubleclick') ||
+      reqUrl.includes('pagead2')
+    ) {
+      return;
+    }
+  } catch (_) {
+    if (reqUrl.includes('/admin') || reqUrl.includes('/api/')) return;
+  }
+
+  // Network-First for page navigation requests (guarantees user always gets latest app release)
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const cacheControl = networkResponse.headers.get('cache-control') || '';
+            // Do not cache if url is admin or response indicates no-store / no-cache
+            if (!event.request.url.includes('/admin') && !cacheControl.includes('no-store')) {
+              const responseClone = networkResponse.clone();
+              caches.open(CACHE_NAME).then((cache) => {
+                cache.put(event.request, responseClone);
+              });
+            }
+          }
+          return networkResponse;
+        })
+        .catch(() => {
+          return caches.match(event.request).then((cached) => {
+            return cached || caches.match('/index.html') || caches.match('/');
+          });
+        })
+    );
     return;
   }
 
+  // Cache-First with network fallback for static hashed assets
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
         return cachedResponse;
       }
       return fetch(event.request).catch(() => {
-        // Offline fallback logic can be added here if needed
+        // Offline fallback
       });
     })
   );

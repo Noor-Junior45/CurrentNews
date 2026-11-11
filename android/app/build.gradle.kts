@@ -18,8 +18,8 @@ android {
         applicationId = "blog.currentnews.app"
         minSdk = 33 // Android 13 (Tiramisu) and above
         targetSdk = 36 // Android 16 / API 36
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 4
+        versionName = "1.0.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

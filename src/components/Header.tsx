@@ -96,7 +96,22 @@ const ToggleSwitch: React.FC<ToggleSwitchProps> = ({
   );
 };
 
-const SIDE_MENU_CATEGORIES = ['All', 'General', 'Politics', 'Tech', 'Sports', 'Opinion', 'Business', 'Health', 'World', 'Jharkhand'];
+const SIDE_MENU_CATEGORIES = [
+  'All',
+  'Jharkhand',
+  'National',
+  'World',
+  'Politics',
+  'Business',
+  'Sports',
+  'Tech',
+  'Health',
+  'Crime',
+  'Education',
+  'Entertainment',
+  'Opinion',
+  'General',
+];
 
 export default function Header() {
   const { user, loading, isAdmin } = useAuthState();
@@ -1015,39 +1030,39 @@ export default function Header() {
               aria-label="Close menu"
             />
 
-            {/* Left-Side Drawer: Half-screen width on mobile (w-[72vw] max-w-[280px] sm:w-80) with beige background */}
+            {/* Left-Side Drawer: Compact proportional scaling to fit all device length ratios without scrolling */}
             <motion.aside
               initial={{ x: '-100%' }}
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
               transition={{ type: 'spring', damping: 28, stiffness: 320 }}
-              className="relative z-10 w-[72vw] max-w-[280px] sm:w-80 h-full bg-[#fbf1e5] border-r border-[#e8dbcc] dark:border-slate-800 shadow-2xl flex flex-col overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+              className="relative z-10 w-[72vw] max-w-[270px] sm:w-76 h-full bg-[#fbf1e5] border-r border-[#e8dbcc] dark:border-slate-800 shadow-2xl flex flex-col justify-between overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
               id="article-side-menu-panel"
             >
               {/* Drawer Header with Brand Title & Close Button */}
-              <div className="p-4 sm:p-5 border-b border-[#e8dbcc]/80 flex items-center justify-between shrink-0 bg-[#fbf1e5]/90 backdrop-blur-xs sticky top-0 z-10">
+              <div className="px-3.5 py-2 sm:py-2.5 border-b border-[#e8dbcc]/80 flex items-center justify-between shrink-0 bg-[#fbf1e5]/95 backdrop-blur-xs sticky top-0 z-10">
                 <div className="flex flex-col">
-                  <span className="font-playfair font-black text-base sm:text-lg text-slate-950 uppercase leading-none tracking-tight">
+                  <span className="font-playfair font-black text-sm sm:text-base text-slate-950 uppercase leading-none tracking-tight">
                     Current News
                   </span>
-                  <span className="font-lora text-[9.5px] sm:text-[10px] text-slate-600 uppercase tracking-wider font-semibold mt-1">
+                  <span className="font-lora text-[8.5px] sm:text-[9.5px] text-slate-600 uppercase tracking-wider font-semibold mt-0.5">
                     Newsroom Sections
                   </span>
                 </div>
                 <button
                   type="button"
                   onClick={() => setIsSideMenuOpen(false)}
-                  className="h-8 w-8 rounded-full text-slate-600 hover:text-slate-900 hover:bg-black/5 transition-colors cursor-pointer flex items-center justify-center active:scale-90"
+                  className="h-7 w-7 rounded-full text-slate-600 hover:text-slate-900 hover:bg-black/5 transition-colors cursor-pointer flex items-center justify-center active:scale-90"
                   title="Close categories menu"
                   id="side-menu-close-button"
                 >
-                  <X className="h-4 w-4" />
+                  <X className="h-3.5 w-3.5" />
                 </button>
               </div>
 
-              {/* All Categories Navigation List */}
-              <div className="p-3 sm:p-4 flex-1 space-y-1" id="side-menu-categories-list">
-                <div className="text-[10px] font-mono font-bold tracking-widest text-slate-500 uppercase px-3 py-1 mb-1">
+              {/* All Categories Navigation List: Compact sizing without large min-height so all categories fit cleanly across any device height */}
+              <div className="px-2 py-1 sm:px-2.5 sm:py-1.5 flex-1 flex flex-col justify-evenly gap-0.5" id="side-menu-categories-list">
+                <div className="text-[8.5px] font-mono font-bold tracking-widest text-slate-500 uppercase px-2 py-0.5 shrink-0">
                   Browse by Category
                 </div>
                 {SIDE_MENU_CATEGORIES.map((cat) => {
@@ -1061,6 +1076,7 @@ export default function Header() {
                       onClick={() => {
                         setIsSideMenuOpen(false);
                         sessionStorage.removeItem('current_news_return_scroll');
+                        sessionStorage.removeItem('current_news_return_search');
                         if (cat === 'All') {
                           navigate('/');
                         } else {
@@ -1068,9 +1084,9 @@ export default function Header() {
                         }
                         window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
                       }}
-                      className={`w-full min-h-[44px] py-2.5 px-3.5 text-xs font-bold tracking-wider uppercase transition-all duration-150 cursor-pointer rounded-xl flex items-center justify-between text-left group active:scale-98 ${
+                      className={`w-full py-1 sm:py-1.2 px-2.5 text-[10.5px] sm:text-xs font-bold tracking-wider uppercase transition-all duration-150 cursor-pointer rounded-lg flex items-center justify-between text-left group active:scale-98 shrink-0 ${
                         isCurrent
-                          ? 'bg-amber-100/90 text-black border border-amber-400/50 shadow-2xs font-extrabold'
+                          ? 'bg-amber-100/95 text-black border border-amber-400/50 shadow-2xs font-extrabold'
                           : 'bg-transparent text-slate-900 hover:bg-black/5 border border-transparent'
                       }`}
                       id={`side-menu-cat-tab-${cat.toLowerCase()}`}
@@ -1078,26 +1094,27 @@ export default function Header() {
                       <span className="font-bold text-slate-900 group-hover:text-black">
                         {cat}
                       </span>
-                      <ChevronRight className="h-4 w-4 text-slate-400 group-hover:text-slate-700 transition-transform group-hover:translate-x-0.5" />
+                      <ChevronRight className="h-3 w-3 text-slate-400 group-hover:text-slate-700 transition-transform group-hover:translate-x-0.5" />
                     </button>
                   );
                 })}
               </div>
 
               {/* Bottom Return to Home Top Feed Action */}
-              <div className="p-4 border-t border-[#e8dbcc]/80 bg-[#fbf1e5] shrink-0">
+              <div className="p-2.5 sm:p-3 border-t border-[#e8dbcc]/80 bg-[#fbf1e5] shrink-0">
                 <button
                   type="button"
                   onClick={() => {
                     setIsSideMenuOpen(false);
                     sessionStorage.removeItem('current_news_return_scroll');
+                    sessionStorage.removeItem('current_news_return_search');
                     navigate('/');
                     window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
                   }}
-                  className="w-full py-2.5 px-3 rounded-xl bg-slate-900 text-white hover:bg-black text-xs font-bold uppercase tracking-wider transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs active:scale-98"
+                  className="w-full py-1.5 sm:py-2 px-2.5 rounded-lg sm:rounded-xl bg-slate-900 text-white hover:bg-black text-[10.5px] sm:text-xs font-bold uppercase tracking-wider transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-98"
                   id="side-menu-return-home-button"
                 >
-                  <Newspaper className="h-4 w-4" />
+                  <Newspaper className="h-3.5 w-3.5" />
                   <span>Return to Home Feed</span>
                 </button>
               </div>

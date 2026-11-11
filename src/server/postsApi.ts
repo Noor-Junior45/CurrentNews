@@ -28,6 +28,7 @@ interface CachedPost {
   dislikes?: number;
   views?: number;
   status?: string;
+  excerpt?: string;
 }
 
 // In-memory server cache to maximize phone loading speed and avoid redundant R2 reads
@@ -114,10 +115,60 @@ export async function handleGetPosts(req: Request, res: Response) {
   const deletedIds = getDeletedArticleIds();
   let posts = inMemoryPostsCache.filter(p => p && p.id && !deletedIds.has(p.id));
 
-  // Apply category filtering
+  // Apply category filtering with smart Devanagari and regional keyword recognition
   const category = (req.query.category as string || '').trim().toLowerCase();
   if (category && category !== 'all') {
-    posts = posts.filter(p => (p.category || 'General').toLowerCase() === category);
+    if (category === 'jharkhand') {
+      const jhRegex = /jharkhand|ranchi|dhanbad|jamshedpur|bokaro|godda|deoghar|dumka|basantrai|hanwara|mahagama|झारखंड|गोड्डा|रांची|धनबाद|जमशेदपुर|बोकारो|देवघर|दुमका|बसंतराय|हनवारा|महागामा|पथरगामा|साहिबगंज|पाकुड़|हजारीबाग|पलामू|गढ़वा|चतरा|कोडरमा|गिरिडीह|लातेहार|लोहरदगा|गुमला|सिमडेगा|खूंटी|सरायकेला|चाईबासा|चेंगाई|लायथा|पचरुखी|गोपीचक|कपेटा|नौरत्तमपुर|जामनीकोला|बेलडीहा|फूलवड़िया|सुराइकिट्टा|भुयांसी|बाघाकोल/i;
+      posts = posts.filter(p => {
+        const cat = (p.category || 'General').toLowerCase();
+        if (cat === 'jharkhand') return true;
+        const str = ((p.title || '') + ' ' + (p.content || '') + ' ' + (p.excerpt || '') + ' ' + (p.hashtags || []).join(' ')).toLowerCase();
+        return jhRegex.test(str);
+      });
+    } else if (category === 'world') {
+      const worldRegex = /world|international|विदेश|सऊदी|रियाद|हूती|बांग्लादेश|ग्लोबल|अंतरराष्ट्रीय/i;
+      posts = posts.filter(p => {
+        const cat = (p.category || 'General').toLowerCase();
+        if (cat === 'world') return true;
+        const str = ((p.title || '') + ' ' + (p.content || '') + ' ' + (p.excerpt || '') + ' ' + (p.hashtags || []).join(' ')).toLowerCase();
+        return worldRegex.test(str);
+      });
+    } else if (category === 'national') {
+      const nationalRegex = /national|india|delhi|bharat|देश|राष्ट्रीय|भारत|दिल्ली|सुप्रीम कोर्ट|संसद|विपक्ष/i;
+      posts = posts.filter(p => {
+        const cat = (p.category || 'General').toLowerCase();
+        if (cat === 'national') return true;
+        const str = ((p.title || '') + ' ' + (p.content || '') + ' ' + (p.excerpt || '') + ' ' + (p.hashtags || []).join(' ')).toLowerCase();
+        return nationalRegex.test(str);
+      });
+    } else if (category === 'crime') {
+      const crimeRegex = /crime|police|arrest|murder|fir|चोरी|पुलिस|हत्या|हादसा|गिरफ्तार|मौत|सड़क हादसा|आग|अगलगी|बवाल|डूबने|अपहरण/i;
+      posts = posts.filter(p => {
+        const cat = (p.category || 'General').toLowerCase();
+        if (cat === 'crime') return true;
+        const str = ((p.title || '') + ' ' + (p.content || '') + ' ' + (p.excerpt || '') + ' ' + (p.hashtags || []).join(' ')).toLowerCase();
+        return crimeRegex.test(str);
+      });
+    } else if (category === 'education') {
+      const eduRegex = /education|school|college|exam|physics|smart class|पढ़ाई|स्कूल|कॉलेज|परीक्षा|कक्षा|विद्यार्थी|छात्र|क्लास/i;
+      posts = posts.filter(p => {
+        const cat = (p.category || 'General').toLowerCase();
+        if (cat === 'education') return true;
+        const str = ((p.title || '') + ' ' + (p.content || '') + ' ' + (p.excerpt || '') + ' ' + (p.hashtags || []).join(' ')).toLowerCase();
+        return eduRegex.test(str);
+      });
+    } else if (category === 'entertainment') {
+      const entRegex = /entertainment|cinema|movie|actor|film|tiger shroff|टाइगर श्रॉफ|अभिनेता|फिल्म|सिनेमा/i;
+      posts = posts.filter(p => {
+        const cat = (p.category || 'General').toLowerCase();
+        if (cat === 'entertainment') return true;
+        const str = ((p.title || '') + ' ' + (p.content || '') + ' ' + (p.excerpt || '') + ' ' + (p.hashtags || []).join(' ')).toLowerCase();
+        return entRegex.test(str);
+      });
+    } else {
+      posts = posts.filter(p => (p.category || 'General').toLowerCase() === category);
+    }
   }
 
   // Apply search filtering

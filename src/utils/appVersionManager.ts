@@ -30,8 +30,8 @@ export interface UpdateCheckResult {
   remoteInfo: AppVersionInfo | null;
 }
 
-const CURRENT_CLIENT_VERSION = '1.0.0';
-const CURRENT_CLIENT_VERSION_CODE = 1;
+const CURRENT_CLIENT_VERSION = '1.0.3';
+const CURRENT_CLIENT_VERSION_CODE = 4;
 const SNOOZE_STORAGE_KEY = 'cn_update_snooze_until';
 const SNOOZE_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours snooze
 

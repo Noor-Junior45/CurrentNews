@@ -91,6 +91,40 @@ function BlogPostCardSkeleton() {
   );
 }
 
+const JHARKHAND_REGEX = /jharkhand|ranchi|dhanbad|jamshedpur|bokaro|godda|deoghar|dumka|basantrai|hanwara|mahagama|पथरगामा|साहिबगंज|पाकुड़|हजारीबाग|पलामू|गढ़वा|चतरा|कोडरमा|गिरिडीह|लातेहार|लोहरदगा|गुमला|सिमडेगा|खूंटी|सरायकेला|चाईबासा|चेंगाई|लायथा|पचरुखी|गोपीचक|कपेटा|नौरत्तमपुर|जामनीकोला|बेलडीहा|फूलवड़िया|सुराइकिट्टा|भुयांसी|बाघाकोल|झारखंड|गोड्डा|रांची|धनबाद|जमशेदपुर|बोकारो|देवघर|दुमका|बसंतराय|हनवारा|महागामा/i;
+const WORLD_REGEX = /world|international|विदेश|सऊदी|रियाद|हूती|बांग्लादेश|ग्लोबल|अंतरराष्ट्रीय/i;
+const NATIONAL_REGEX = /national|india|delhi|bharat|देश|राष्ट्रीय|भारत|दिल्ली|सुप्रीम कोर्ट|संसद|विपक्ष/i;
+const CRIME_REGEX = /crime|police|arrest|murder|fir|चोरी|पुलिस|हत्या|हादसा|गिरफ्तार|मौत|सड़क हादसा|आग|अगलगी|बवाल|डूबने|अपहरण/i;
+const EDUCATION_REGEX = /education|school|college|exam|physics|smart class|पढ़ाई|स्कूल|कॉलेज|परीक्षा|कक्षा|विद्यार्थी|छात्र|क्लास/i;
+const ENTERTAINMENT_REGEX = /entertainment|cinema|movie|actor|film|tiger shroff|टाइगर श्रॉफ|अभिनेता|फिल्म|सिनेमा/i;
+
+export function checkPostCategoryMatch(post: Post, targetCat: string): boolean {
+  if (!targetCat || targetCat === 'All') return true;
+  const cat = targetCat.toLowerCase();
+  const postCat = (post.category || 'General').toLowerCase();
+  const searchStr = `${post.title || ''} ${post.content || ''} ${(post.hashtags || []).join(' ')}`;
+
+  if (cat === 'jharkhand') {
+    return postCat === 'jharkhand' || JHARKHAND_REGEX.test(searchStr);
+  }
+  if (cat === 'world') {
+    return postCat === 'world' || WORLD_REGEX.test(searchStr);
+  }
+  if (cat === 'national') {
+    return postCat === 'national' || NATIONAL_REGEX.test(searchStr);
+  }
+  if (cat === 'crime') {
+    return postCat === 'crime' || CRIME_REGEX.test(searchStr);
+  }
+  if (cat === 'education') {
+    return postCat === 'education' || EDUCATION_REGEX.test(searchStr);
+  }
+  if (cat === 'entertainment') {
+    return postCat === 'entertainment' || ENTERTAINMENT_REGEX.test(searchStr);
+  }
+  return postCat === cat;
+}
+
 export default function HomeView() {
   const [posts, setPosts] = useState<Post[]>(() => {
     const compressed = getCompressedStories();
@@ -267,7 +301,7 @@ export default function HomeView() {
     }
   }, [searchParams]);
 
-  // Reset to first page when category or search changes
+  // Reset to first page and scroll to top when category or search changes
   useEffect(() => {
     setCurrentPage(1);
     if (searchParams.has('page')) {
@@ -275,6 +309,7 @@ export default function HomeView() {
       nextParams.delete('page');
       setSearchParams(nextParams, { replace: true });
     }
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
   }, [selectedCategory, searchTerm]);
 
   const handlePageChange = (newPage: number) => {
@@ -300,8 +335,8 @@ export default function HomeView() {
     try {
       // 1. Multi-Origin Client Load Balancer (Cloudflare Edge CDN <-> Cloud Run Origin API <-> R2 Mirror)
       const { posts: balancedPosts } = await clientLoadBalancer.fetchArticlesFeed({
-        category: selectedCategory,
-        search: searchTerm,
+        category: 'All',
+        search: '',
         limit: 100,
       });
 
@@ -377,25 +412,8 @@ export default function HomeView() {
       post.title.toLowerCase().includes(term) ||
       post.content.toLowerCase().includes(term)
     );
-    if (selectedCategory === 'All') {
-      return matchesSearch;
-    }
-    const postCategory = post.category || 'General';
-    if (selectedCategory.toLowerCase() === 'jharkhand') {
-      const isJharkhand = (
-        postCategory.toLowerCase() === 'jharkhand' ||
-        post.title.toLowerCase().includes('jharkhand') ||
-        post.content.toLowerCase().includes('jharkhand') ||
-        post.title.toLowerCase().includes('ranchi') ||
-        post.content.toLowerCase().includes('ranchi') ||
-        post.title.toLowerCase().includes('dhanbad') ||
-        post.title.toLowerCase().includes('jamshedpur') ||
-        post.title.toLowerCase().includes('bokaro') ||
-        (post.hashtags || []).some(h => /jharkhand|ranchi|dhanbad|jamshedpur/i.test(h))
-      );
-      return matchesSearch && isJharkhand;
-    }
-    return matchesSearch && postCategory.toLowerCase() === selectedCategory.toLowerCase();
+    if (!matchesSearch) return false;
+    return checkPostCategoryMatch(post, selectedCategory);
   });
 
   // Resolve published posts
@@ -404,26 +422,10 @@ export default function HomeView() {
   // Featured Story Posters for rotating hero showcase (prioritizes stories with image covers)
   // Dynamic Category Filtering:
   // - If 'All' category page: shows posters from all dispatches across the publication.
-  // - If specific category page (e.g. Sports, Politics, Tech): shows posters matching that specific category.
+  // - If specific category page (e.g. Jharkhand, World, Sports, Politics, Tech): shows posters matching that specific category.
   const categoryPostsForPoster = selectedCategory === 'All'
     ? publishedPosts
-    : publishedPosts.filter(p => {
-        const postCat = p.category || 'General';
-        if (selectedCategory.toLowerCase() === 'jharkhand') {
-          return (
-            postCat.toLowerCase() === 'jharkhand' ||
-            p.title.toLowerCase().includes('jharkhand') ||
-            p.content.toLowerCase().includes('jharkhand') ||
-            p.title.toLowerCase().includes('ranchi') ||
-            p.content.toLowerCase().includes('ranchi') ||
-            p.title.toLowerCase().includes('dhanbad') ||
-            p.title.toLowerCase().includes('jamshedpur') ||
-            p.title.toLowerCase().includes('bokaro') ||
-            (p.hashtags || []).some(h => /jharkhand|ranchi|dhanbad|jamshedpur/i.test(h))
-          );
-        }
-        return postCat.toLowerCase() === selectedCategory.toLowerCase();
-      });
+    : publishedPosts.filter(p => checkPostCategoryMatch(p, selectedCategory));
 
   // Use category-filtered dispatches if available; gracefully fallback to publishedPosts if a category has 0 posts
   const activePosterPool = categoryPostsForPoster.length > 0 ? categoryPostsForPoster : publishedPosts;

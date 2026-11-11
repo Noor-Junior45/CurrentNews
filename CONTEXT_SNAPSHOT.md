@@ -317,7 +317,12 @@
   - Android 15 (API 35+) Edge-to-Edge Migration: Implemented `enableEdgeToEdge()` in `MainActivity.kt` and migrated `themes.xml` away from deprecated parameters (`android:statusBarColor` and `android:windowLightStatusBar`) to transparent system bars, eliminating Google Play Console deprecation warnings.
   - Window Insets & Notch Handling: Integrated `ViewCompat.setOnApplyWindowInsetsListener` handling status bar, navigation bar, and display cutout insets (`WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()`), ensuring webview content is never obscured by Android 15 system bars or camera cutouts. Added `viewport-fit=cover` to `index.html`.
   - Synced & Verified: Ran `npm run build && npx cap sync android` to sync assets into `android/app/src/main/assets/public/`. Passed TypeScript compilation and lint checks with 0 errors.
-- **Immediate Next Step:** Ready to build release APK/AAB in Android Studio and upload version 4 (1.0.3) to Google Play Console.
+- [x] **Phase 72 (Reader Article Loading Fallback via Cloudflare D1/Worker):** [COMPLETED]
+  - Multi-Tier Article Resolution in `src/server/postsApi.ts`: Updated `handleGetPostById` to check (a) in-memory cache, (b) Cloudflare Edge Worker at `WORKER_BASE_URL` or `https://api.currentnews.blog` (`GET /articles/:id` with 4s timeout), (c) R2 and local disk as final fallback.
+  - Consistent D1 Schema Mapping: Implemented `mapD1ArticleToPost` mapping `title`, `content`, `category`, `hashtags`, `imageUrl`, `imageUrlFallback`, `imageUrls`, `imageUrlsFallback`, `imagePosition`, `galleryPositions`, `youtubeUrl`, `facebookUrl`, `authorName`, `createdAt`, `updatedAt`, `status: "published"`.
+  - Feed Fallback: Updated `handleGetPosts` to fall back to Worker `GET /articles?limit=100` if R2 and disk return no articles, preserving the 60-second in-memory cache.
+  - Strict Published Filter & 404 Safety: Ensured only articles with `status: "published"` are returned, tombstoned/deleted articles return 404, missing articles consistently return `{ success: false, error: "Article not found" }`, and missing articles never trigger HTTP 500.
+- **Immediate Next Step:** Production deployment verification on Google Cloud Run.
 
 
 

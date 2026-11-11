@@ -246,6 +246,10 @@
   - **Root Cause:** In Android 15, apps targeting SDK 35+ enforce edge-to-edge by default. `android:statusBarColor` and `android:windowLightStatusBar` in `themes.xml` were deprecated, triggering the Play Store Console warning: `"Your app uses deprecated APIs or parameters for edge-to-edge"` and `"Edge-to-edge may not display for all users"`. Without insets handling, webview content risked being obscured behind status bars and gesture navigation bars.
   - **Permanent Guardrail:** Replaced deprecated theme parameters in `themes.xml` with transparent system bars (`@android:color/transparent`), invoked modern `enableEdgeToEdge()` in `MainActivity.kt` `onCreate`, added `ViewCompat.setOnApplyWindowInsetsListener` to pad status bar, navigation bar, and display cutouts (`systemBars() or displayCutout()`), and added `viewport-fit=cover` to `index.html`. Bumped app version to 4 (1.0.3).
 
+- [x] **Bug ID & Summary:** BUG-049 — Reader Single Article Endpoint Returning 404 For Stories Residing Exclusively in Cloudflare D1.
+  - **Root Cause:** When the client's direct Worker call failed or failed over to the reader's Express origin `GET /api/posts/:id` (`handleGetPostById`), the server only checked in-memory cache and R2/disk files. Stories published exclusively to Cloudflare D1 and not mirrored on disk showed "Article not found".
+  - **Permanent Guardrail:** In `src/server/postsApi.ts`, updated `handleGetPostById` resolution order to: (a) in-memory cache, (b) Cloudflare Edge Worker at `WORKER_BASE_URL` or `https://api.currentnews.blog` (`GET /articles/:id` with 4s timeout), (c) R2/disk as last fallback. Mapped `json.article` to the standard Post shape (`mapD1ArticleToPost`), strictly returned only `status: "published"`, honored tombstoned IDs, and guaranteed standard JSON 404 `{ success: false, error: "Article not found" }` with zero 500 exceptions. Updated `handleGetPosts` to fall back to Worker `GET /articles` with 60s cache.
+
 
 
 

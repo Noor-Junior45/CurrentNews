@@ -47,6 +47,19 @@ function ensureHooks() {
       }
     }
 
+    // Enforce URL scheme restrictions (only http and https allowed)
+    for (const attrName of ['href', 'src']) {
+      if (node.hasAttribute(attrName)) {
+        const val = (node.getAttribute(attrName) || '').trim();
+        if (val.includes(':')) {
+          const scheme = val.split(':')[0].toLowerCase();
+          if (scheme !== 'http' && scheme !== 'https') {
+            node.removeAttribute(attrName);
+          }
+        }
+      }
+    }
+
     // Force rel="noopener noreferrer nofollow" on every <a>, and target="_blank" for external links
     if (node.tagName === 'A') {
       node.setAttribute('rel', 'noopener noreferrer nofollow');

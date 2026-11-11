@@ -12,8 +12,8 @@ interface CachedPost {
   authorName?: string;
   authorEmail?: string;
   authorId?: string;
-  createdAt?: string;
-  updatedAt?: string;
+  createdAt?: string | number;
+  updatedAt?: string | number;
   imageUrl?: string;
   imageUrlFallback?: string;
   imageUrls?: string[];
@@ -29,6 +29,49 @@ interface CachedPost {
   views?: number;
   status?: string;
   excerpt?: string;
+  slug?: string;
+}
+
+function parseJsonArray(val: any): string[] {
+  if (Array.isArray(val)) return val;
+  if (typeof val === 'string') {
+    try {
+      const p = JSON.parse(val);
+      return Array.isArray(p) ? p : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function mapD1ArticleToPost(a: any): CachedPost {
+  if (!a) return {} as CachedPost;
+  return {
+    ...a,
+    id: a.id,
+    slug: a.slug,
+    title: a.title || '',
+    excerpt: a.excerpt || '',
+    content: a.content || '',
+    category: a.category || 'General',
+    hashtags: parseJsonArray(a.hashtags),
+    imageUrl: a.imageUrl || a.image_url || '',
+    imageUrlFallback: a.imageUrlFallback || a.image_url_fallback || '',
+    imageUrls: parseJsonArray(a.imageUrls ?? a.image_urls),
+    imageUrlsFallback: parseJsonArray(a.imageUrlsFallback ?? a.image_urls_fallback),
+    imagePosition: a.imagePosition || a.image_position || 'top',
+    galleryPositions: parseJsonArray(a.galleryPositions ?? a.gallery_positions),
+    youtubeUrl: a.youtubeUrl || a.youtube_url || '',
+    facebookUrl: a.facebookUrl || a.facebook_url || '',
+    authorName: a.authorName || a.author_name || 'Current News',
+    createdAt: a.createdAt ?? a.created_at ?? a.publishedAt ?? a.published_at ?? Date.now(),
+    updatedAt: a.updatedAt ?? a.updated_at ?? Date.now(),
+    status: 'published',
+    views: Number(a.views) || 0,
+    likes: Number(a.likes) || 0,
+    dislikes: Number(a.dislikes) || 0,
+  };
 }
 
 // In-memory server cache to maximize phone loading speed and avoid redundant R2 reads
@@ -54,7 +97,7 @@ function getDiskFeed(): CachedPost[] {
       const data = JSON.parse(fs.readFileSync(feedFile, 'utf-8'));
       if (Array.isArray(data)) {
         const deletedIds = getDeletedArticleIds();
-        return data.filter(p => p && p.id && !deletedIds.has(p.id));
+        return data.filter(p => p && p.id && !deletedIds.has(p.id) && (p.status || 'published').toLowerCase() === 'published');
       }
     }
   } catch (e) {
@@ -67,7 +110,10 @@ function getDiskArticle(id: string): CachedPost | null {
   try {
     const postFile = path.join(process.cwd(), 'data', 'articles', `${id}.json`);
     if (fs.existsSync(postFile)) {
-      return JSON.parse(fs.readFileSync(postFile, 'utf-8'));
+      const data = JSON.parse(fs.readFileSync(postFile, 'utf-8'));
+      if (data && (data.status || 'published').toLowerCase() === 'published') {
+        return data;
+      }
     }
   } catch (e) {
     console.warn(`[Posts API] Failed to read disk article ${id}:`, e);
@@ -85,35 +131,62 @@ function getDiskArticle(id: string): CachedPost | null {
  * - search: Optional search text
  */
 export async function handleGetPosts(req: Request, res: Response) {
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
+  try {
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
 
-  const now = Date.now();
-  if (inMemoryPostsCache.length === 0 || now - lastCacheTimestamp > CACHE_TTL_MS) {
-    try {
-      const r2Posts = await getFeedFromR2();
-      if (r2Posts && Array.isArray(r2Posts) && r2Posts.length > 0) {
-        inMemoryPostsCache = r2Posts;
-        lastCacheTimestamp = now;
-      } else {
+    const now = Date.now();
+    if (inMemoryPostsCache.length === 0 || now - lastCacheTimestamp > CACHE_TTL_MS) {
+      let loadedPosts: CachedPost[] = [];
+
+      try {
+        const r2Posts = await getFeedFromR2();
+        if (r2Posts && Array.isArray(r2Posts) && r2Posts.length > 0) {
+          loadedPosts = r2Posts;
+        }
+      } catch (r2Err) {
+        console.debug('[Posts API] R2 read deferred:', r2Err);
+      }
+
+      if (loadedPosts.length === 0) {
         const diskPosts = getDiskFeed();
-        if (diskPosts.length > 0) {
-          inMemoryPostsCache = diskPosts;
-          lastCacheTimestamp = now;
+        if (diskPosts && diskPosts.length > 0) {
+          loadedPosts = diskPosts;
         }
       }
-    } catch (r2Err) {
-      console.debug('[Posts API] R2 read deferred, falling back to disk cache:', r2Err);
-      const diskPosts = getDiskFeed();
-      if (diskPosts.length > 0) {
-        inMemoryPostsCache = diskPosts;
+
+      // If R2 and disk return no articles, fall back to the Worker's GET /articles list
+      if (loadedPosts.length === 0) {
+        try {
+          const workerBase = (process.env.WORKER_BASE_URL || 'https://api.currentnews.blog').replace(/\/+$/, '');
+          const resp = await fetch(`${workerBase}/articles?limit=100`, {
+            signal: AbortSignal.timeout(4000),
+          });
+          if (resp.ok) {
+            const json = await resp.json() as any;
+            const rawArticles = Array.isArray(json?.articles)
+              ? json.articles
+              : (Array.isArray(json) ? json : []);
+            const mapped = rawArticles
+              .map(mapD1ArticleToPost)
+              .filter((p: CachedPost) => p && p.id && (p.status || 'published').toLowerCase() === 'published');
+            if (mapped.length > 0) {
+              loadedPosts = mapped;
+            }
+          }
+        } catch (workerErr) {
+          console.debug('[Posts API] Worker feed fallback deferred:', workerErr);
+        }
+      }
+
+      if (loadedPosts.length > 0) {
+        inMemoryPostsCache = loadedPosts;
         lastCacheTimestamp = now;
       }
     }
-  }
 
-  const deletedIds = getDeletedArticleIds();
-  let posts = inMemoryPostsCache.filter(p => p && p.id && !deletedIds.has(p.id));
+    const deletedIds = getDeletedArticleIds();
+    let posts = inMemoryPostsCache.filter(p => p && p.id && !deletedIds.has(p.id) && (p.status || 'published').toLowerCase() === 'published');
 
   // Apply category filtering with smart Devanagari and regional keyword recognition
   const category = (req.query.category as string || '').trim().toLowerCase();
@@ -201,69 +274,123 @@ export async function handleGetPosts(req: Request, res: Response) {
   });
   const hasMore = offset + limit < posts.length;
 
-  return res.status(200).json({
-    success: true,
-    posts: chunk,
-    total: posts.length,
-    page,
-    limit,
-    hasMore,
-    fromCache: now - lastCacheTimestamp < CACHE_TTL_MS
-  });
+    return res.status(200).json({
+      success: true,
+      posts: chunk,
+      total: posts.length,
+      page,
+      limit,
+      hasMore,
+      fromCache: now - lastCacheTimestamp < CACHE_TTL_MS
+    });
+  } catch (err) {
+    console.warn('[Posts API] Error in handleGetPosts:', err);
+    return res.status(200).json({
+      success: true,
+      posts: [],
+      total: 0,
+      page: 1,
+      limit: 100,
+      hasMore: false,
+      fromCache: false
+    });
+  }
 }
 
 /**
  * GET /api/posts/:id
- * Fast single article endpoint with Cloudflare R2 and disk caching (zero Firestore).
+ * Fast single article endpoint with:
+ * (a) in-memory cache
+ * (b) Cloudflare Worker at WORKER_BASE_URL or https://api.currentnews.blog (4s timeout)
+ * (c) Cloudflare R2 and disk as last fallback
+ * Only returns articles with status "published". Never returns 500 for missing articles.
  */
 export async function handleGetPostById(req: Request, res: Response) {
-  const id = req.params.id;
-  if (!id) {
-    return res.status(400).json({ error: 'Post ID is required' });
-  }
+  try {
+    const id = req.params.id;
+    if (!id) {
+      return res.status(404).json({ success: false, error: 'Article not found' });
+    }
 
-  const deletedIds = getDeletedArticleIds();
-  if (deletedIds.has(id)) {
-    return res.status(404).json({ success: false, error: 'Article not found or deleted' });
-  }
+    const deletedIds = getDeletedArticleIds();
+    if (deletedIds.has(id)) {
+      return res.status(404).json({ success: false, error: 'Article not found' });
+    }
 
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
 
-  // 1. Check in-memory cache first if it contains content
-  let post = inMemoryPostsCache.find(p => p.id === id);
-  if (!post || !post.content) {
-    // 2. Fetch full article from Cloudflare R2
-    try {
-      const r2Post = await getArticleFromR2(id);
-      if (r2Post && !deletedIds.has(r2Post.id)) {
-        post = r2Post;
+    let post: CachedPost | undefined;
+
+    // (a) In-memory cache
+    const cached = inMemoryPostsCache.find(p => p.id === id);
+    if (cached && cached.content && (cached.status || 'published').toLowerCase() === 'published') {
+      post = cached;
+    }
+
+    // (b) The Worker at WORKER_BASE_URL or https://api.currentnews.blog, using GET /articles/:id with a 4 second timeout
+    if (!post) {
+      try {
+        const workerBase = (process.env.WORKER_BASE_URL || 'https://api.currentnews.blog').replace(/\/+$/, '');
+        const resp = await fetch(`${workerBase}/articles/${encodeURIComponent(id)}`, {
+          signal: AbortSignal.timeout(4000),
+        });
+        if (resp.ok) {
+          const json = await resp.json() as any;
+          const rawArticle = json?.article || json;
+          if (rawArticle && rawArticle.id && !deletedIds.has(rawArticle.id)) {
+            const rawStatus = (rawArticle.status || 'published').toLowerCase();
+            if (rawStatus === 'published') {
+              post = mapD1ArticleToPost(rawArticle);
+            }
+          }
+        }
+      } catch (workerErr) {
+        console.debug('[Posts API] Worker article fetch deferred/failed:', workerErr);
       }
-    } catch (e) {
-      console.debug('[Posts API] R2 single article fetch deferred:', e);
     }
-  }
 
-  // 3. Fallback to local disk file if missing from R2
-  if (!post || !post.content) {
-    const diskPost = getDiskArticle(id);
-    if (diskPost && !deletedIds.has(diskPost.id)) {
-      post = diskPost;
+    // (c) R2/disk as the last fallback
+    if (!post) {
+      try {
+        const r2Post = await getArticleFromR2(id);
+        if (r2Post && !deletedIds.has(r2Post.id)) {
+          const rawStatus = (r2Post.status || 'published').toLowerCase();
+          if (rawStatus === 'published' && r2Post.content) {
+            post = r2Post;
+          }
+        }
+      } catch (e) {
+        console.debug('[Posts API] R2 single article fetch deferred:', e);
+      }
     }
+
+    if (!post) {
+      const diskPost = getDiskArticle(id);
+      if (diskPost && !deletedIds.has(diskPost.id)) {
+        const rawStatus = (diskPost.status || 'published').toLowerCase();
+        if (rawStatus === 'published' && diskPost.content) {
+          post = diskPost;
+        }
+      }
+    }
+
+    if (!post || deletedIds.has(post.id) || (post.status && post.status.toLowerCase() !== 'published')) {
+      return res.status(404).json({ success: false, error: 'Article not found' });
+    }
+
+    // Ensure image URLs are clean
+    post.imageUrl = cleanImageUrl(post.imageUrl);
+    post.imageUrlFallback = getFallbackImageUrl(post.imageUrl, post.imageUrlFallback);
+
+    return res.status(200).json({
+      success: true,
+      post
+    });
+  } catch (error) {
+    console.warn('[Posts API] Error in handleGetPostById:', error);
+    return res.status(404).json({ success: false, error: 'Article not found' });
   }
-
-  if (!post || deletedIds.has(post.id)) {
-    return res.status(404).json({ error: 'Article not found' });
-  }
-
-  // Ensure image URLs are clean
-  post.imageUrl = cleanImageUrl(post.imageUrl);
-  post.imageUrlFallback = getFallbackImageUrl(post.imageUrl, post.imageUrlFallback);
-
-  return res.status(200).json({
-    success: true,
-    post
-  });
 }
 
 /**

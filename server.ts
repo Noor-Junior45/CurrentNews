@@ -17,6 +17,7 @@ import {
 } from './src/server/pushNotifications.ts';
 import { handleGetPosts, handleGetPostById, handleGetWriters } from './src/server/postsApi.ts';
 import { ensureR2ArticlesWarmup, getFeedFromR2, getDeletedArticleIds } from './src/server/r2Articles.ts';
+import { getPublishedFeedCatalog, warmupArticleCatalog } from './src/server/articleCatalog.ts';
 import { handleGetAppVersion } from './src/server/appVersionApi.ts';
 
 // Load environment variables
@@ -303,7 +304,10 @@ async function startServer() {
   app.get('/api/posts/:id', asyncHandler(handleGetPostById));
   app.get('/api/articles/feed', asyncHandler(async (_req: express.Request, res: express.Response) => {
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-    const feed = await getFeedFromR2();
+    let feed = await getPublishedFeedCatalog();
+    if (!feed || feed.length === 0) {
+      feed = await getFeedFromR2();
+    }
     res.json({ success: true, articles: feed });
   }));
   app.get('/api/articles/deleted', asyncHandler(async (_req: express.Request, res: express.Response) => {
@@ -422,7 +426,8 @@ async function startServer() {
 
   const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server successfully started. Running on http://localhost:${PORT}`);
-    // Non-blocking warmup check to guarantee Cloudflare R2 articles feed is primed
+    // Non-blocking warmup check to guarantee Neon / Cloudflare R2 articles catalog is primed
+    warmupArticleCatalog().catch(err => console.debug('[Catalog Warmup Background]:', err));
     ensureR2ArticlesWarmup().catch(err => console.debug('[R2 Warmup Background]:', err));
   });
 

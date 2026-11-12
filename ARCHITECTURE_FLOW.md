@@ -42,13 +42,14 @@ graph TD
         AdminApp -->|GET /api/admin/articles| AdminQuery[Cursor Pagination from Neon with Role Filtering]
     end
 
-    subgraph ReaderDataPipeline [Zero-Quota Web & Native Android APK Reader Architecture]
-        ReaderApp -->|Web Feed & Article Reads| R2Feed[Cloudflare R2 CDN: media.currentnews.blog/articles/:id.json]
-        NativeAPK[Android Capacitor APK: https://localhost] -->|CapacitorHttp Native Java Bridge - CORS Immune| EdgeRouter
-        NativeAPK -->|CapacitorHttp Failover| R2Feed
-        NativeAPK -->|0ms Offline & Cold-Start Failover| BundledAssets[APK Assets: /feed.json & /articles/:id.json]
-        ReaderApp -->|Likes, Views & Subscriptions| EdgeWorker[Cloudflare Worker api.currentnews.blog & D1 SQLite]
+    subgraph ReaderDataPipeline [Stateless Multi-Tier Web & Native Android APK Reader Architecture]
+        ReaderApp -->|Same-Origin /api/posts & /api/posts/:id| Catalog[server/articleCatalog.ts Single-Flight Catalog]
+        Catalog -->|Tier 1: status = published| NeonWrite
+        Catalog -->|Tier 2: JSON Feed Index| EdgeWorker[Cloudflare Worker JSON API]
+        Catalog -->|Tier 3: Live R2 Object Hydration| R2Feed[Cloudflare R2 CDN: media.currentnews.blog/articles/:id.json]
+        NativeAPK[Android Capacitor APK: https://localhost] -->|Primary: CapacitorHttp Native Java Bridge| EdgeRouter
+        NativeAPK -->|Failover: CapacitorHttp Direct R2 Objects| R2Feed
+        NativeAPK -->|Empty Static Bundle Guard| BundledAssets[APK Assets: /feed.json = empty array]
         LockedFirestore[(Firebase Firestore: Locked allow read, write: if false;)]
     end
 ```
-

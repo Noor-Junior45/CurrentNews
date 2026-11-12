@@ -20,6 +20,7 @@ import {
   saveCompressedStories,
   getDeletedStoryIds,
 } from './compressedStorage';
+import { KNOWN_PUBLISHED_R2_IDS } from './r2KnownIds';
 
 export interface OriginNode {
   id: string;
@@ -153,7 +154,31 @@ function mapD1ArticleToPost(a: any): any {
 }
 
 const CIRCUIT_BREAKER_COOLDOWN_MS = 30000; // 30 seconds before retesting failed origin
-const REQUEST_TIMEOUT_MS = 4000; // 4.0s max per attempt before failover
+const REQUEST_TIMEOUT_MS = 4500; // 4.5s max for edge/CDN mirrors
+const ORIGIN_TIMEOUT_MS = 9000; // 9.0s max for Cloud Run origin to survive cold starts on mobile networks
+
+const JHARKHAND_FILTER_REGEX = /jharkhand|ranchi|dhanbad|jamshedpur|bokaro|godda|deoghar|dumka|basantrai|hanwara|mahagama|झारखंड|गोड्डा|रांची|धनबाद|जमशेदपुर|बोकारो|देवघर|दुमका|बसंतराय|हनवारा|महागामा|पथरगामा|साहिबगंज|पाकुड़|हजारीबाग|पलामू|गढ़वा|चतरा|कोडरमा|गिरिडीह|लातेहार|लोहरदगा|गुमला|सिमडेगा|खूंटी|सरायकेला|चाईबासा|चेंगाई|लायथा|पचरुखी|गोपीचक|कपेटा|नौरत्तमपुर|जामनीकोला|बेलडीहा|फूलवड़िया|सुराइकिट्टा|भुयांसी|बाघाकोल/i;
+const WORLD_FILTER_REGEX = /world|international|विदेश|सऊदी|रियाद|हूती|बांग्लादेश|ग्लोबल|अंतरराष्ट्रीय/i;
+const NATIONAL_FILTER_REGEX = /national|india|delhi|bharat|देश|राष्ट्रीय|भारत|दिल्ली|सुप्रीम कोर्ट|संसद|विपक्ष/i;
+const CRIME_FILTER_REGEX = /crime|police|arrest|murder|fir|चोरी|पुलिस|हत्या|हादसा|गिरफ्तार|मौत|सड़क हादसा|आग|अगलगी|बवाल|डूबने|अपहरण/i;
+const EDUCATION_FILTER_REGEX = /education|school|college|exam|physics|smart class|पढ़ाई|स्कूल|कॉलेज|परीक्षा|कक्षा|विद्यार्थी|छात्र|क्लास/i;
+const ENTERTAINMENT_FILTER_REGEX = /entertainment|cinema|movie|actor|film|tiger shroff|टाइगर श्रॉफ|अभिनेता|फिल्म|सिनेमा/i;
+
+function matchesCategoryFilter(post: Post, targetCategory?: string): boolean {
+  if (!targetCategory || targetCategory === 'All') return true;
+  const cat = targetCategory.trim().toLowerCase();
+  if (!cat || cat === 'all') return true;
+  const postCat = (post.category || 'General').toLowerCase();
+  if (postCat === cat) return true;
+  const haystack = `${post.title || ''} ${post.excerpt || ''} ${post.content || ''} ${(post.hashtags || []).join(' ')}`;
+  if (cat === 'jharkhand') return JHARKHAND_FILTER_REGEX.test(haystack);
+  if (cat === 'world') return WORLD_FILTER_REGEX.test(haystack);
+  if (cat === 'national') return NATIONAL_FILTER_REGEX.test(haystack);
+  if (cat === 'crime') return CRIME_FILTER_REGEX.test(haystack);
+  if (cat === 'education') return EDUCATION_FILTER_REGEX.test(haystack);
+  if (cat === 'entertainment') return ENTERTAINMENT_FILTER_REGEX.test(haystack);
+  return false;
+}
 
 class ClientLoadBalancer {
   private nodes: OriginNode[] = [
@@ -216,6 +241,7 @@ class ClientLoadBalancer {
 
   private prefetchedIds = new Set<string>();
   private prefetchInFlight = new Map<string, Promise<Post | null>>();
+  private feedInFlight = new Map<string, Promise<{ posts: Post[]; source: string }>>();
   private bundledFeedEmpty = false;
 
   constructor() {
@@ -335,10 +361,71 @@ class ClientLoadBalancer {
   }
 
   /**
+   * Native APK direct R2 CDN object hydration failover (`https://media.currentnews.blog/articles/<id>.json`).
+   * Uses `CapacitorHttp.get()` (immune to WebView CORS) if Cloud Run is temporarily unreachable or restarting.
+   */
+  private async hydrateNativeFeedFromR2Objects(): Promise<Post[]> {
+    if (!isNativeApp()) return [];
+    const deletedIds = getDeletedStoryIds();
+    const candidateIds = KNOWN_PUBLISHED_R2_IDS.filter((id) => !deletedIds.has(id));
+    const hydrated: Post[] = [];
+    const BATCH_SIZE = 8;
+
+    for (let i = 0; i < candidateIds.length; i += BATCH_SIZE) {
+      const batch = candidateIds.slice(i, i + BATCH_SIZE);
+      const results = await Promise.all(
+        batch.map(async (id) => {
+          try {
+            const { ok, json } = await smartFetchJson(
+              `https://media.currentnews.blog/articles/${encodeURIComponent(id)}.json`,
+              4000
+            );
+            if (!ok || !json || !json.title) return null;
+            const mapped = sanitizePostImages(mapD1ArticleToPost(json));
+            if ((mapped.status || 'published').toLowerCase() !== 'published') return null;
+            saveCompressedStory(mapped);
+            return mapped;
+          } catch {
+            return null;
+          }
+        })
+      );
+      for (const p of results) {
+        if (p) hydrated.push(p);
+      }
+    }
+
+    hydrated.sort((a, b) => {
+      const tA = new Date((a.createdAt as any) || 0).getTime() || 0;
+      const tB = new Date((b.createdAt as any) || 0).getTime() || 0;
+      return tB - tA;
+    });
+    return hydrated;
+  }
+
+  /**
    * Fetches public articles feed with transparent load balancing,
-   * automated origin failover, and local cache write-through.
+   * automated origin failover, single-flight deduplication, and local cache write-through.
    */
   public async fetchArticlesFeed(params?: {
+    category?: string;
+    search?: string;
+    limit?: number;
+  }): Promise<{ posts: Post[]; source: string }> {
+    const flightKey = `${params?.category || 'All'}::${params?.search || ''}::${params?.limit || 100}`;
+    const existingFlight = this.feedInFlight.get(flightKey);
+    if (existingFlight) {
+      return existingFlight;
+    }
+
+    const promise = this.executeFetchArticlesFeed(params).finally(() => {
+      this.feedInFlight.delete(flightKey);
+    });
+    this.feedInFlight.set(flightKey, promise);
+    return promise;
+  }
+
+  private async executeFetchArticlesFeed(params?: {
     category?: string;
     search?: string;
     limit?: number;
@@ -348,14 +435,21 @@ class ClientLoadBalancer {
       (params?.search && params.search.trim().length > 0)
     );
 
+    const nativeMode = isNativeApp();
     const orderedNodes = this.getOrderedNodes(hasActiveFilters);
 
     for (const node of orderedNodes) {
       if (node.type === 'bundled' && this.bundledFeedEmpty) {
         continue;
       }
+      // On Web browsers, R2 static buckets do not emit Access-Control-Allow-Origin headers;
+      // route Web feed reads through same-origin `/api/posts` while keeping native CapacitorHttp active on APK.
+      if (!nativeMode && (node.type === 'edge-cdn' || node.type === 'r2-mirror')) {
+        continue;
+      }
 
       const startTime = performance.now();
+      const timeoutMs = node.type === 'origin-api' ? ORIGIN_TIMEOUT_MS : REQUEST_TIMEOUT_MS;
       try {
         let requestUrl = '';
         if (node.type === 'bundled') {
@@ -376,7 +470,7 @@ class ClientLoadBalancer {
           requestUrl = `${node.baseUrl}/articles/feed.json`;
         }
 
-        const { ok, json } = await smartFetchJson(requestUrl, REQUEST_TIMEOUT_MS);
+        const { ok, json } = await smartFetchJson(requestUrl, timeoutMs);
         if (ok && json !== null && json !== undefined) {
           if (node.type === 'bundled' && Array.isArray(json) && json.length === 0) {
             // Empty static feed.json ([]): cleanly skip without error and move on to the next source
@@ -400,12 +494,15 @@ class ClientLoadBalancer {
               .filter((p) => p && p.id && !deletedIds.has(p.id))
               .map(sanitizePostImages);
 
+            // Cache the unfiltered feed when retrieved from non-filtered sources
+            if (!hasActiveFilters) {
+              saveCompressedStories(sanitized);
+            }
+
             // If retrieved from static bundle/edge but client has filters, apply client-side filtering
             if (node.type !== 'origin-api' && hasActiveFilters) {
               if (params?.category && params.category !== 'All') {
-                sanitized = sanitized.filter(
-                  (p) => (p.category || '').toLowerCase() === params.category!.toLowerCase()
-                );
+                sanitized = sanitized.filter((p) => matchesCategoryFilter(p, params.category));
               }
               if (params?.search) {
                 const term = params.search.toLowerCase();
@@ -421,7 +518,9 @@ class ClientLoadBalancer {
             }
 
             this.recordSuccess(node.id, performance.now() - startTime);
-            saveCompressedStories(sanitized);
+            if (hasActiveFilters && sanitized.length > 0 && !getCompressedStories()?.length) {
+              saveCompressedStories(sanitized);
+            }
 
             return {
               posts: sanitized,
@@ -430,22 +529,28 @@ class ClientLoadBalancer {
           }
           // Valid empty response from this node — move cleanly to the next source without error
           continue;
-        } else {
+        } else if (node.type !== 'edge-cdn' && node.type !== 'r2-mirror') {
+          // Do not mark R2 CDN unhealthy if only /articles/feed.json is absent;
+          // single-article /articles/:id.json objects remain live and healthy for APK reads.
           this.recordFailure(node.id);
         }
       } catch {
-        this.recordFailure(node.id);
+        if (node.type !== 'edge-cdn' && node.type !== 'r2-mirror') {
+          this.recordFailure(node.id);
+        }
       }
     }
 
-    // Fallback: Local compressed storage
+    // Fallback 1: Local compressed storage
     const cached = getCompressedStories();
     if (cached && cached.length > 0) {
-      let filtered = cached.map(mapD1ArticleToPost).map(sanitizePostImages);
+      const deletedIds = getDeletedStoryIds();
+      let filtered = cached
+        .filter((p) => p && p.id && !deletedIds.has(p.id))
+        .map(mapD1ArticleToPost)
+        .map(sanitizePostImages);
       if (params?.category && params.category !== 'All') {
-        filtered = filtered.filter(
-          (p) => (p.category || '').toLowerCase() === params.category!.toLowerCase()
-        );
+        filtered = filtered.filter((p) => matchesCategoryFilter(p, params.category));
       }
       if (params?.search) {
         const term = params.search.toLowerCase();
@@ -458,6 +563,28 @@ class ClientLoadBalancer {
         );
       }
       return { posts: filtered, source: 'Local LZW Cache (Offline)' };
+    }
+
+    // Fallback 2 (Native APK): Direct Cloudflare R2 CDN object hydration via CapacitorHttp
+    if (nativeMode) {
+      const hydrated = await this.hydrateNativeFeedFromR2Objects();
+      if (hydrated.length > 0) {
+        saveCompressedStories(hydrated);
+        let filtered = hydrated;
+        if (params?.category && params.category !== 'All') {
+          filtered = filtered.filter((p) => matchesCategoryFilter(p, params.category));
+        }
+        if (params?.search) {
+          const term = params.search.toLowerCase();
+          filtered = filtered.filter(
+            (p) =>
+              (p.title || '').toLowerCase().includes(term) ||
+              (p.excerpt || '').toLowerCase().includes(term) ||
+              (p.content || '').toLowerCase().includes(term)
+          );
+        }
+        return { posts: filtered, source: 'Cloudflare R2 Direct APK Failover' };
+      }
     }
 
     return { posts: [], source: 'Empty / Offline' };
@@ -515,15 +642,19 @@ class ClientLoadBalancer {
       }
     }
 
-    // 4. Query live remote origins (using CapacitorHttp on Android APK to avoid WebView CORS)
+    const nativeMode = isNativeApp();
     const orderedNodes = this.getOrderedNodes(false);
 
     for (const node of orderedNodes) {
       if (node.type === 'bundled') {
         continue; // Checked immediately after live nodes (or first when offline) so live edits stay fresh
       }
+      if (!nativeMode && (node.type === 'edge-cdn' || node.type === 'r2-mirror')) {
+        continue; // Avoid browser CORS errors on R2 bucket URLs; Web uses same-origin /api/posts/:id
+      }
 
       const startTime = performance.now();
+      const timeoutMs = node.type === 'origin-api' ? ORIGIN_TIMEOUT_MS : REQUEST_TIMEOUT_MS;
       try {
         const encodedId = encodeURIComponent(id);
         const url =
@@ -533,7 +664,7 @@ class ClientLoadBalancer {
             ? `${node.baseUrl}/posts/${encodedId}`
             : `${node.baseUrl}/articles/${encodedId}.json`;
 
-        const { ok, json } = await smartFetchJson(url, REQUEST_TIMEOUT_MS);
+        const { ok, json } = await smartFetchJson(url, timeoutMs);
         if (ok && json) {
           const rawTarget =
             node.type === 'edge-d1'

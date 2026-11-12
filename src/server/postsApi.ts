@@ -3,6 +3,7 @@ import path from 'path';
 import type { Request, Response } from 'express';
 import { cleanImageUrl, getFallbackImageUrl } from '../utils/imageUrl.ts';
 import { getFeedFromR2, getArticleFromR2, getDeletedArticleIds, registerOnArticleDeletedHook, loadLocalFeed } from './r2Articles.ts';
+import { getPublishedFeedCatalog, getPublishedArticleById } from './articleCatalog.ts';
 
 interface CachedPost {
   id: string;
@@ -145,49 +146,33 @@ export async function handleGetPosts(req: Request, res: Response) {
     if (inMemoryPostsCache.length === 0 || now - lastCacheTimestamp > CACHE_TTL_MS) {
       let loadedPosts: CachedPost[] = [];
 
+      // 1. Multi-tier catalog: Neon PostgreSQL -> R2 Feed -> Worker D1 -> Live R2 Object Hydration
       try {
-        const r2Posts = await getFeedFromR2();
-        if (r2Posts && Array.isArray(r2Posts) && r2Posts.length > 0) {
-          loadedPosts = r2Posts;
+        const catalogPosts = await getPublishedFeedCatalog();
+        if (catalogPosts && catalogPosts.length > 0) {
+          loadedPosts = catalogPosts;
         }
-      } catch (r2Err) {
-        console.debug('[Posts API] R2 read deferred:', r2Err);
+      } catch (catErr) {
+        console.debug('[Posts API] Catalog read deferred:', catErr);
       }
 
+      // 2. Direct R2 feed fallback
+      if (loadedPosts.length === 0) {
+        try {
+          const r2Posts = await getFeedFromR2();
+          if (r2Posts && Array.isArray(r2Posts) && r2Posts.length > 0) {
+            loadedPosts = r2Posts;
+          }
+        } catch (r2Err) {
+          console.debug('[Posts API] R2 read deferred:', r2Err);
+        }
+      }
+
+      // 3. Local disk fallback
       if (loadedPosts.length === 0) {
         const diskPosts = getDiskFeed();
         if (diskPosts && diskPosts.length > 0) {
           loadedPosts = diskPosts;
-        }
-      }
-
-      // If R2 and disk return no articles, fall back to the Worker's GET /articles list
-      if (loadedPosts.length === 0) {
-        try {
-          const workerBase = (process.env.WORKER_BASE_URL || 'https://api.currentnews.blog').replace(/\/+$/, '');
-          const resp = await fetch(`${workerBase}/articles?limit=100`, {
-            headers: { 'Accept': 'application/json' },
-            signal: AbortSignal.timeout(4000),
-          });
-          const contentType = resp.headers.get('content-type') || '';
-          if (resp.ok && contentType.includes('application/json')) {
-            const rawText = await resp.text();
-            const trimmed = rawText.trim();
-            if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
-              const json = JSON.parse(trimmed) as any;
-              const rawArticles = Array.isArray(json?.articles)
-                ? json.articles
-                : (Array.isArray(json) ? json : []);
-              const mapped = rawArticles
-                .map(mapD1ArticleToPost)
-                .filter((p: CachedPost) => p && p.id && (p.status || 'published').toLowerCase() === 'published');
-              if (mapped.length > 0) {
-                loadedPosts = mapped;
-              }
-            }
-          }
-        } catch {
-          console.debug('[Posts API] Worker feed fallback deferred');
         }
       }
 
@@ -256,14 +241,15 @@ export async function handleGetPosts(req: Request, res: Response) {
     }
   }
 
-  // Apply search filtering
+  // Apply search filtering across title, excerpt, hashtags, and content
   const search = (req.query.search as string || '').trim().toLowerCase();
   if (search) {
     posts = posts.filter(p => {
       const titleMatch = (p.title || '').toLowerCase().includes(search);
+      const excerptMatch = (p.excerpt || '').toLowerCase().includes(search);
       const tagMatch = (p.hashtags || []).some(t => t.toLowerCase().includes(search));
       const contentMatch = (p.content || '').toLowerCase().includes(search);
-      return titleMatch || tagMatch || contentMatch;
+      return titleMatch || excerptMatch || tagMatch || contentMatch;
     });
   }
 
@@ -335,47 +321,27 @@ export async function handleGetPostById(req: Request, res: Response) {
     let post: CachedPost | undefined;
 
     // (a) In-memory cache
-    const cached = inMemoryPostsCache.find(p => p.id === id);
+    const cached = inMemoryPostsCache.find(p => p.id === id || p.slug === id);
     if (cached && cached.content && (cached.status || 'published').toLowerCase() === 'published') {
       post = cached;
     }
 
-    // (b) The Worker at WORKER_BASE_URL or https://api.currentnews.blog, using GET /articles/:id with a 4 second timeout
+    // (b) Multi-tier resolver: Neon PostgreSQL -> Cloudflare Worker D1 -> Cloudflare R2 CDN
     if (!post) {
-      try {
-        const workerBase = (process.env.WORKER_BASE_URL || 'https://api.currentnews.blog').replace(/\/+$/, '');
-        const resp = await fetch(`${workerBase}/articles/${encodeURIComponent(id)}`, {
-          headers: { 'Accept': 'application/json' },
-          signal: AbortSignal.timeout(4000),
-        });
-        const contentType = resp.headers.get('content-type') || '';
-        if (resp.ok && contentType.includes('application/json')) {
-          const rawText = await resp.text();
-          const trimmed = rawText.trim();
-          if (trimmed.startsWith('{')) {
-            const json = JSON.parse(trimmed) as any;
-            const rawArticle = json?.article || json;
-            if (rawArticle && rawArticle.id && !deletedIds.has(rawArticle.id)) {
-              const rawStatus = (rawArticle.status || 'published').toLowerCase();
-              if (rawStatus === 'published') {
-                post = mapD1ArticleToPost(rawArticle);
-              }
-            }
-          }
-        }
-      } catch {
-        console.debug('[Posts API] Worker article fetch deferred');
+      const resolved = await getPublishedArticleById(id);
+      if (resolved && resolved.content && !deletedIds.has(resolved.id)) {
+        post = resolved;
       }
     }
 
-    // (c) R2/disk as the last fallback
+    // (c) Direct R2 / local disk as final fallback
     if (!post) {
       try {
         const r2Post = await getArticleFromR2(id);
         if (r2Post && !deletedIds.has(r2Post.id)) {
           const rawStatus = (r2Post.status || 'published').toLowerCase();
           if (rawStatus === 'published' && r2Post.content) {
-            post = r2Post;
+            post = mapD1ArticleToPost(r2Post);
           }
         }
       } catch (e) {

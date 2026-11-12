@@ -3,6 +3,7 @@ import path from 'path';
 import type { Request, Response, NextFunction } from 'express';
 import { cleanImageUrl, getYoutubeThumbnailUrl } from '../utils/imageUrl.ts';
 import { getArticleFromR2, loadLocalFeed, getDeletedArticleIds } from './r2Articles.ts';
+import { getPublishedArticleById, getPublishedFeedCatalog } from './articleCatalog.ts';
 
 // Comprehensive search crawlers, social share bots, and modern AI agent browsers
 const SOCIAL_BOT_REGEX = /facebookexternalhit|Facebot|Twitterbot|LinkedInBot|WhatsApp|TelegramBot|Discordbot|Slackbot|Pinterest|Applebot|Googlebot|Googlebot-News|Mediapartners-Google|AdsBot-Google|Google-Adwords-Instant|bingbot|SkypeUriPreview|vkShare|redditbot|YandexBot|DuckDuckBot|Baiduspider|GPTBot|ChatGPT-User|OAI-SearchBot|PerplexityBot|ClaudeBot|Claude-Web|Google-Extended|Applebot-Extended|Bytespider|Diffbot|CCBot/i;
@@ -48,8 +49,11 @@ export async function handleSocialPreview(req: Request, res: Response, next: Nex
     }
 
     try {
-      // Fetch full article from R2/local disk
-      let post = await getArticleFromR2(postId);
+      // Fetch full article from Neon / R2 / local disk
+      let post = await getPublishedArticleById(postId);
+      if (!post) {
+        post = await getArticleFromR2(postId);
+      }
       if (!post) {
         const feed = loadLocalFeed();
         post = feed.find((p: any) => p && p.id === postId);
@@ -313,7 +317,8 @@ export async function handleSocialPreview(req: Request, res: Response, next: Nex
   if (reqPath === '/' || reqPath === '') {
     try {
       const deletedIds = getDeletedArticleIds();
-      const feed = loadLocalFeed();
+      const catalog = await getPublishedFeedCatalog();
+      const feed = catalog.length > 0 ? catalog : loadLocalFeed();
       const selectedCategory = String(req.query.category || '').toLowerCase();
       
       const filtered = feed.filter((p: any) => {

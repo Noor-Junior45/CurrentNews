@@ -118,8 +118,9 @@ To update environment variables at any time without rebuilding the container:
 ```bash
 gcloud run services update currentnews-app \
   --region asia-southeast1 \
-  --update-env-vars "ADMIN_BASE_URL=https://admin.currentnews.blog,R2_ACCOUNT_ID=YOUR_ID,R2_ACCESS_KEY_ID=YOUR_KEY,R2_SECRET_ACCESS_KEY=YOUR_SECRET,R2_BUCKET_NAME=YOUR_BUCKET"
+  --update-env-vars "ADMIN_BASE_URL=https://admin.currentnews.blog,R2_CDN_URL=https://media.currentnews.blog"
 ```
+- **Neon PostgreSQL Reader Role (`NEON_DATABASE_URL`):** Ensure the database role used by the Cloud Run reader service has `SELECT` on `articles` in addition to `INSERT, DELETE` on `push_subscriptions` (`GRANT SELECT ON articles TO <reader_role>;`) so newly published articles in Neon appear immediately alongside Cloudflare R2 CDN objects.
 
 ## 5. Deploy Directly from GitHub to Cloud Run (Automated CI/CD)
 

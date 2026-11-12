@@ -277,9 +277,9 @@ curl -s -I -H "Origin: https://localhost" http://localhost:3000/api/posts/Z9qSPa
 curl -s -I -H "Origin: https://evil-attacker.example" http://localhost:3000/api/posts/Z9qSPadOxSBhn2Wjyoet | grep -i 'access-control-allow-origin'
 # Expected: (empty - 0 matches)
 
-# 3. Verify bundled public/articles/:id.json exists for APK offline failover and contains zero PII (authorEmail/authorId)
-grep -rnE 'authorEmail|authorId' public/articles
-# Expected: (empty - 0 matches)
+# 3. Verify static public/feed.json and APK assets/public/feed.json remain [] with zero bundled article JSONs
+cat public/feed.json && ls -1 public/articles/*.json 2>/dev/null | wc -l
+# Expected: [] and 0
 
 # 4. Verify LZW UTF-16 compression/decompression lossless roundtrip on Devanagari + English JSON
 npx tsx -e 'import fs from "fs"; import { compressToUTF16, decompressFromUTF16 } from "./src/utils/compressedStorage.ts"; const raw = JSON.stringify({ id: "test", title: "झारखंड समाचार", content: "<p>Live</p>" }); console.log("Lossless:", decompressFromUTF16(compressToUTF16(raw)) === raw);'
@@ -307,3 +307,22 @@ kill $SERVER_PID
 # Expected: OK and {"status":"ready",...}
 ```
 
+## 13. Stateless Live Domain & Android APK Article Catalog Failover Suite
+
+```bash
+# 1. Verify /api/posts hydrates live published articles even when public/feed.json is [] and /app/data is empty
+curl -fsS "http://localhost:3000/api/posts?limit=5" | jq '{success, total, count: (.posts | length)}'
+# Expected: { "success": true, "total": 41, "count": 5 } (or higher as new Neon articles publish)
+
+# 2. Verify /api/posts/:id returns full sanitized HTML content with zero authorEmail/authorId PII
+curl -fsS "http://localhost:3000/api/posts/DK6GR9O1smRAHbs7sIcr" | jq '{success, id: .post.id, hasContent: ((.post.content | length) > 50), hasEmail: (.post | has("authorEmail"))}'
+# Expected: { "success": true, "id": "DK6GR9O1smRAHbs7sIcr", "hasContent": true, "hasEmail": false }
+
+# 3. Verify regional category filter (?category=Jharkhand) matches Hindi/Devanagari & English regional posts
+curl -fsS "http://localhost:3000/api/posts?category=Jharkhand&limit=5" | jq '{success, total}'
+# Expected: { "success": true, "total": > 0 }
+
+# 4. Verify SQLi / path traversal probe on /api/posts/:id fails closed (404, zero stack trace)
+curl -s -o /dev/null -w "%{http_code}\n" "http://localhost:3000/api/posts/%27%20OR%201%3D1--"
+# Expected: 404
+```

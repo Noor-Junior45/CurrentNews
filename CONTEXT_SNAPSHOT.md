@@ -362,9 +362,9 @@
   - Synchronized `package-lock.json` with `package.json` (adding `@capacitor/push-notifications@8.1.3` and removing duplicate `vite` entry) so `npm ci` and `npm ci --omit=dev` succeed cleanly with zero `EUSAGE` fallback penalties.
   - Replaced top-level `import { createServer } from 'vite'` in `server.ts` with dynamic `await import('vite')` gated behind `process.env.NODE_ENV !== "production"`, eliminating production `require("vite")` errors under `--omit=dev` and speeding up Cloud Run cold starts.
   - Hardened `.dockerignore` with `*downloaded-logs*`, `public/assets/aistudio`, `server.cjs`, and `*.map` so diagnostic build logs and local artifacts never leak into public container assets.
-- **Immediate Next Step:** Commit and push `Dockerfile`, `.dockerignore`, `server.ts`, `package.json`, and `package-lock.json` to `main` to trigger automated Google Cloud Build & Cloud Run deployment.
-
-
-
-
-
+- [x] **Phase 82 (Live Domain `currentnews.blog` & Android APK Multi-Tier Article Catalog + R2 Object Failover Fix):** [COMPLETED]
+  - Diagnosed why `https://currentnews.blog/api/posts` and `/api/articles/feed` returned `[]` after Cloud Run deployment: `public/feed.json` is intentionally `[]`, gitignored `/app/data` is empty in clean containers, `media.currentnews.blog/articles/feed.json` returned `HTTP 404` (while individual `media.currentnews.blog/articles/<id>.json` objects returned `HTTP 200`), `api.currentnews.blog/articles` served static HTML, and `postsApi.ts` had not been wired to Neon PostgreSQL or R2 object hydration.
+  - Created `src/server/articleCatalog.ts` and `src/utils/r2KnownIds.ts`: implements single-flight (`inFlightFeedPromise`) 60s cached catalog resolution across Tier 1 Neon PostgreSQL (`SELECT ... FROM articles WHERE status = 'published'` with PII stripping and automatic 5-min backoff on `42501`/`42P01`), Tier 2 R2 `feed.json` / Worker JSON API, and Tier 3 live Cloudflare R2 CDN `<id>.json` hydration + startup `warmupArticleCatalog()`.
+  - Wired `src/server/postsApi.ts` (`GET /api/posts`, `GET /api/posts/:id`), `server.ts` (`GET /api/articles/feed`), and `src/server/socialPreview.ts` to `articleCatalog.ts`.
+  - Hardened `src/utils/clientLoadBalancer.ts` for both Web and Android APK: raised `ORIGIN_TIMEOUT_MS` to `9000ms` for Cloud Run cold starts, added single-flight `feedInFlight` deduplication, avoided browser CORS errors by restricting direct R2 CDN calls to native `CapacitorHttp.get`, prevented `404` on `/articles/feed.json` from tripping the `cloudflare-cdn` circuit breaker for `/articles/:id.json`, added Devanagari regional category matching, and added native APK direct R2 object hydration failover (`hydrateNativeFeedFromR2Objects`), synced via `npm run cap:build` while keeping `public/feed.json` as `[]`.
+- **Immediate Next Step:** Push changes to `main` so Cloud Build updates `https://currentnews.blog` on Cloud Run, rebuild the Android APK in Android Studio (`versionCode` already bumped for Android 12+), and optionally run `GRANT SELECT ON articles TO <reader_db_role>;` in Neon SQL Editor if the Cloud Run `NEON_DATABASE_URL` role was previously restricted solely to `push_subscriptions`.

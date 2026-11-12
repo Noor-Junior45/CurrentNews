@@ -451,7 +451,7 @@ export default function TermsView() {
               </div>
               <p>Legal & DMCA Inquiries: <a href="mailto:help@currentnews.blog" className="text-[#7A5832] dark:text-[#D4AF37] font-bold underline">help@currentnews.blog</a></p>
               <p>Newsroom & Corrections: <span className="font-bold">corrections@currentnews.blog</span></p>
-              <p>Canonical Web Registry: <span className="font-bold">https://www.currentnews.blog/</span></p>
+              <p>Canonical Web Registry: <span className="font-bold">https://currentnews.blog/</span></p>
               <p>Android Package Identifier: <span className="font-bold">blog.currentnews.app</span></p>
               <p>Commercial Regulatory Frame: Electronic Commerce & Global Press Charter</p>
             </div>

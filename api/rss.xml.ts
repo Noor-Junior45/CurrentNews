@@ -16,8 +16,8 @@ export default async function handler(req: Request, res: Response) {
 
   try {
     const protocol = req.headers['x-forwarded-proto'] || 'https';
-    const host = req.headers.host || 'www.currentnews.blog';
-    const siteUrl = `${protocol}://${host.includes('localhost') ? host : 'www.currentnews.blog'}`;
+    const host = req.headers.host || 'currentnews.blog';
+    const siteUrl = host.includes('localhost') ? `${protocol}://${host}` : 'https://currentnews.blog';
     
     const deletedIds = getDeletedArticleIds();
     const feed = loadLocalFeed();

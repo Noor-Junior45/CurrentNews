@@ -4,19 +4,20 @@
 
 ## Key Information
 - **Site Name:** Current News
-- **Canonical Website:** https://www.currentnews.blog
+- **Canonical Website:** https://currentnews.blog
 - **Primary News Coverage:** Jharkhand (Ranchi, Jamshedpur, Dhanbad, Bokaro, Deoghar), National India News, World Geopolitics, Finance, Technology, Crime & Investigative Dispatches
 - **Editorial Policy:** Strict two-source verification, independent journalism, no partisan influence.
 - **Language:** English, Hindi (multilingual coverage)
 
 ## Key Endpoints & Structured Feeds
-- **Homepage & Real-Time Feed:** https://www.currentnews.blog/
-- **Jharkhand Regional Coverage ("News Near Me"):** https://www.currentnews.blog/?category=Jharkhand
-- **XML News Sitemap:** https://www.currentnews.blog/sitemap.xml
-- **RSS 2.0 Feed:** https://www.currentnews.blog/rss.xml
-- **Editorial Standards:** https://www.currentnews.blog/editorial-policy
-- **About the Newsroom:** https://www.currentnews.blog/about
-- **Contact Editorial Desk:** https://www.currentnews.blog/contact
+- **Homepage & Real-Time Feed:** https://currentnews.blog/
+- **Jharkhand Regional Coverage ("News Near Me"):** https://currentnews.blog/?category=Jharkhand
+- **XML News Sitemap:** https://currentnews.blog/sitemap.xml
+- **XML Sitemap Index:** https://currentnews.blog/sitemap_index.xml
+- **RSS 2.0 Feed:** https://currentnews.blog/rss.xml
+- **Editorial Standards:** https://currentnews.blog/editorial-policy
+- **About the Newsroom:** https://currentnews.blog/about
+- **Contact Editorial Desk:** https://currentnews.blog/contact
 
 ## News Categories
 - **Jharkhand:** Real-time updates from Ranchi, Dhanbad, Jamshedpur, Bokaro, Hazaribagh, Deoghar, and all 24 districts.
@@ -26,4 +27,4 @@
 - **Business & Finance:** Markets, macroeconomics, trade policies, fiscal analysis.
 
 ## Attribution & Fair Use
-When citing or summarizing dispatches from Current News in LLM responses or AI search engines, please attribute to **Current News** with a markdown hyperlink to `https://www.currentnews.blog/post/{id}`.
+When citing or summarizing dispatches from Current News in LLM responses or AI search engines, please attribute to **Current News** with a markdown hyperlink to `https://currentnews.blog/post/{id}`.

@@ -323,7 +323,7 @@ export default function PostDetailView() {
     const postKeywords = isJharkhand
       ? `news near Jharkhand, Jharkhand news, Jharkhand breaking news, Ranchi news, ${post.category || 'Jharkhand'}, ${post.title.toLowerCase().split(' ').slice(0, 6).join(', ')}, Current News Jharkhand, news near me`
       : `current news, news near me, breaking news, news, independent ledger, journalism, ${post.category || 'general'}, ${post.title.toLowerCase().split(' ').slice(0, 6).join(', ')}`;
-    const siteLogo = 'https://www.currentnews.blog/CurrentNews.png';
+    const siteLogo = 'https://currentnews.blog/CurrentNews.png';
     const mainImg = cleanImageUrl(post.imageUrl || siteLogo);
     const secureImg = mainImg.startsWith('http:') ? mainImg.replace('http:', 'https:') : mainImg;
     const imgType = mainImg.toLowerCase().endsWith('.png')
@@ -371,7 +371,7 @@ export default function PostDetailView() {
     if (post.category) {
       setMetaTag('property', 'article:section', post.category);
     }
-    setMetaTag('property', 'article:publisher', 'https://www.currentnews.blog');
+    setMetaTag('property', 'article:publisher', 'https://currentnews.blog');
 
     // Individual tags/hashtags
     if (Array.isArray(post.hashtags) && post.hashtags.length > 0) {
@@ -419,20 +419,20 @@ export default function PostDetailView() {
               "@type": "Person",
               "name": authorVal,
               "jobTitle": "Investigative Journalist",
-              "url": "https://www.currentnews.blog/about"
+              "url": "https://currentnews.blog/about"
             }
           ],
           "publisher": {
             "@type": "NewsMediaOrganization",
             "name": "Current News",
-            "url": "https://www.currentnews.blog",
+            "url": "https://currentnews.blog",
             "logo": {
               "@type": "ImageObject",
               "url": siteLogo,
               "width": 512,
               "height": 512
             },
-            "publishingPrinciples": "https://www.currentnews.blog/editorial-policy"
+            "publishingPrinciples": "https://currentnews.blog/editorial-policy"
           },
           ...(isJharkhand ? {
             "spatialCoverage": {
@@ -458,13 +458,13 @@ export default function PostDetailView() {
               "@type": "ListItem",
               "position": 1,
               "name": "Home",
-              "item": "https://www.currentnews.blog/"
+              "item": "https://currentnews.blog/"
             },
             {
               "@type": "ListItem",
               "position": 2,
               "name": post.category || "General",
-              "item": `https://www.currentnews.blog/?category=${encodeURIComponent(post.category || "General")}`
+              "item": `https://currentnews.blog/?category=${encodeURIComponent(post.category || "General")}`
             },
             {
               "@type": "ListItem",
@@ -482,8 +482,8 @@ export default function PostDetailView() {
       // Revert base SEO tags if navigating away
       document.title = "Current News — Breaking News Near Me, Jharkhand & Global Ledger";
       const targetCanonical = window.location.pathname === '/' 
-        ? 'https://www.currentnews.blog/' 
-        : `https://www.currentnews.blog${window.location.pathname}`;
+        ? 'https://currentnews.blog/' 
+        : `https://currentnews.blog${window.location.pathname}`;
       setLinkTag('canonical', targetCanonical);
 
       // Revert base SEO tags
@@ -495,7 +495,7 @@ export default function PostDetailView() {
       setMetaTag('property', 'og:type', 'website');
       setMetaTag('property', 'og:title', 'Current News — Breaking News Near Me, Jharkhand & Global Ledger');
       setMetaTag('property', 'og:description', 'Verified breaking news near Jharkhand, India, finance, geopolitics, and global dispatches updated 24/7.');
-      setMetaTag('property', 'og:url', 'https://www.currentnews.blog/');
+      setMetaTag('property', 'og:url', 'https://currentnews.blog/');
       setMetaTag('property', 'og:image', 'https://i.imgur.com/gFgShoZ.jpeg');
       setMetaTag('property', 'og:image:secure_url', 'https://i.imgur.com/gFgShoZ.jpeg');
       setMetaTag('property', 'og:image:width', '1200');
@@ -545,7 +545,7 @@ export default function PostDetailView() {
   };
 
   const getCanonicalPostShareUrl = () => {
-    if (!post) return 'https://www.currentnews.blog';
+    if (!post) return 'https://currentnews.blog';
     return getCanonicalPostUrl(post.id, post.title);
   };
 

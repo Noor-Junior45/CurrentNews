@@ -73,11 +73,11 @@ export async function handleSocialPreview(req: Request, res: Response, next: Nex
       const rawImage = post.imageUrl || (Array.isArray(post.imageUrls) && post.imageUrls[0]) || '';
       const youtubeUrl = post.youtubeUrl || '';
       const ytThumb = getYoutubeThumbnailUrl(youtubeUrl);
-      const mainImg = cleanImageUrl(rawImage) || ytThumb || 'https://www.currentnews.blog/CurrentNews.png';
+      const mainImg = cleanImageUrl(rawImage) || ytThumb || 'https://currentnews.blog/CurrentNews.png';
       const secureImg = mainImg.startsWith('http:') ? mainImg.replace('http:', 'https:') : mainImg;
       const authorName = post.authorName || 'Current News';
       const category = post.category || 'General';
-      const canonicalUrl = `https://www.currentnews.blog/post/${postId}`;
+      const canonicalUrl = `https://currentnews.blog/post/${postId}`;
       const pubDate = post.createdAt ? new Date(post.createdAt).toISOString() : new Date().toISOString();
       const modDate = post.updatedAt ? new Date(post.updatedAt).toISOString() : pubDate;
 
@@ -115,7 +115,7 @@ export async function handleSocialPreview(req: Request, res: Response, next: Nex
     <meta property="article:section" content="${escapeHtml(category)}" />
     <meta property="article:published_time" content="${pubDate}" />
     <meta property="article:modified_time" content="${modDate}" />
-    <meta property="article:publisher" content="https://www.currentnews.blog" />
+    <meta property="article:publisher" content="https://currentnews.blog" />
     <meta name="news_keywords" content="${escapeHtml(newsKeywords)}" />
     <meta name="geo.region" content="IN-JH" />
     <meta name="geo.placename" content="${isJharkhand ? 'Jharkhand, India' : 'India'}" />
@@ -156,15 +156,15 @@ export async function handleSocialPreview(req: Request, res: Response, next: Nex
           "author": [{
             "@type": "Person",
             "name": ${JSON.stringify(authorName)},
-            "url": "https://www.currentnews.blog/about"
+            "url": "https://currentnews.blog/about"
           }],
           "publisher": {
             "@type": "NewsMediaOrganization",
             "name": "Current News",
-            "url": "https://www.currentnews.blog",
+            "url": "https://currentnews.blog",
             "logo": {
               "@type": "ImageObject",
-              "url": "https://www.currentnews.blog/CurrentNews.png"
+              "url": "https://currentnews.blog/CurrentNews.png"
             }
           }${isJharkhand ? `,
           "spatialCoverage": {
@@ -185,13 +185,13 @@ export async function handleSocialPreview(req: Request, res: Response, next: Nex
               "@type": "ListItem",
               "position": 1,
               "name": "Home",
-              "item": "https://www.currentnews.blog/"
+              "item": "https://currentnews.blog/"
             },
             {
               "@type": "ListItem",
               "position": 2,
               "name": ${JSON.stringify(category)},
-              "item": "https://www.currentnews.blog/?category=${encodeURIComponent(category)}"
+              "item": "https://currentnews.blog/?category=${encodeURIComponent(category)}"
             },
             {
               "@type": "ListItem",
@@ -268,7 +268,7 @@ export async function handleSocialPreview(req: Request, res: Response, next: Nex
       '/terms': 'Universal Terms of Service | Current News'
     };
 
-    const canonicalUrl = `https://www.currentnews.blog${reqPath}`;
+    const canonicalUrl = `https://currentnews.blog${reqPath}`;
     html = html.replace(/<title>.*?<\/title>/i, `<title>${pageTitles[reqPath]}</title>`);
     html = html.replace(/<link rel="canonical"[^>]*>/gi, `<link rel="canonical" href="${canonicalUrl}" />`);
     html = html.replace(/<meta property="og:url"[^>]*>/gi, `<meta property="og:url" content="${canonicalUrl}" />`);

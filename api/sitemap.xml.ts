@@ -16,8 +16,26 @@ export default async function handler(req: Request, res: Response) {
 
   try {
     const protocol = req.headers['x-forwarded-proto'] || 'https';
-    const host = req.headers.host || 'www.currentnews.blog';
-    const siteUrl = `${protocol}://${host.includes('localhost') ? host : 'www.currentnews.blog'}`;
+    const host = req.headers.host || 'currentnews.blog';
+    const siteUrl = host.includes('localhost') ? `${protocol}://${host}` : 'https://currentnews.blog';
+
+    const todayIso = new Date().toISOString().split('T')[0];
+
+    // If Googlebot requests sitemap_index.xml, provide a valid Sitemap Index document
+    if (req.path === '/sitemap_index.xml') {
+      const sitemapIndexXml = `<?xml version="1.0" encoding="UTF-8"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <sitemap>
+    <loc>${siteUrl}/sitemap.xml</loc>
+    <lastmod>${todayIso}</lastmod>
+  </sitemap>
+  <sitemap>
+    <loc>${siteUrl}/rss.xml</loc>
+    <lastmod>${todayIso}</lastmod>
+  </sitemap>
+</sitemapindex>`;
+      return res.status(200).send(sitemapIndexXml);
+    }
 
     // Load articles reliably from local persistent disk & R2 mirror
     const deletedIds = getDeletedArticleIds();
@@ -44,8 +62,6 @@ export default async function handler(req: Request, res: Response) {
         .replace(/^-+/, '')
         .replace(/-+$/, '');
     };
-
-    const todayIso = new Date().toISOString().split('T')[0];
 
     const categorySlugs = [
       'Jharkhand',

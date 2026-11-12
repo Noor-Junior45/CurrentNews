@@ -306,3 +306,12 @@
     2. Updated `clientLoadBalancer.ts` so when running on native platforms (`Capacitor.isNativePlatform()`), origin API routes use absolute `https://currentnews.blog/api`.
     3. Bundled `public/feed.json` into the web root and synced with Capacitor (`npx cap sync android`) so `android/app/src/main/assets/public/feed.json` provides an instant 0ms offline and cold-start fallback.
     4. Added `COPY --from=builder /app/data ./data` to `Dockerfile` runner stage.
+
+- [x] **Bug ID & Summary:** BUG-056 — Google Search Console "Couldn't Fetch" Sitemap & Cross-Domain Canonical Indexing Suppressions.
+  - **Root Cause:**
+    1. Express lacked an explicit handler for `/sitemap_index.xml`, causing requests for `sitemap_index.xml` to fall through to Vite/SPA `index.html` (returning HTML), which Google Search Console rejected as an invalid sitemap format.
+    2. `api/sitemap.xml.ts`, `api/rss.xml.ts`, `server.ts` canonical Link headers, and `index.html` were hardcoded to `www.currentnews.blog`. Because `https://www.currentnews.blog` has Cloudflare Error 525 (SSL Handshake Failed), all sitemap URLs failed Googlebot's fetch, and Google tagged `currentnews.blog` as "Alternative page with proper canonical tag" while hitting "Redirect error" and "Not found (404)" on `www`.
+  - **Permanent Guardrail:**
+    1. Standardized all canonical URLs, Schema.org IDs, OG tags, sitemaps, RSS, and `Link` headers across the entire application strictly to `https://currentnews.blog`.
+    2. Supported both `/sitemap.xml` and `/sitemap_index.xml` (serving a valid XML `<sitemapindex>` pointing to `/sitemap.xml` and `/rss.xml`) so both URLs return valid XML 200 OK.
+    3. Updated `robots.txt` and `llms.txt` with active sitemap links under `https://currentnews.blog`.

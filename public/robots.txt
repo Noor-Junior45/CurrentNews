@@ -92,7 +92,8 @@ Disallow: /delete-account
 Disallow: /api/
 Allow: /
 
-Sitemap: https://www.currentnews.blog/sitemap.xml
-Sitemap: https://www.currentnews.blog/rss.xml
+Sitemap: https://currentnews.blog/sitemap.xml
+Sitemap: https://currentnews.blog/sitemap_index.xml
+Sitemap: https://currentnews.blog/rss.xml
 
 

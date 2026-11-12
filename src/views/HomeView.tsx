@@ -204,7 +204,7 @@ export default function HomeView() {
           '@type': 'CollectionPage',
           'name': 'Jharkhand News & Regional Reports — Current News Live',
           'description': 'Comprehensive news coverage near Jharkhand, Ranchi, Jamshedpur, and all districts.',
-          'url': 'https://www.currentnews.blog/?category=Jharkhand',
+          'url': 'https://currentnews.blog/?category=Jharkhand',
           'about': {
             '@type': 'AdministrativeArea',
             'name': 'Jharkhand',

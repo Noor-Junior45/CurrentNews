@@ -80,7 +80,7 @@ function ensureHooks() {
       const href = node.getAttribute('href');
       if (href) {
         try {
-          const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://www.currentnews.blog';
+          const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://currentnews.blog';
           const parsed = new URL(href, currentOrigin);
           if (parsed.origin !== currentOrigin) {
             node.setAttribute('target', '_blank');

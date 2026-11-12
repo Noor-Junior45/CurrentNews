@@ -506,7 +506,7 @@ export default function PrivacyView() {
               </div>
               <p>Official Legal Email: <a href="mailto:help@currentnews.blog" className="text-[#7A5832] dark:text-[#D4AF37] font-bold underline">help@currentnews.blog</a></p>
               <p>Newsroom Corrections: <span className="font-bold">corrections@currentnews.blog</span></p>
-              <p>Canonical Web Registry: <span className="font-bold">https://www.currentnews.blog/</span></p>
+              <p>Canonical Web Registry: <span className="font-bold">https://currentnews.blog/</span></p>
               <p>Android Package Identifier: <span className="font-bold">blog.currentnews.app</span></p>
               <p>Physical Dispatch Jurisdiction: Singapore & International Digital Commerce Framework</p>
             </div>

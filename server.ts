@@ -211,7 +211,7 @@ async function startServer() {
     // Set HTTP Link header for canonical URL consolidation across all GET requests
     if (req.method === 'GET' || req.method === 'HEAD') {
       const cleanPath = req.path === '/' ? '' : req.path;
-      res.setHeader('Link', `<https://www.currentnews.blog${cleanPath}>; rel="canonical"`);
+      res.setHeader('Link', `<https://currentnews.blog${cleanPath}>; rel="canonical"`);
     }
 
     // Do NOT redirect local development or AI Studio preview frames
@@ -299,8 +299,8 @@ async function startServer() {
     return next();
   }, asyncHandler(inboundHandler));
 
-  // Dynamically serve dynamic XML Sitemap endpoint
-  app.all('/sitemap.xml', asyncHandler(sitemapHandler));
+  // Dynamically serve dynamic XML Sitemap endpoint (supports sitemap.xml, sitemap_index.xml, and sitemap-news.xml)
+  app.all(['/sitemap.xml', '/sitemap_index.xml', '/sitemap-news.xml'], asyncHandler(sitemapHandler));
 
   // Dynamically serve dynamic RSS Feed endpoint
   app.all('/rss.xml', asyncHandler(rssHandler));

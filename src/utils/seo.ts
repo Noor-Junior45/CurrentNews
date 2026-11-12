@@ -27,7 +27,7 @@ export interface PageSEOProps {
   jsonLdId?: string;
 }
 
-export const CANONICAL_ORIGIN = 'https://www.currentnews.blog';
+export const CANONICAL_ORIGIN = 'https://currentnews.blog';
 
 export function updateDocumentSEO({
   title,

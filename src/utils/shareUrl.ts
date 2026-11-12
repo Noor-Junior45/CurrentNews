@@ -16,20 +16,20 @@ import { slugify } from '../types';
  * 4. Development web previews (*.run.app) use their live accessible URL.
  */
 export function getCanonicalPostUrl(postId: string, title?: string): string {
-  if (!postId) return 'https://www.currentnews.blog';
+  if (!postId) return 'https://currentnews.blog';
   const postSlug = title ? slugify(title) : '';
   const path = postSlug ? `/post/${postId}/${postSlug}` : `/post/${postId}`;
 
   // Always share with the live canonical production domain so recipients on WhatsApp, Twitter, etc. can open it
-  return `https://www.currentnews.blog${path}`;
+  return `https://currentnews.blog${path}`;
 }
 
 /**
  * Returns the canonical public web origin (base URL).
  * In Android Capacitor native apps, local dev, or webviews,
- * strictly returns "https://www.currentnews.blog".
+ * strictly returns "https://currentnews.blog".
  */
 export function getCanonicalSiteOrigin(): string {
-  return 'https://www.currentnews.blog';
+  return 'https://currentnews.blog';
 }
 

@@ -8,6 +8,7 @@
  *   3. Secondary Cloudflare R2 Mirror (r2.dev)
  */
 
+import { Capacitor } from '@capacitor/core';
 import { Post } from '../types';
 import { sanitizePostImages } from './imageUrl';
 import { getCompressedStory, saveCompressedStory, getCompressedStories, saveCompressedStories, getDeletedStoryIds } from './compressedStorage';
@@ -23,6 +24,14 @@ export interface OriginNode {
   latencyMs: number;
   weight: number;
 }
+
+const isNativeApp = (): boolean => {
+  try {
+    return Capacitor.isNativePlatform();
+  } catch {
+    return false;
+  }
+};
 
 function mapD1ArticleToPost(a: any): any {
   if (!a || typeof a !== 'object') return a;
@@ -72,6 +81,28 @@ const REQUEST_TIMEOUT_MS = 4500; // 4.5s max per attempt before failover
 class ClientLoadBalancer {
   private nodes: OriginNode[] = [
     {
+      id: 'bundled-asset',
+      name: 'Pre-Packaged Offline Articles',
+      baseUrl: '/feed.json',
+      type: 'edge-cdn',
+      healthy: true,
+      consecutiveFailures: 0,
+      lastFailureTime: 0,
+      latencyMs: 5,
+      weight: 15, // Packaged directly inside APK and web build for 0ms guaranteed load
+    },
+    {
+      id: 'cloud-run-origin',
+      name: 'Google Cloud Run Express API',
+      baseUrl: isNativeApp() ? 'https://currentnews.blog/api' : '/api',
+      type: 'origin-api',
+      healthy: true,
+      consecutiveFailures: 0,
+      lastFailureTime: 0,
+      latencyMs: 50,
+      weight: 10, // Full dynamic reader API with all 41 dispatches
+    },
+    {
       id: 'cloudflare-d1',
       name: 'Cloudflare Edge Worker & D1',
       baseUrl: 'https://api.currentnews.blog',
@@ -79,8 +110,8 @@ class ClientLoadBalancer {
       healthy: true,
       consecutiveFailures: 0,
       lastFailureTime: 0,
-      latencyMs: 25,
-      weight: 10, // Primary source: Cloudflare Edge Worker & D1 Database
+      latencyMs: 90,
+      weight: 4,
     },
     {
       id: 'cloudflare-cdn',
@@ -90,19 +121,8 @@ class ClientLoadBalancer {
       healthy: true,
       consecutiveFailures: 0,
       lastFailureTime: 0,
-      latencyMs: 35,
-      weight: 3, // Fallback: distributed static caching
-    },
-    {
-      id: 'cloud-run-origin',
-      name: 'Google Cloud Run Express API',
-      baseUrl: '/api',
-      type: 'origin-api',
-      healthy: true,
-      consecutiveFailures: 0,
-      lastFailureTime: 0,
-      latencyMs: 80,
-      weight: 2, // Secondary origin with dynamic search and category filters
+      latencyMs: 120,
+      weight: 2,
     },
     {
       id: 'r2-mirror',
@@ -112,8 +132,8 @@ class ClientLoadBalancer {
       healthy: true,
       consecutiveFailures: 0,
       lastFailureTime: 0,
-      latencyMs: 120,
-      weight: 1, // Tertiary emergency backup
+      latencyMs: 150,
+      weight: 1,
     },
   ];
 
@@ -193,8 +213,10 @@ class ClientLoadBalancer {
         continue;
       }
       const testUrl = node.type === 'origin-api'
-        ? '/healthz'
-        : (node.type === 'edge-d1' ? `${node.baseUrl}/health` : `${node.baseUrl}/articles/feed.json`);
+        ? (isNativeApp() ? 'https://currentnews.blog/healthz' : '/healthz')
+        : (node.type === 'edge-d1'
+          ? `${node.baseUrl}/health`
+          : (node.id === 'bundled-asset' ? '/feed.json' : `${node.baseUrl}/articles/feed.json`));
 
       const start = performance.now();
       try {
@@ -235,7 +257,9 @@ class ClientLoadBalancer {
       const startTime = performance.now();
       try {
         let requestUrl = '';
-        if (node.type === 'edge-d1') {
+        if (node.id === 'bundled-asset') {
+          requestUrl = '/feed.json';
+        } else if (node.type === 'edge-d1') {
           const queryParams = new URLSearchParams();
           if (params?.category && params.category !== 'All') queryParams.set('category', params.category);
           queryParams.set('limit', String(params?.limit || 100));
@@ -361,6 +385,9 @@ class ClientLoadBalancer {
     const orderedNodes = this.getOrderedNodes(false);
 
     for (const node of orderedNodes) {
+      if (node.id === 'bundled-asset') {
+        continue;
+      }
       const startTime = performance.now();
       try {
         const url = node.type === 'edge-d1'
@@ -406,6 +433,13 @@ class ClientLoadBalancer {
     // Final fallback to local cached preview if available
     if (local) {
       return { post: sanitizePostImages(local), source: 'Partial Preview Cache' };
+    }
+
+    // Check if story is available in the bundled or compressed feed
+    const compressedFeed = getCompressedStories();
+    const inFeed = compressedFeed?.find(p => p && p.id === id);
+    if (inFeed && (inFeed.title || inFeed.content)) {
+      return { post: sanitizePostImages(inFeed), source: 'Bundled Story Feed' };
     }
 
     return { post: null, source: 'Not Found' };

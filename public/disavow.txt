@@ -1,0 +1,26 @@
+# Google Search Console Disavow File for currentnews.blog
+# Generated to neutralize toxic PBN spam links and automated link schemes
+# Upload this file at: https://search.google.com/search-console/disavow-links
+
+# Automated Fiverr PBN spam and link farms
+domain:fiverr-seo-for-small-businesses.site
+domain:007eaglegaze.online
+domain:adcreativevideo.com
+domain:archive-hu.com
+domain:betulcrime.com
+domain:digitalchatni.com
+domain:fashionclothingnews.com
+domain:currentchron.com
+
+# Scraper / domain research scraper subdomains (.sbs / .cfd / .monster)
+domain:takes.sbs
+domain:wants.cfd
+domain:knows.sbs
+domain:blinks.monster
+domain:blinks.sbs
+domain:growth-network.online
+domain:serp-growth-network.online
+
+# Generic spam networks targeting apex domain
+domain:pbn-backlinks.org
+domain:automated-seo-links.xyz

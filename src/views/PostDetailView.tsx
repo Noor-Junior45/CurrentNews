@@ -271,12 +271,12 @@ export default function PostDetailView() {
 
   useEffect(() => {
     if (!post) {
-      document.title = "Current News Live | Independent Journalism";
+      document.title = "Current News — Breaking News Near Me & Live Updates";
       return;
     }
 
-    // 1. Update Title Tag
-    document.title = `${post.title} | Current News Live`;
+    // 1. Update Title Tag (Clean site name format for search SERPs)
+    document.title = `${post.title} | Current News`;
 
     // Helpers to manage HTML head tags
     const setMetaTag = (attribute: 'property' | 'name', attrVal: string, content: string) => {
@@ -321,9 +321,9 @@ export default function PostDetailView() {
     const canonicalUrl = getCanonicalPostUrl(post.id, post.title);
     const isJharkhand = /jharkhand|ranchi|dhanbad|jamshedpur|bokaro|deoghar|hazaribagh/i.test(`${post.title} ${post.category || ''} ${post.content || ''}`);
     const postKeywords = isJharkhand
-      ? `news near Jharkhand, Jharkhand news, Jharkhand breaking news, Ranchi news, ${post.category || 'Jharkhand'}, ${post.title.toLowerCase().split(' ').slice(0, 6).join(', ')}, Current News Jharkhand`
-      : `current news, news, independent ledger, journalism, ${post.category || 'general'}, ${post.title.toLowerCase().split(' ').slice(0, 6).join(', ')}, news near Jharkhand`;
-    const siteLogo = 'https://i.imgur.com/gFgShoZ.jpeg';
+      ? `news near Jharkhand, Jharkhand news, Jharkhand breaking news, Ranchi news, ${post.category || 'Jharkhand'}, ${post.title.toLowerCase().split(' ').slice(0, 6).join(', ')}, Current News Jharkhand, news near me`
+      : `current news, news near me, breaking news, news, independent ledger, journalism, ${post.category || 'general'}, ${post.title.toLowerCase().split(' ').slice(0, 6).join(', ')}`;
+    const siteLogo = 'https://www.currentnews.blog/CurrentNews.png';
     const mainImg = cleanImageUrl(post.imageUrl || siteLogo);
     const secureImg = mainImg.startsWith('http:') ? mainImg.replace('http:', 'https:') : mainImg;
     const imgType = mainImg.toLowerCase().endsWith('.png')
@@ -335,17 +335,17 @@ export default function PostDetailView() {
     // 2. Base SEO Tags & Canonical Mappings
     setMetaTag('name', 'description', summary);
     setMetaTag('name', 'keywords', postKeywords);
-    setMetaTag('name', 'news_keywords', isJharkhand ? 'news near Jharkhand, Jharkhand news, Ranchi news, Jharkhand breaking news' : 'breaking news, current news, live reporting');
+    setMetaTag('name', 'news_keywords', isJharkhand ? 'news near Jharkhand, Jharkhand news, Ranchi news, Jharkhand breaking news, news near me' : 'breaking news, current news, live reporting, news near me');
     setMetaTag('name', 'author', authorVal);
     setMetaTag('name', 'robots', 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1');
     setMetaTag('name', 'geo.region', 'IN-JH');
-    setMetaTag('name', 'geo.placename', isJharkhand ? 'Jharkhand, India' : 'Jharkhand, India');
+    setMetaTag('name', 'geo.placename', isJharkhand ? 'Jharkhand, India' : 'India');
     setMetaTag('name', 'geo.position', '23.6102;85.2799');
     setMetaTag('name', 'ICBM', '23.6102, 85.2799');
     setLinkTag('canonical', canonicalUrl);
 
     // 3. OpenGraph Tags mapped specifically for individual article social sharing
-    setMetaTag('property', 'og:site_name', 'Current News Live');
+    setMetaTag('property', 'og:site_name', 'Current News');
     setMetaTag('property', 'og:type', 'article');
     setMetaTag('property', 'og:title', post.title);
     setMetaTag('property', 'og:description', summary);
@@ -424,7 +424,7 @@ export default function PostDetailView() {
           ],
           "publisher": {
             "@type": "NewsMediaOrganization",
-            "name": "Current News Live",
+            "name": "Current News",
             "url": "https://www.currentnews.blog",
             "logo": {
               "@type": "ImageObject",
@@ -480,21 +480,21 @@ export default function PostDetailView() {
 
     return () => {
       // Revert base SEO tags if navigating away
-      document.title = "Current News Live - Independent Ledger";
+      document.title = "Current News — Breaking News Near Me, Jharkhand & Global Ledger";
       const targetCanonical = window.location.pathname === '/' 
         ? 'https://www.currentnews.blog/' 
         : `https://www.currentnews.blog${window.location.pathname}`;
       setLinkTag('canonical', targetCanonical);
 
       // Revert base SEO tags
-      setMetaTag('name', 'description', 'Current News Live - The independent ledger delivering premium uncorrupted journalism, real-time investigative disclosures, opinion dispatches, and geopolitical analysis.');
+      setMetaTag('name', 'description', 'Current News — Verified breaking news near Jharkhand, India, finance, geopolitics, and global dispatches updated 24/7.');
       setMetaTag('name', 'author', 'Current News');
 
       // Revert OpenGraph tags back to default site metadata
       setMetaTag('property', 'og:site_name', 'Current News');
       setMetaTag('property', 'og:type', 'website');
-      setMetaTag('property', 'og:title', 'Current News Live - Independent Ledger');
-      setMetaTag('property', 'og:description', 'Premium uncorrupted journalism, real-time investigative disclosures, opinion dispatches, and geopolitical analysis.');
+      setMetaTag('property', 'og:title', 'Current News — Breaking News Near Me, Jharkhand & Global Ledger');
+      setMetaTag('property', 'og:description', 'Verified breaking news near Jharkhand, India, finance, geopolitics, and global dispatches updated 24/7.');
       setMetaTag('property', 'og:url', 'https://www.currentnews.blog/');
       setMetaTag('property', 'og:image', 'https://i.imgur.com/gFgShoZ.jpeg');
       setMetaTag('property', 'og:image:secure_url', 'https://i.imgur.com/gFgShoZ.jpeg');

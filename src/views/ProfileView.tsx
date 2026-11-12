@@ -16,6 +16,7 @@ import { auth } from '../firebase';
 import { useAuthState } from '../hooks/useAuthState';
 import ProfilePageNavbar from '../components/ProfilePageNavbar';
 import { updateDocumentSEO } from '../utils/seo';
+import UserAvatar from '../components/UserAvatar';
 
 export default function ProfileView(): React.JSX.Element {
   const { user, loading } = useAuthState();
@@ -70,20 +71,13 @@ export default function ProfileView(): React.JSX.Element {
           /* Logged In User Profile Details */
           <div className="w-full flex flex-col items-center text-center">
             {/* Avatar with single golden ring */}
-            <div className="h-22 w-22 sm:h-24 sm:w-24 rounded-full border-2 border-amber-400 overflow-hidden shrink-0 shadow-md bg-slate-100 dark:bg-slate-800 mb-3.5">
-              {user.photoURL ? (
-                <img 
-                  src={user.photoURL} 
-                  alt="Profile Avatar" 
-                  className="h-full w-full object-cover" 
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <div className="h-full w-full bg-indigo-700 text-white flex items-center justify-center font-bold text-2xl">
-                  {user.displayName?.charAt(0).toUpperCase() || 'U'}
-                </div>
-              )}
-            </div>
+            <UserAvatar
+              user={user}
+              size="xl"
+              showBorder={true}
+              ringColor="border-amber-400"
+              className="mb-3.5 shadow-md"
+            />
 
             {/* User Name below avatar */}
             <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white tracking-wide uppercase leading-tight truncate max-w-[320px]">

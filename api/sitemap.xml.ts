@@ -1,4 +1,6 @@
 import type { Request, Response } from 'express';
+import { loadLocalFeed, getDeletedArticleIds } from '../src/server/r2Articles.ts';
+import { cleanImageUrl } from '../src/utils/imageUrl.ts';
 
 export default async function handler(req: Request, res: Response) {
   if (req.method !== 'GET' && req.method !== 'HEAD') {
@@ -6,7 +8,7 @@ export default async function handler(req: Request, res: Response) {
   }
 
   res.setHeader('Content-Type', 'application/xml; charset=utf-8');
-  res.setHeader('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=59');
+  res.setHeader('Cache-Control', 'public, s-maxage=1800, stale-while-revalidate=300');
 
   if (req.method === 'HEAD') {
     return res.status(200).end();
@@ -14,69 +16,13 @@ export default async function handler(req: Request, res: Response) {
 
   try {
     const protocol = req.headers['x-forwarded-proto'] || 'https';
-    // Always prefer the canonical domain with www to avoid redirect loops
     const host = req.headers.host || 'www.currentnews.blog';
     const siteUrl = `${protocol}://${host.includes('localhost') ? host : 'www.currentnews.blog'}`;
 
-    // Configuration for Firestore REST API
-    const config = {
-      projectId: "gen-lang-client-0638643565",
-      firestoreDatabaseId: "ai-studio-6e2ba5e1-c245-4586-90fd-9ba4777b81c4"
-    };
-
-    const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/${config.firestoreDatabaseId}/documents:runQuery`;
-
-    const queryBody = {
-      structuredQuery: {
-        from: [{ collectionId: "posts" }],
-        orderBy: [{ field: { fieldPath: "createdAt" }, direction: "DESCENDING" }]
-      }
-    };
-
-    let items: any[] = [];
-    try {
-      const response = await fetch(firestoreUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(queryBody)
-      });
-
-      if (response.ok) {
-        const queryResult = await response.json();
-        const parseFirestoreFields = (fields: any) => {
-          const result: any = {};
-          if (!fields) return result;
-          for (const key of Object.keys(fields)) {
-            const valObj = fields[key];
-            if ('stringValue' in valObj) {
-              result[key] = valObj.stringValue;
-            } else if ('timestampValue' in valObj) {
-              result[key] = valObj.timestampValue;
-            } else if ('integerValue' in valObj) {
-              result[key] = parseInt(valObj.integerValue, 10);
-            } else if ('booleanValue' in valObj) {
-              result[key] = valObj.booleanValue;
-            }
-          }
-          return result;
-        };
-
-        if (Array.isArray(queryResult)) {
-          for (const item of queryResult) {
-            if (item.document) {
-              const fields = parseFirestoreFields(item.document.fields);
-              const id = item.document.name.split("/").pop();
-              // Only include published posts
-              if (!fields.status || fields.status === 'published') {
-                items.push({ id, ...fields });
-              }
-            }
-          }
-        }
-      }
-    } catch (fetchErr) {
-      console.warn('Failed to fetch posts for sitemap from Firestore REST, using fallback:', fetchErr);
-    }
+    // Load articles reliably from local persistent disk & R2 mirror
+    const deletedIds = getDeletedArticleIds();
+    const feed = loadLocalFeed();
+    const items = (feed || []).filter((p: any) => p && p.id && !deletedIds.has(p.id) && p.status !== 'draft');
 
     const escapeXml = (unsafe: string) => {
       return (unsafe || '')
@@ -101,52 +47,63 @@ export default async function handler(req: Request, res: Response) {
 
     const todayIso = new Date().toISOString().split('T')[0];
 
+    const categorySlugs = [
+      'Jharkhand',
+      'National',
+      'World',
+      'Politics',
+      'Business',
+      'Technology',
+      'Crime',
+      'Environment',
+      'Editorial'
+    ];
+
     let xml = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:news="http://www.google.com/schemas/sitemap-news/0.9">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:news="http://www.google.com/schemas/sitemap-news/0.9"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+  <!-- Core Canonical Landing Pages -->
   <url>
     <loc>${siteUrl}/</loc>
     <lastmod>${todayIso}</lastmod>
-    <changefreq>always</changefreq>
+    <changefreq>hourly</changefreq>
     <priority>1.0</priority>
-  </url>
-  <url>
-    <loc>${siteUrl}/?category=Jharkhand</loc>
-    <lastmod>${todayIso}</lastmod>
-    <changefreq>always</changefreq>
-    <priority>0.95</priority>
-  </url>
-  <url>
-    <loc>${siteUrl}/about</loc>
-    <lastmod>${todayIso}</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>${siteUrl}/editorial-policy</loc>
-    <lastmod>${todayIso}</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>${siteUrl}/contact</loc>
-    <lastmod>${todayIso}</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>${siteUrl}/privacy</loc>
-    <lastmod>${todayIso}</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.5</priority>
-  </url>
-  <url>
-    <loc>${siteUrl}/terms</loc>
-    <lastmod>${todayIso}</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.5</priority>
   </url>
 `;
 
+    // Category landing pages for geo & topical authority
+    for (const cat of categorySlugs) {
+      const isJharkhand = cat.toLowerCase() === 'jharkhand';
+      xml += `  <url>
+    <loc>${siteUrl}/?category=${encodeURIComponent(cat)}</loc>
+    <lastmod>${todayIso}</lastmod>
+    <changefreq>always</changefreq>
+    <priority>${isJharkhand ? '0.98' : '0.85'}</priority>
+  </url>
+`;
+    }
+
+    // Trust & Compliance Pages
+    const trustPages = [
+      { path: '/about', priority: '0.8', freq: 'weekly' },
+      { path: '/editorial-policy', priority: '0.8', freq: 'weekly' },
+      { path: '/contact', priority: '0.7', freq: 'weekly' },
+      { path: '/privacy', priority: '0.5', freq: 'monthly' },
+      { path: '/terms', priority: '0.5', freq: 'monthly' },
+    ];
+
+    for (const page of trustPages) {
+      xml += `  <url>
+    <loc>${siteUrl}${page.path}</loc>
+    <lastmod>${todayIso}</lastmod>
+    <changefreq>${page.freq}</changefreq>
+    <priority>${page.priority}</priority>
+  </url>
+`;
+    }
+
+    // Individual Article URLs with News and Image Extensions
     for (const post of items) {
       const slug = slugify(post.title || '');
       const postUrl = slug ? `${siteUrl}/post/${post.id}/${slug}` : `${siteUrl}/post/${post.id}`;
@@ -160,30 +117,36 @@ export default async function handler(req: Request, res: Response) {
             pubDateIso = d.toISOString();
           }
         } catch {
-          // fallback
+          // fallback to todayIso
         }
       }
 
-      const isJharkhand = /jharkhand|ranchi|dhanbad|jamshedpur|bokaro|deoghar/i.test(`${post.title} ${post.category || ''} ${post.content || ''}`);
+      const isJharkhand = /jharkhand|ranchi|dhanbad|jamshedpur|bokaro|deoghar|hazaribagh/i.test(`${post.title} ${post.category || ''} ${post.excerpt || ''}`);
       const newsKeywords = isJharkhand
-        ? 'news near Jharkhand, Jharkhand news, Ranchi news, India news'
-        : 'breaking news, current news, live reporting';
+        ? 'news near Jharkhand, Jharkhand news, Ranchi news, India breaking news, news near me'
+        : 'breaking news, current news, live reporting, news near me, world dispatch';
+
+      const postImg = cleanImageUrl(post.imageUrl || (Array.isArray(post.imageUrls) && post.imageUrls[0]) || '');
 
       xml += `  <url>
     <loc>${escapeXml(postUrl)}</loc>
     <lastmod>${lastmod}</lastmod>
     <changefreq>daily</changefreq>
-    <priority>0.9</priority>
+    <priority>${isJharkhand ? '0.95' : '0.90'}</priority>
     <news:news>
       <news:publication>
-        <news:name>Current News Live</news:name>
+        <news:name>Current News</news:name>
         <news:language>en</news:language>
       </news:publication>
       <news:publication_date>${pubDateIso}</news:publication_date>
       <news:title>${escapeXml(post.title || 'Breaking Dispatch')}</news:title>
       <news:keywords>${escapeXml(newsKeywords)}</news:keywords>
     </news:news>
-  </url>
+${postImg ? `    <image:image>
+      <image:loc>${escapeXml(postImg)}</image:loc>
+      <image:title>${escapeXml(post.title || 'Current News')}</image:title>
+    </image:image>
+` : ''}  </url>
 `;
     }
 

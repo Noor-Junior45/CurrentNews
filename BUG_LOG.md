@@ -277,14 +277,32 @@
     1. In `src/utils/sanitizeHtml.ts`, added a dedicated DOMPurify `afterSanitizeAttributes` hook that intercepts all `IMG` elements and cleans `src` through `cleanImageUrl(rawSrc)`.
     2. In `src/utils/imageUrl.ts` (`sanitizePostImages`) and `PostDetailView.tsx` (`renderArticleContent`), added regex passes to sanitize all `<img src="...">` tags inside `content` dynamically.
     3. Ran a repository-wide audit and sanitization script across all 41 articles and 49 images in `data/articles/*.json`, eliminating all corrupted double protocols and verifying that 100% of the 45 unique CDN image URLs return HTTP 200 OK.
+- [x] **Bug ID & Summary:** BUG-053 — Google SERP Site Name Displaying `currentnews.blog` Instead of `Current News`, Empty Sitemap & RSS Feeds (0 articles), and Missing Bot Pre-Rendering for AI Agents.
+  - **Root Cause:**
+    1. In `index.html`, Schema.org `WebSite` had `"name": "Current News Live"` and `"alternateName": ["Current News", "CurrentNews.blog"]`. Google's SERP Site Name algorithm favors an exact match between the site name and page titles, and will fall back to displaying the domain (`currentnews.blog`) when domain strings appear in alternate names or when site names differ from headings.
+    2. In `api/sitemap.xml.ts` and `api/rss.xml.ts`, both endpoints attempted to fetch articles from the locked Firestore REST API (`firestore.googleapis.com`), which returned 0 results because Firestore security rules are `if false;`. Consequently, Googlebot received an empty sitemap with 0 articles.
+    3. In `src/server/socialPreview.ts`, crawler pre-rendering also failed by querying the locked Firestore REST API, falling through to `next()` and returning an empty SPA `<div id="root"></div>` to Googlebot, Googlebot-News, and AI search engines.
+    4. Requests arriving at Cloud Run URLs (`*.cloud.run`, `*.run.app`, or apex `currentnews.blog`) lacked automated 301 redirection and `Link: rel="canonical"` headers, splitting ranking authority across multiple domains.
+    5. Modern AI search agents (`GPTBot`, `PerplexityBot`, `ClaudeBot`, `Claude-Web`, `Google-Extended`, `Applebot-Extended`, `OAI-SearchBot`) were not recognized in `socialPreview.ts` and lacked `llms.txt`.
+  - **Permanent Guardrail:**
+    1. In `index.html`, updated `<meta property="og:site_name">`, `<meta name="application-name">`, and Schema.org `WebSite` to strictly `"name": "Current News"`, `"alternateName": ["Current News Live", "CurrentNews"]` (purged `"CurrentNews.blog"`).
+    2. Rewrote `api/sitemap.xml.ts` and `api/rss.xml.ts` to load articles directly from `loadLocalFeed()` in `src/server/r2Articles.ts`, serving all 41+ articles with Google News extensions (`<news:news>`, `<news:name>Current News</news:name>`), `<image:image>` tags, and category landing pages.
+    3. Updated `src/server/socialPreview.ts` to fetch article data from `getArticleFromR2(postId)` and `loadLocalFeed()`, pre-rendering full semantic HTML with `NewsArticle` Schema.org, breadcrumb trails, geo metadata, and speakable specs for Googlebot and all AI search bots.
+    4. Implemented 301 canonical domain redirection in `server.ts` to `https://www.currentnews.blog` (bypassing localhost and AI Studio dev frames) and injected HTTP `Link: <...>; rel="canonical"` headers on all responses.
+    5. Created `public/llms.txt` and updated `public/robots.txt` explicitly permitting and guiding AI search crawlers.
 
+- [x] **Bug ID & Summary:** BUG-054 — Broken Profile Avatar User Image Rendering Default Browser Broken Icon.
+  - **Root Cause:** In `ProfileView.tsx`, `Header.tsx`, and `DeleteAccountView.tsx`, user profile avatar images (`<img>`) directly rendered `user.photoURL` without `onError` handling, without `referrerPolicy="no-referrer"`, and without fallback avatars. If Google OAuth photo URLs had referrer policy restrictions, were inaccessible, or were absent, browsers rendered an unstyled broken-image icon box.
+  - **Permanent Guardrail:** Created reusable `src/components/UserAvatar.tsx` component with `onError={() => setImgError(true)}` state boundary, protocol sanitization (auto-upgrades `http:` to `https:`), `referrerPolicy="no-referrer"`, and deterministic monogram initials fallback with color hashing based on user name/email. Integrated across all profile and header avatar render sites.
 
-
-
-
-
-
-
-
-
-
+- [x] **Bug ID & Summary:** BUG-055 — Android Capacitor Native App APK Blank Feed / Articles Not Loading on Launch.
+  - **Root Cause:**
+    1. In `src/utils/webBase.ts`, `webUrl` pointed to `https://www.currentnews.blog` which returns Cloudflare Error 525 (SSL Handshake Failed), breaking network requests originating from mobile or fallback code.
+    2. In `src/utils/clientLoadBalancer.ts`, candidate node `cloud-run-origin` used relative `baseUrl: '/api'`. Inside the Android WebView container (`capacitor://localhost`), relative fetches resolved to `capacitor://localhost/api/posts`, throwing `net::ERR_FILE_NOT_FOUND` (404) and resulting in zero articles loading.
+    3. Native APK had no bundled offline articles catalog in its assets directory.
+    4. In `Dockerfile`, Stage 2 runner omitted `COPY --from=builder /app/data ./data`, which caused deployed Cloud Run containers to lack local disk fallback articles.
+  - **Permanent Guardrail:**
+    1. Changed `webUrl` in `src/utils/webBase.ts` to `https://currentnews.blog` (which returns HTTP 200 OK).
+    2. Updated `clientLoadBalancer.ts` so when running on native platforms (`Capacitor.isNativePlatform()`), origin API routes use absolute `https://currentnews.blog/api`.
+    3. Bundled `public/feed.json` into the web root and synced with Capacitor (`npx cap sync android`) so `android/app/src/main/assets/public/feed.json` provides an instant 0ms offline and cold-start fallback.
+    4. Added `COPY --from=builder /app/data ./data` to `Dockerfile` runner stage.

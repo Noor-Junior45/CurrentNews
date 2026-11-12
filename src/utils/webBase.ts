@@ -11,7 +11,8 @@ export function webUrl(path: string): string {
   if (!path) return '';
   if (Capacitor.isNativePlatform()) {
     const cleanPath = path.startsWith('/') ? path : `/${path}`;
-    return `https://www.currentnews.blog${cleanPath}`;
+    // Use apex domain currentnews.blog which has active verified SSL (avoids www 525 error)
+    return `https://currentnews.blog${cleanPath}`;
   }
   return path;
 }

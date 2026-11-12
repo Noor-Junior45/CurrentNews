@@ -4,6 +4,7 @@ import { auth } from '../firebase';
 import { api } from '../utils/api';
 import { useAuthState } from '../hooks/useAuthState';
 import { getCanonicalSiteOrigin } from '../utils/shareUrl';
+import UserAvatar from './UserAvatar';
 import { 
   LogIn, 
   LogOut, 
@@ -483,22 +484,7 @@ export default function Header() {
                 id="header-profile-trigger"
                 title={user ? `Account: ${user.displayName || user.email}` : "Editorial Portal Access"}
               >
-                {user ? (
-                  user.photoURL ? (
-                    <img 
-                      src={user.photoURL} 
-                      alt="Profile Avatar" 
-                      className="h-full w-full object-cover"
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : (
-                    <div className="h-full w-full bg-indigo-650 text-white flex items-center justify-center font-bold text-sm">
-                      {user.displayName?.charAt(0).toUpperCase() || 'U'}
-                    </div>
-                  )
-                ) : (
-                  <User className="h-5 w-5 text-slate-700 dark:text-slate-700" />
-                )}
+                <UserAvatar user={user} size="md" />
               </button>
             )}
 
@@ -541,20 +527,13 @@ export default function Header() {
                     /* User Info: Avatar, Name, and Email all centered in the middle of this page */
                     <div className="flex flex-col items-center justify-center text-center w-full pt-1 pb-1">
                       {/* Avatar with single Golden Ring in middle */}
-                      <div className="h-20 w-20 sm:h-20 sm:w-20 rounded-full border-2 border-amber-400 overflow-hidden shrink-0 shadow-md bg-slate-100 dark:bg-slate-800 mb-3">
-                        {user.photoURL ? (
-                          <img 
-                            src={user.photoURL} 
-                            alt="Profile Avatar" 
-                            className="h-full w-full object-cover" 
-                            referrerPolicy="no-referrer"
-                          />
-                        ) : (
-                          <div className="h-full w-full bg-indigo-700 text-white flex items-center justify-center font-bold text-2xl">
-                            {user.displayName?.charAt(0).toUpperCase() || 'U'}
-                          </div>
-                        )}
-                      </div>
+                      <UserAvatar
+                        user={user}
+                        size="lg"
+                        showBorder={true}
+                        ringColor="border-amber-400"
+                        className="mb-3 shadow-md"
+                      />
 
                       {/* User Name below avatar */}
                       <h4 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white tracking-wide uppercase leading-tight truncate max-w-[280px]">

@@ -198,6 +198,47 @@ async function startServer() {
     });
   });
 
+  // Production Canonical Domain Enforcement & Link: rel="canonical" Header
+  app.use((req, res, next) => {
+    const rawHost = (req.headers.host || '').toLowerCase().split(':')[0];
+    const pathName = req.path || '';
+
+    // Bypass health check probes, readiness, and internal load balancer status
+    if (pathName === '/healthz' || pathName === '/readyz' || pathName === '/api/lb/status') {
+      return next();
+    }
+
+    // Set HTTP Link header for canonical URL consolidation across all GET requests
+    if (req.method === 'GET' || req.method === 'HEAD') {
+      const cleanPath = req.path === '/' ? '' : req.path;
+      res.setHeader('Link', `<https://www.currentnews.blog${cleanPath}>; rel="canonical"`);
+    }
+
+    // Do NOT redirect local development or AI Studio preview frames
+    const isLocalOrDev = 
+      rawHost === 'localhost' ||
+      rawHost === '127.0.0.1' ||
+      rawHost === '::1' ||
+      rawHost.startsWith('ais-dev-') ||
+      rawHost.startsWith('ais-pre-') ||
+      rawHost.includes('googleusercontent.com') ||
+      rawHost.includes('aistudio.google.com');
+
+    if (isLocalOrDev) {
+      return next();
+    }
+
+    // Redirect Cloud Run URLs (*.cloud.run, *.run.app) to production https://currentnews.blog
+    const isCloudRunHost = rawHost.endsWith('.cloud.run') || rawHost.endsWith('.run.app') || rawHost === 'currentnews.cloud.run';
+
+    if (isCloudRunHost) {
+      const targetUrl = `https://currentnews.blog${req.originalUrl || '/'}`;
+      return res.redirect(301, targetUrl);
+    }
+
+    return next();
+  });
+
   // Admin Redirection & Public Host Routing
   const ADMIN_BASE_URL = (process.env.ADMIN_BASE_URL || 'https://admin.currentnews.blog').replace(/\/+$/, '');
 
@@ -273,6 +314,21 @@ async function startServer() {
   // Explicitly serve robots.txt with text/plain
   app.get('/robots.txt', (_req, res) => {
     res.type('text/plain; charset=utf-8').sendFile(path.join(process.cwd(), 'public', 'robots.txt'));
+  });
+
+  // Explicitly serve public feed.json for offline/cold-start caching and native APK
+  app.get('/feed.json', (_req, res) => {
+    res.type('application/json; charset=utf-8').sendFile(path.join(process.cwd(), 'public', 'feed.json'));
+  });
+
+  // Explicitly serve disavow.txt for Google Search Console backlink disavowal
+  app.get('/disavow.txt', (_req, res) => {
+    res.type('text/plain; charset=utf-8').sendFile(path.join(process.cwd(), 'public', 'disavow.txt'));
+  });
+
+  // Explicitly serve LLMs.txt for AI search crawlers (Perplexity, ChatGPT Search, Claude, Gemini)
+  app.get(['/llms.txt', '/.well-known/llms.txt'], (_req, res) => {
+    res.type('text/markdown; charset=utf-8').sendFile(path.join(process.cwd(), 'public', 'llms.txt'));
   });
 
   // Explicitly serve Android App Links Digital Asset Links JSON (.well-known/assetlinks.json)

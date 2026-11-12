@@ -1,3 +1,4 @@
+# Googlebot & Googlebot-News (Search & Live SERP)
 User-agent: Googlebot
 Disallow: /admin
 Disallow: /profile
@@ -25,6 +26,63 @@ Disallow: /delete-account
 Disallow: /api/
 Allow: /
 
+# AI Agent Browsers & Search Crawlers (ChatGPT Search, Perplexity, Claude, Apple Intelligence)
+User-agent: GPTBot
+Disallow: /admin
+Disallow: /profile
+Disallow: /settings
+Disallow: /api/
+Allow: /
+
+User-agent: ChatGPT-User
+Disallow: /admin
+Disallow: /profile
+Disallow: /settings
+Disallow: /api/
+Allow: /
+
+User-agent: OAI-SearchBot
+Disallow: /admin
+Disallow: /profile
+Disallow: /settings
+Disallow: /api/
+Allow: /
+
+User-agent: PerplexityBot
+Disallow: /admin
+Disallow: /profile
+Disallow: /settings
+Disallow: /api/
+Allow: /
+
+User-agent: ClaudeBot
+Disallow: /admin
+Disallow: /profile
+Disallow: /settings
+Disallow: /api/
+Allow: /
+
+User-agent: Claude-Web
+Disallow: /admin
+Disallow: /profile
+Disallow: /settings
+Disallow: /api/
+Allow: /
+
+User-agent: Google-Extended
+Disallow: /admin
+Disallow: /profile
+Disallow: /settings
+Disallow: /api/
+Allow: /
+
+User-agent: Applebot-Extended
+Disallow: /admin
+Disallow: /profile
+Disallow: /settings
+Disallow: /api/
+Allow: /
+
 User-agent: *
 Disallow: /admin
 Disallow: /profile
@@ -35,4 +93,6 @@ Disallow: /api/
 Allow: /
 
 Sitemap: https://www.currentnews.blog/sitemap.xml
+Sitemap: https://www.currentnews.blog/rss.xml
+
 

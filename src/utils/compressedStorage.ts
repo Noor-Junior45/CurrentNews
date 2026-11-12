@@ -7,6 +7,7 @@
  */
 
 import { Post } from '../types';
+import { webUrl } from './webBase';
 
 const COMPRESSED_FEED_KEY = 'cn_compressed_stories_v2';
 const COMPRESSED_STORY_PREFIX = 'cn_compressed_article_v2_';
@@ -427,7 +428,7 @@ export function markStoryDeletedLocally(id: string): void {
  */
 export async function syncDeletedStoriesFromRemote(): Promise<Set<string>> {
   try {
-    const res = await fetch('/api/articles/deleted');
+    const res = await fetch(webUrl('/api/articles/deleted'));
     if (res.ok) {
       const ids: string[] = await res.json();
       if (Array.isArray(ids) && ids.length > 0) {

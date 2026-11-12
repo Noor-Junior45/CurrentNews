@@ -19,6 +19,7 @@ import { api } from '../utils/api';
 import { useAuthState } from '../hooks/useAuthState';
 import ProfilePageNavbar from '../components/ProfilePageNavbar';
 import { updateDocumentSEO } from '../utils/seo';
+import UserAvatar from '../components/UserAvatar';
 
 export default function DeleteAccountView() {
   const { user, loading: authLoading } = useAuthState();
@@ -178,14 +179,7 @@ export default function DeleteAccountView() {
             ) : isAuthenticated && user ? (
               <div className="space-y-5">
                 <div className="flex items-center gap-3 py-2 border-b border-slate-100 dark:border-slate-800">
-                  {user.photoURL && (
-                    <img 
-                      src={user.photoURL} 
-                      alt="Profile" 
-                      className="w-10 h-10 rounded-full border border-slate-200 dark:border-slate-700"
-                      referrerPolicy="no-referrer"
-                    />
-                  )}
+                  <UserAvatar user={user} size="md" />
                   <div>
                     <div className="text-sm font-bold text-slate-900 dark:text-white">
                       {user.displayName || 'Reader Account'}

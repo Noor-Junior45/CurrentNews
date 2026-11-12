@@ -1,4 +1,6 @@
 import type { Request, Response } from 'express';
+import { loadLocalFeed, getDeletedArticleIds } from '../src/server/r2Articles.ts';
+import { cleanImageUrl } from '../src/utils/imageUrl.ts';
 
 export default async function handler(req: Request, res: Response) {
   if (req.method !== 'GET' && req.method !== 'HEAD') {
@@ -6,7 +8,7 @@ export default async function handler(req: Request, res: Response) {
   }
 
   res.setHeader('Content-Type', 'application/xml; charset=utf-8');
-  res.setHeader('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=59');
+  res.setHeader('Cache-Control', 'public, s-maxage=1800, stale-while-revalidate=300');
 
   if (req.method === 'HEAD') {
     return res.status(200).end();
@@ -17,34 +19,12 @@ export default async function handler(req: Request, res: Response) {
     const host = req.headers.host || 'www.currentnews.blog';
     const siteUrl = `${protocol}://${host.includes('localhost') ? host : 'www.currentnews.blog'}`;
     
-    // Configuration extracted dynamically
-    const config = {
-      projectId: "gen-lang-client-0638643565",
-      firestoreDatabaseId: "ai-studio-6e2ba5e1-c245-4586-90fd-9ba4777b81c4"
-    };
+    const deletedIds = getDeletedArticleIds();
+    const feed = loadLocalFeed();
+    const items = (feed || [])
+      .filter((p: any) => p && p.id && !deletedIds.has(p.id) && p.status !== 'draft')
+      .slice(0, 50);
 
-    const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/${config.firestoreDatabaseId}/documents:runQuery`;
-    
-    const queryBody = {
-      structuredQuery: {
-        from: [{ collectionId: "posts" }],
-        orderBy: [{ field: { fieldPath: "createdAt" }, direction: "DESCENDING" }],
-        limit: 20
-      }
-    };
-
-    const response = await fetch(firestoreUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(queryBody)
-    });
-
-    if (!response.ok) {
-      throw new Error(`Firestore REST query returned HTTP status ${response.status}`);
-    }
-
-    const queryResult = await response.json();
-    
     // XML safety/escaping helper
     const escapeXml = (unsafe: string) => {
       return (unsafe || '')
@@ -54,69 +34,6 @@ export default async function handler(req: Request, res: Response) {
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&apos;');
     };
-
-    // Raw Firestore REST Value mapping helper
-    const parseFirestoreFields = (fields: any) => {
-      const result: any = {};
-      if (!fields) return result;
-      for (const key of Object.keys(fields)) {
-        const valObj = fields[key];
-        if ('stringValue' in valObj) {
-          result[key] = valObj.stringValue;
-        } else if ('timestampValue' in valObj) {
-          result[key] = valObj.timestampValue;
-        } else if ('integerValue' in valObj) {
-          result[key] = parseInt(valObj.integerValue, 10);
-        } else if ('booleanValue' in valObj) {
-          result[key] = valObj.booleanValue;
-        } else if ('mapValue' in valObj) {
-          result[key] = parseFirestoreFields(valObj.mapValue.fields);
-        } else {
-          result[key] = Object.values(valObj)[0];
-        }
-      }
-      return result;
-    };
-
-    const deletedIds = new Set<string>([
-      'post_1793731462909_88he4y',
-      'post_1793979188690_fibeqk',
-      'post_1794056976447_h5095f',
-    ]);
-    try {
-      const fs = await import('fs');
-      const path = await import('path');
-      const delPath = path.join(process.cwd(), 'data', 'deleted_articles.json');
-      if (fs.existsSync(delPath)) {
-        const fileData = JSON.parse(fs.readFileSync(delPath, 'utf-8'));
-        if (Array.isArray(fileData)) fileData.forEach((id: string) => deletedIds.add(id));
-      }
-    } catch (_) {}
-
-    const items: any[] = [];
-    if (Array.isArray(queryResult)) {
-      for (const item of queryResult) {
-        if (item.document) {
-          const fields = parseFirestoreFields(item.document.fields);
-          const id = item.document.name.split("/").pop();
-          if (id && deletedIds.has(id)) continue;
-          if (fields.status === 'draft') continue;
-          items.push({ id, ...fields });
-        }
-      }
-    }
-
-    // Build XML conformant RSS channel data
-    let xml = `<?xml version="1.0" encoding="UTF-8" ?>
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
-<channel>
-  <title>Current News - Independent Ledger</title>
-  <link>${siteUrl}</link>
-  <description>Serving the public interest with transparent, accurate, and autonomous journalism.</description>
-  <language>en-us</language>
-  <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
-  <atom:link href="${siteUrl}/rss.xml" rel="self" type="application/rss+xml" />
-`;
 
     const slugify = (text: string) => {
       return text
@@ -130,24 +47,39 @@ export default async function handler(req: Request, res: Response) {
         .replace(/-+$/, '');
     };
 
+    // Build XML conformant RSS channel data
+    let xml = `<?xml version="1.0" encoding="UTF-8" ?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/">
+<channel>
+  <title>Current News — Independent Global Journalism &amp; Breaking Updates</title>
+  <link>${siteUrl}</link>
+  <description>Comprehensive, verified global news coverage, breaking reports near Jharkhand, India, finance, geopolitics, and culture updated 24/7.</description>
+  <language>en-us</language>
+  <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
+  <atom:link href="${siteUrl}/rss.xml" rel="self" type="application/rss+xml" />
+`;
+
     for (const item of items) {
       const title = item.title || 'Untitled Dispatch';
-      const rawContent = item.content || '';
-      const author = item.authorName || 'Chronicle Staff Report';
+      const rawExcerpt = item.excerpt || '';
+      const author = item.authorName || 'Current News';
       const category = item.category || 'General';
       const pubDate = item.createdAt ? new Date(item.createdAt).toUTCString() : new Date().toUTCString();
       const slug = slugify(title);
       const postLink = slug ? `${siteUrl}/post/${item.id}/${slug}` : `${siteUrl}/post/${item.id}`;
+      const imgUrl = cleanImageUrl(item.imageUrl || (Array.isArray(item.imageUrls) && item.imageUrls[0]) || '');
 
       xml += `  <item>
     <title>${escapeXml(title)}</title>
     <link>${escapeXml(postLink)}</link>
-    <guid isPermaLink="false">${escapeXml(item.id)}</guid>
+    <guid isPermaLink="true">${escapeXml(postLink)}</guid>
     <pubDate>${pubDate}</pubDate>
     <author>${escapeXml(author)}</author>
     <category>${escapeXml(category)}</category>
-    <description><![CDATA[${rawContent}]]></description>
-  </item>
+    <description><![CDATA[${rawExcerpt}]]></description>
+${imgUrl ? `    <enclosure url="${escapeXml(imgUrl)}" length="102400" type="image/jpeg" />
+    <media:content url="${escapeXml(imgUrl)}" medium="image" />
+` : ''}  </item>
 `;
     }
 

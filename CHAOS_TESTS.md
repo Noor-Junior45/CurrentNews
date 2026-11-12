@@ -264,4 +264,24 @@ curl -s http://localhost:3000/api/posts?limit=5 | grep -o '/uploads/photo.jpg/im
   - Paste `"><img src=x onerror=alert(1)>` or `[[[***+++` into `#navbar-search-input` -> Verify zero console errors, zero XSS execution, and clean literal text handling in suggestion highlights and `#empty-feed`.
   - Rapidly double-click `#header-search-trigger` and `[x]` on 360px mobile and 1440px laptop viewports -> Verify pill preserves `px-3.5` left/right phone margins and `max-w-[480px]` laptop cap with zero layout shift.
 
+## 11. Android APK Article Reader, CORS Allowlist & Offline Bundle Tests
 
+```bash
+# 1. Verify Capacitor Android Origin (https://localhost) receives allowlisted CORS header on /api/posts/:id
+curl -s -I -H "Origin: https://localhost" http://localhost:3000/api/posts/Z9qSPadOxSBhn2Wjyoet | grep -iE 'access-control-allow-origin|vary'
+# Expected:
+# Access-Control-Allow-Origin: https://localhost
+# Vary: Origin
+
+# 2. Verify untrusted external Origin does NOT receive Access-Control-Allow-Origin
+curl -s -I -H "Origin: https://evil-attacker.example" http://localhost:3000/api/posts/Z9qSPadOxSBhn2Wjyoet | grep -i 'access-control-allow-origin'
+# Expected: (empty - 0 matches)
+
+# 3. Verify bundled public/articles/:id.json exists for APK offline failover and contains zero PII (authorEmail/authorId)
+grep -rnE 'authorEmail|authorId' public/articles
+# Expected: (empty - 0 matches)
+
+# 4. Verify LZW UTF-16 compression/decompression lossless roundtrip on Devanagari + English JSON
+npx tsx -e 'import fs from "fs"; import { compressToUTF16, decompressFromUTF16 } from "./src/utils/compressedStorage.ts"; const raw = fs.readFileSync("./public/articles/Z9qSPadOxSBhn2Wjyoet.json", "utf8"); console.log("Lossless:", decompressFromUTF16(compressToUTF16(raw)) === raw);'
+# Expected: Lossless: true
+```

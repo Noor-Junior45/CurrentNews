@@ -586,6 +586,21 @@ export default function PostDetailView() {
   };
 
   useEffect(() => {
+    let cancelled = false;
+
+    const ensureReadableBody = (candidate: Post): Post => {
+      if (candidate.content && candidate.content.trim().length > 0) {
+        return candidate;
+      }
+      if (candidate.excerpt && candidate.excerpt.trim().length > 0) {
+        return {
+          ...candidate,
+          content: `<p>${candidate.excerpt}</p>`,
+        };
+      }
+      return candidate;
+    };
+
     const fetchPost = async () => {
       if (!id) return;
       if (!post) {
@@ -593,20 +608,22 @@ export default function PostDetailView() {
       }
       setError(null);
 
-      // 1. Multi-Origin Client Load Balancer (Cloudflare Edge CDN <-> Cloud Run Origin API <-> R2 Mirror)
+      // 1. Multi-Origin Client Load Balancer (CapacitorHttp Native Bridge <-> Cloud Run API <-> R2 CDN <-> APK Bundle)
       try {
-        const { post: balancedPost } = await clientLoadBalancer.fetchArticleById(id);
+        const { post: balancedPost, source } = await clientLoadBalancer.fetchArticleById(id);
+        if (cancelled) return;
         if (balancedPost && balancedPost.title) {
-          setPost(balancedPost);
+          const readable = ensureReadableBody(balancedPost);
+          setPost(readable);
           setLoading(false);
-          setIsOfflineCached(false);
+          setIsOfflineCached(source.includes('Offline') || source.includes('Preview') || source.includes('Bundled Story Feed'));
 
           // Increment views without reading the document
           const viewedSessionKey = `viewed_post_${id}`;
           const alreadyViewed = sessionStorage.getItem(viewedSessionKey);
           if (!alreadyViewed) {
             sessionStorage.setItem(viewedSessionKey, 'true');
-            api.recordPostView(id).catch(viewErr => {
+            api.recordPostView(id).catch((viewErr) => {
               console.debug('Views counter update notice:', viewErr);
             });
           }
@@ -616,24 +633,39 @@ export default function PostDetailView() {
         console.debug('[ClientLB] Article fetch deferred to local cache:', lbErr);
       }
 
-      // 2. Local compressed story fallback (instant offline render)
+      if (cancelled) return;
+
+      // 2. Local compressed story or feed fallback (instant offline render)
       try {
-        const compressed = getCompressedStory(id);
+        const compressed = getCompressedStory(id) || getCompressedStories()?.find((p) => p && p.id === id) || null;
         if (compressed && compressed.title) {
-          const sanitized = sanitizePostImages(compressed);
+          const sanitized = ensureReadableBody(sanitizePostImages(compressed));
           setPost(sanitized);
           setLoading(false);
           setIsOfflineCached(true);
           return;
         }
-      } catch (e) {}
+      } catch {}
 
-      // If not found in CDN, API, R2, or local cache
+      // 3. Preserve in-memory router previewPost if passed from card click rather than showing a dead-end error screen
+      const previewFromRouter = (location.state as any)?.previewPost as Post | undefined;
+      if (previewFromRouter && previewFromRouter.id === id && previewFromRouter.title) {
+        setPost(ensureReadableBody(sanitizePostImages(previewFromRouter)));
+        setLoading(false);
+        setIsOfflineCached(true);
+        return;
+      }
+
+      // Only show error screen if no article exists in remote API, R2 CDN, APK bundle, local cache, or router state
       setError('Article not found. The article could have been removed by an administrator or has an incorrect web link.');
       setLoading(false);
     };
 
     fetchPost();
+
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   useEffect(() => {

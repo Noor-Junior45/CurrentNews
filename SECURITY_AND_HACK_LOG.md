@@ -106,8 +106,7 @@
     - **Exploit Vector:** Users pasting regex metacharacters (`[.*+?^${}()|[\]\\]`), `<script>` XSS payloads, or rapidly toggling the Line 2 search bar while `/feed.json` warms in the background, causing `SyntaxError` in regex matchers, reflected DOM injection in highlight renderers, or stale state updates on unmounted inputs.
     - **Defense:** Avoided dynamic `new RegExp(userInput)` construction entirely in `renderSuggestionHighlight`, `generateSuggestions`, and `HomeView` filtering—using pure `String.prototype.indexOf` / `includes` substring matching and React JSX text nodes (auto-escaped by React). Guarded the cold-cache `/feed.json` warm-up fetch with `AbortController` cleanup, `Accept: application/json`, and strict JSON prefix verification before `JSON.parse`.
 
-
-
-
-
+24. **Vulnerability: Over-Permissive Wildcard CORS, Static Bundle PII Leakage & Global `fetch` Monkey-Patching in APK**
+    - **Exploit Vector:** (a) Fixing mobile APK CORS errors by setting `Access-Control-Allow-Origin: *` across authenticated API routes exposes user endpoints to arbitrary malicious websites; (b) copying raw `data/articles/*.json` directly into `public/articles/*.json` leaks internal staff `authorEmail` and `authorId` PII in static APK/web assets; (c) enabling global `CapacitorHttp: { enabled: true }` monkey-patches `window.fetch` and breaks Firebase Auth / WebChannel streams.
+    - **Defense:** (a) Implemented an explicit origin allowlist (`https://currentnews.blog`, `https://www.currentnews.blog`, `https://localhost`, `http://localhost`, `capacitor://localhost`) with `Vary: Origin` in `server.ts`; (b) `scripts/sync-public-articles.mjs` strips `authorEmail` and `authorId` before writing `public/articles/*.json`; (c) invoked `CapacitorHttp.get` / `CapacitorHttp.request` selectively only for external `https://` API/CDN calls on native platforms while leaving global `window.fetch` untouched.
 

@@ -349,7 +349,15 @@
   - Responsive Proportions & Colors: Styled with pure white pill interior (`bg-white rounded-full`), navbar-matching `#fbf1e5` outer surface, `px-3.5` side margins on phone screens, and compact `sm:max-w-[420px] md:max-w-[460px] lg:max-w-[480px]` width on tablets and laptops.
   - 3-State Multi-Purpose Cross Button (`[x]` with no background): (1) Clears half-written unsubmitted text while retaining input focus, (2) clears active search results (`?search=`) and restores full feed while retaining focus, and (3) closes the empty search bar with a smooth origin-tracked animation back into `#header-search-trigger`.
   - Google-Style Suggestions Dropdown: Real-time ranked autocomplete & similar search suggestions across newsroom sections, regional/global topics (English & Hindi), article hashtags, and published headlines with bold match highlighting and keyboard navigation (`ArrowUp`/`ArrowDown`/`Enter`/`Escape`).
-- **Immediate Next Step:** Production deployment verification on Google Cloud Run.
+- [x] **Phase 79 (Phone Card Headline `line-clamp-2` Devanagari Vowel Bleed Fix):** [COMPLETED]
+  - Resolved mobile card preview issue on `BlogPostCard.tsx` (`article#post-card-... h3`) where 3+ line Hindi headlines truncated with `line-clamp-2` exposed the upper vowel matras (`ि`, `ी`, `े`, `ै`, `ो`, `ौ`, `ं`) of the hidden 3rd line along the bottom padding edge.
+  - Replaced `leading-[1.45] sm:leading-[1.38] py-1` with `leading-[1.58] sm:leading-[1.5] pt-[3px] sm:pt-[2px] pb-0` and `em`-scaled `max-h-[calc(3.12em+3px)] sm:min-h-[calc(2.96em+2px)] sm:max-h-[calc(2.96em+2px)]`, preserving 100% of Line 1–2 vowels/descenders while completely hiding Line 3+ matras across web and Android APK font scales.
+- [x] **Phase 80 (Android APK Full Article Reader Fix — Native CapacitorHttp CORS Bridge, Bundled Articles & LZW Fix):** [COMPLETED]
+  - Fixed `"Failed to Load Article"` in the Android APK by routing native cross-origin HTTPS requests in `clientLoadBalancer.ts`, `api.ts`, and `compressedStorage.ts` through Capacitor's built-in native `CapacitorHttp` plugin (Android Java HTTP client, completely immune to WebView `https://localhost` CORS blocks across `currentnews.blog` and `media.currentnews.blog` R2 CDN).
+  - Added allowlisted CORS middleware (`https://localhost`, `http://localhost`, `capacitor://localhost`, `https://currentnews.blog`, `https://www.currentnews.blog`) on `/api/*`, `/healthz`, `/feed.json`, and `/articles/*` in `server.ts`.
+  - Added `scripts/sync-public-articles.mjs` to `npm run build`, bundling PII-stripped full article JSONs into `public/articles/*.json` (`dist/articles/*.json`) for guaranteed `0ms` offline/cold-start APK reading.
+  - Fixed `compressedStorage.ts` LZW UTF-16 end-of-stream bit packing and `16384` bitmask (bumping cache keys to `v3`), and hardened `PostDetailView.tsx` so cached/preview articles are never overwritten by an error screen.
+- **Immediate Next Step:** Rebuild Android APK (`npm run cap:build` -> Android Studio `Assemble Release`) and deploy updated server to Google Cloud Run.
 
 
 

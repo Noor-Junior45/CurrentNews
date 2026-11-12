@@ -6,12 +6,13 @@
  * allowing instant (0ms) story loads on user phones without repeatedly hitting Firestore.
  */
 
+import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import { Post } from '../types';
 import { webUrl } from './webBase';
 
-const COMPRESSED_FEED_KEY = 'cn_compressed_stories_v2';
-const COMPRESSED_STORY_PREFIX = 'cn_compressed_article_v2_';
-const CACHE_METADATA_KEY = 'cn_storage_meta_v2';
+const COMPRESSED_FEED_KEY = 'cn_compressed_stories_v3';
+const COMPRESSED_STORY_PREFIX = 'cn_compressed_article_v3_';
+const CACHE_METADATA_KEY = 'cn_storage_meta_v3';
 const DEFAULT_MAX_AGE_MS = 1000 * 60 * 30; // 30 minutes cache freshness
 
 interface StorageMeta {
@@ -198,9 +199,10 @@ export function compressToUTF16(uncompressed: string): string {
     }
   }
 
-  // Mark the end of the stream
+  // Mark the end of the stream (value = 2 across all context_numBits bits)
+  let endValue = 2;
   for (let i = 0; i < context_numBits; i++) {
-    context_data_val = (context_data_val << 1) | 2;
+    context_data_val = (context_data_val << 1) | (endValue & 1);
     if (context_data_position === 14) {
       context_data_position = 0;
       context_data_string += String.fromCharCode(context_data_val + 32);
@@ -208,7 +210,7 @@ export function compressToUTF16(uncompressed: string): string {
     } else {
       context_data_position++;
     }
-    break;
+    endValue = endValue >> 1;
   }
 
   // Flush remaining data
@@ -244,7 +246,7 @@ export function decompressFromUTF16(compressed: string): string {
   let c = 0;
   const data = {
     val: compressed.charCodeAt(0) - 32,
-    position: 32768,
+    position: 16384,
     index: 1
   };
 
@@ -428,17 +430,37 @@ export function markStoryDeletedLocally(id: string): void {
  */
 export async function syncDeletedStoriesFromRemote(): Promise<Set<string>> {
   try {
-    const res = await fetch(webUrl('/api/articles/deleted'));
-    if (res.ok) {
-      const ids: string[] = await res.json();
-      if (Array.isArray(ids) && ids.length > 0) {
-        const set = getDeletedStoryIds();
-        ids.forEach(id => {
-          if (id) set.add(id);
-        });
-        localStorage.setItem(DELETED_STORIES_KEY, JSON.stringify(Array.from(set)));
-        return set;
+    const url = webUrl('/api/articles/deleted');
+    let json: any = null;
+
+    if (Capacitor.isNativePlatform() && /^https?:\/\//i.test(url)) {
+      const resp = await CapacitorHttp.get({
+        url,
+        headers: { Accept: 'application/json' },
+        connectTimeout: 4000,
+        readTimeout: 4000,
+      });
+      if (resp.status >= 200 && resp.status < 300) {
+        json = typeof resp.data === 'string' ? JSON.parse(resp.data) : resp.data;
       }
+    } else {
+      const res = await fetch(url);
+      if (res.ok) {
+        json = await res.json();
+      }
+    }
+
+    const ids: string[] = Array.isArray(json)
+      ? json
+      : (Array.isArray(json?.deletedIds) ? json.deletedIds : []);
+
+    if (ids.length > 0) {
+      const set = getDeletedStoryIds();
+      ids.forEach((id) => {
+        if (id) set.add(id);
+      });
+      localStorage.setItem(DELETED_STORIES_KEY, JSON.stringify(Array.from(set)));
+      return set;
     }
   } catch {
     // Silently continue

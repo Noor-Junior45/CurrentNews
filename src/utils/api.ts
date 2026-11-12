@@ -3,6 +3,7 @@
  * Replaces Firestore for all reader-side data: stats, reactions, subscribers, push, pen names.
  */
 
+import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import { auth } from '../firebase';
 
 export interface PostStats {
@@ -45,7 +46,7 @@ async function getIdToken(forceRefresh = false): Promise<string | null> {
 }
 
 /**
- * Wrapper around fetch that auto-attaches Firebase ID token and default headers.
+ * Wrapper around fetch / CapacitorHttp that auto-attaches Firebase ID token and default headers.
  * Automatically refreshes token and retries once on token_expired / token_revoked.
  */
 async function apiFetch<T = any>(
@@ -63,6 +64,55 @@ async function apiFetch<T = any>(
       headers.set('Authorization', `Bearer ${token}`);
     }
 
+    if (Capacitor.isNativePlatform() && /^https?:\/\//i.test(url)) {
+      const headerObj: Record<string, string> = {};
+      headers.forEach((value, key) => {
+        headerObj[key] = value;
+      });
+
+      let parsedBody: any = undefined;
+      if (typeof options.body === 'string') {
+        try {
+          parsedBody = JSON.parse(options.body);
+        } catch {
+          parsedBody = options.body;
+        }
+      }
+
+      const nativeRes = await CapacitorHttp.request({
+        url,
+        method: (options.method || 'GET').toUpperCase(),
+        headers: headerObj,
+        data: parsedBody,
+        connectTimeout: 6000,
+        readTimeout: 6000,
+      });
+
+      let data: any = null;
+      if (nativeRes.data && typeof nativeRes.data === 'object') {
+        data = nativeRes.data;
+      } else if (typeof nativeRes.data === 'string') {
+        const trimmed = nativeRes.data.trim();
+        if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+          try {
+            data = JSON.parse(trimmed);
+          } catch {
+            data = null;
+          }
+        }
+      }
+
+      // Guard against HTML SPA fallback being mistaken for HTTP 200 API success
+      const isValidApiPayload = data !== null;
+      const ok = nativeRes.status >= 200 && nativeRes.status < 300 && isValidApiPayload;
+      const code = (data?.code as string | undefined) || undefined;
+      return {
+        res: { ok, status: nativeRes.status, statusText: ok ? 'OK' : 'Error' },
+        data,
+        code,
+      };
+    }
+
     const res = await fetch(url, {
       ...options,
       headers,
@@ -72,7 +122,11 @@ async function apiFetch<T = any>(
     const data = isJson ? await res.json().catch(() => null) : null;
     const code = (data?.code as string | undefined) || undefined;
 
-    return { res, data, code };
+    return {
+      res: { ok: res.ok && isJson, status: res.status, statusText: res.statusText },
+      data,
+      code,
+    };
   };
 
   try {

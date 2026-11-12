@@ -166,6 +166,39 @@ async function startServer() {
     }
   });
 
+  // Allowlisted CORS middleware for Native Capacitor Android/iOS WebViews & canonical web origins
+  const ALLOWED_CORS_ORIGINS = new Set([
+    'https://currentnews.blog',
+    'https://www.currentnews.blog',
+    'https://localhost',
+    'http://localhost',
+    'capacitor://localhost',
+  ]);
+
+  app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    const pathName = req.path || '';
+    const isCorsRoute =
+      pathName.startsWith('/api/') ||
+      pathName === '/healthz' ||
+      pathName === '/readyz' ||
+      pathName === '/feed.json' ||
+      pathName.startsWith('/articles/');
+
+    if (isCorsRoute && origin && (ALLOWED_CORS_ORIGINS.has(origin) || /^http:\/\/localhost:\d+$/.test(origin))) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Vary', 'Origin');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept');
+      res.setHeader('Access-Control-Max-Age', '86400');
+
+      if (req.method === 'OPTIONS') {
+        return res.status(204).end();
+      }
+    }
+    return next();
+  });
+
   // Apply general API rate limiter to all /api/* routes
   app.use('/api', apiLimiter);
 

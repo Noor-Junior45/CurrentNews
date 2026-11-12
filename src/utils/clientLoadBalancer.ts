@@ -1,23 +1,31 @@
 /**
  * clientLoadBalancer.ts — Multi-Origin Resilient Client Load Balancer
- * 
+ *
  * Provides dynamic traffic distribution, latency-scored health probing,
- * circuit breaker failover, and speculative prefetching across:
- *   1. Cloudflare Global Edge CDN (media.currentnews.blog)
- *   2. Origin Cloud Run Express API (/api/posts)
- *   3. Secondary Cloudflare R2 Mirror (r2.dev)
+ * native CapacitorHttp CORS-free transport for Android/iOS APKs,
+ * bundled offline `/articles/:id.json` failover, and speculative prefetching across:
+ *   1. Pre-Packaged Bundled Assets (`/feed.json` & `/articles/:id.json`)
+ *   2. Origin Cloud Run Express API (`/api/posts`)
+ *   3. Cloudflare Global Edge CDN (`media.currentnews.blog`)
+ *   4. Secondary Cloudflare R2 Mirror (`r2.dev`)
  */
 
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import { Post } from '../types';
 import { sanitizePostImages } from './imageUrl';
-import { getCompressedStory, saveCompressedStory, getCompressedStories, saveCompressedStories, getDeletedStoryIds } from './compressedStorage';
+import {
+  getCompressedStory,
+  saveCompressedStory,
+  getCompressedStories,
+  saveCompressedStories,
+  getDeletedStoryIds,
+} from './compressedStorage';
 
 export interface OriginNode {
   id: string;
   name: string;
   baseUrl: string;
-  type: 'edge-cdn' | 'origin-api' | 'r2-mirror' | 'edge-d1';
+  type: 'edge-cdn' | 'origin-api' | 'r2-mirror' | 'edge-d1' | 'bundled';
   healthy: boolean;
   consecutiveFailures: number;
   lastFailureTime: number;
@@ -33,6 +41,63 @@ const isNativeApp = (): boolean => {
   }
 };
 
+/**
+ * Executes a JSON GET request safely across both Web browsers and Native Capacitor APKs.
+ * - For local relative paths (`/feed.json`, `/articles/:id.json`), uses WebView's local `fetch` (0-5ms, same-origin).
+ * - For external `https://` URLs inside a native APK (`Origin: https://localhost`), uses native `CapacitorHttp.get()`
+ *   on Android's Java HttpURLConnection stack so cross-origin responses from Cloud Run & Cloudflare R2
+ *   are NEVER blocked by WebView CORS restrictions.
+ */
+async function smartFetchJson(
+  url: string,
+  timeoutMs: number
+): Promise<{ ok: boolean; json: any | null }> {
+  const isRemoteHttp = /^https?:\/\//i.test(url);
+
+  if (isRemoteHttp && isNativeApp()) {
+    try {
+      const resp = await CapacitorHttp.get({
+        url,
+        headers: { Accept: 'application/json' },
+        connectTimeout: timeoutMs,
+        readTimeout: timeoutMs,
+      });
+
+      if (resp.status >= 200 && resp.status < 300 && resp.data != null) {
+        if (typeof resp.data === 'object') {
+          return { ok: true, json: resp.data };
+        }
+        if (typeof resp.data === 'string') {
+          const trimmed = resp.data.trim();
+          if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+            return { ok: true, json: JSON.parse(trimmed) };
+          }
+        }
+      }
+      return { ok: false, json: null };
+    } catch {
+      // Fall through to standard fetch as secondary attempt if CORS headers exist
+    }
+  }
+
+  const resp = await fetch(url, {
+    signal: AbortSignal.timeout(timeoutMs),
+    headers: { Accept: 'application/json' },
+  });
+
+  if (!resp.ok) {
+    return { ok: false, json: null };
+  }
+
+  const rawText = await resp.text();
+  const trimmed = rawText.trim();
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+    return { ok: false, json: null };
+  }
+
+  return { ok: true, json: JSON.parse(trimmed) };
+}
+
 function mapD1ArticleToPost(a: any): any {
   if (!a || typeof a !== 'object') return a;
   const parseJsonArray = (val: any): string[] => {
@@ -46,6 +111,18 @@ function mapD1ArticleToPost(a: any): any {
       }
     }
     return [];
+  };
+
+  const parseTimestamp = (val: any): any => {
+    if (typeof val === 'number' && !Number.isNaN(val) && val > 0) return val;
+    if (typeof val === 'string' && val.trim().length > 0) {
+      const asNum = Number(val);
+      if (!Number.isNaN(asNum) && asNum > 0) return asNum;
+      const parsed = Date.parse(val);
+      if (!Number.isNaN(parsed)) return parsed;
+      return val;
+    }
+    return Date.now();
   };
 
   return {
@@ -66,8 +143,8 @@ function mapD1ArticleToPost(a: any): any {
     youtubeUrl: a.youtubeUrl || a.youtube_url || '',
     facebookUrl: a.facebookUrl || a.facebook_url || '',
     authorName: a.authorName || a.author_name || 'Current News',
-    createdAt: Number(a.createdAt ?? a.created_at ?? a.publishedAt ?? a.published_at) || Date.now(),
-    updatedAt: Number(a.updatedAt ?? a.updated_at) || Date.now(),
+    createdAt: parseTimestamp(a.createdAt ?? a.created_at ?? a.publishedAt ?? a.published_at),
+    updatedAt: parseTimestamp(a.updatedAt ?? a.updated_at ?? a.createdAt ?? a.published_at),
     status: 'published',
     views: Number(a.views) || 0,
     likes: Number(a.likes) || 0,
@@ -76,15 +153,15 @@ function mapD1ArticleToPost(a: any): any {
 }
 
 const CIRCUIT_BREAKER_COOLDOWN_MS = 30000; // 30 seconds before retesting failed origin
-const REQUEST_TIMEOUT_MS = 4500; // 4.5s max per attempt before failover
+const REQUEST_TIMEOUT_MS = 4000; // 4.0s max per attempt before failover
 
 class ClientLoadBalancer {
   private nodes: OriginNode[] = [
     {
       id: 'bundled-asset',
       name: 'Pre-Packaged Offline Articles',
-      baseUrl: '/feed.json',
-      type: 'edge-cdn',
+      baseUrl: '',
+      type: 'bundled',
       healthy: true,
       consecutiveFailures: 0,
       lastFailureTime: 0,
@@ -100,18 +177,7 @@ class ClientLoadBalancer {
       consecutiveFailures: 0,
       lastFailureTime: 0,
       latencyMs: 50,
-      weight: 10, // Full dynamic reader API with all 41 dispatches
-    },
-    {
-      id: 'cloudflare-d1',
-      name: 'Cloudflare Edge Worker & D1',
-      baseUrl: 'https://api.currentnews.blog',
-      type: 'edge-d1',
-      healthy: true,
-      consecutiveFailures: 0,
-      lastFailureTime: 0,
-      latencyMs: 90,
-      weight: 4,
+      weight: 10, // Full dynamic reader API with all published dispatches
     },
     {
       id: 'cloudflare-cdn',
@@ -121,8 +187,8 @@ class ClientLoadBalancer {
       healthy: true,
       consecutiveFailures: 0,
       lastFailureTime: 0,
-      latencyMs: 120,
-      weight: 2,
+      latencyMs: 80,
+      weight: 6, // Direct R2 custom domain JSON objects (/articles/:id.json)
     },
     {
       id: 'r2-mirror',
@@ -132,7 +198,18 @@ class ClientLoadBalancer {
       healthy: true,
       consecutiveFailures: 0,
       lastFailureTime: 0,
-      latencyMs: 150,
+      latencyMs: 120,
+      weight: 3,
+    },
+    {
+      id: 'cloudflare-d1',
+      name: 'Cloudflare Edge Worker & D1',
+      baseUrl: 'https://api.currentnews.blog',
+      type: 'edge-d1',
+      healthy: true,
+      consecutiveFailures: 0,
+      lastFailureTime: 0,
+      latencyMs: 160,
       weight: 1,
     },
   ];
@@ -154,7 +231,7 @@ class ClientLoadBalancer {
     const now = Date.now();
 
     // Check circuit breaker cooldowns
-    this.nodes.forEach(node => {
+    this.nodes.forEach((node) => {
       if (!node.healthy && now - node.lastFailureTime > CIRCUIT_BREAKER_COOLDOWN_MS) {
         node.healthy = true;
         node.consecutiveFailures = 0;
@@ -182,8 +259,8 @@ class ClientLoadBalancer {
    * Records failure and trips the circuit breaker after 2 consecutive errors.
    */
   private recordFailure(nodeId: string) {
-    const node = this.nodes.find(n => n.id === nodeId);
-    if (!node) return;
+    const node = this.nodes.find((n) => n.id === nodeId);
+    if (!node || node.type === 'bundled') return;
     node.consecutiveFailures += 1;
     node.lastFailureTime = Date.now();
     if (node.consecutiveFailures >= 2) {
@@ -196,40 +273,56 @@ class ClientLoadBalancer {
    * Records success and resets failure counter.
    */
   private recordSuccess(nodeId: string, durationMs: number) {
-    const node = this.nodes.find(n => n.id === nodeId);
+    const node = this.nodes.find((n) => n.id === nodeId);
     if (!node) return;
     node.healthy = true;
     node.consecutiveFailures = 0;
-    // Exponential moving average for latency
     node.latencyMs = Math.round(node.latencyMs * 0.7 + durationMs * 0.3);
   }
 
   /**
-   * Background latency probe to keep origin health scores fresh without blocking UI.
+   * Background latency probe for nodes that expose dedicated health endpoints.
+   * Note: Static R2 buckets (`edge-cdn` / `r2-mirror`) store individual `/articles/:id.json` objects
+   * without a `/health` endpoint, so we do not falsely trip their circuit breakers during warmup.
    */
   public async probeLatencies(): Promise<void> {
     for (const node of this.nodes) {
+      if (node.type === 'edge-cdn' || node.type === 'r2-mirror') {
+        continue;
+      }
       if (!node.healthy && Date.now() - node.lastFailureTime < CIRCUIT_BREAKER_COOLDOWN_MS) {
         continue;
       }
-      const testUrl = node.type === 'origin-api'
-        ? (isNativeApp() ? 'https://currentnews.blog/healthz' : '/healthz')
-        : (node.type === 'edge-d1'
-          ? `${node.baseUrl}/health`
-          : (node.id === 'bundled-asset' ? '/feed.json' : `${node.baseUrl}/articles/feed.json`));
 
       const start = performance.now();
       try {
-        const resp = await fetch(testUrl, {
-          method: 'GET',
-          signal: AbortSignal.timeout(2000),
-          cache: 'no-cache',
-        });
-        if (resp.ok) {
-          const duration = performance.now() - start;
-          this.recordSuccess(node.id, duration);
-        } else {
-          this.recordFailure(node.id);
+        if (node.type === 'bundled') {
+          const { ok } = await smartFetchJson('/feed.json', 2000);
+          if (ok) this.recordSuccess(node.id, performance.now() - start);
+          continue;
+        }
+
+        if (node.type === 'origin-api') {
+          const healthUrl = isNativeApp() ? 'https://currentnews.blog/healthz' : '/healthz';
+          if (isNativeApp()) {
+            const resp = await CapacitorHttp.get({ url: healthUrl, connectTimeout: 2500, readTimeout: 2500 });
+            if (resp.status >= 200 && resp.status < 300) {
+              this.recordSuccess(node.id, performance.now() - start);
+            } else {
+              this.recordFailure(node.id);
+            }
+          } else {
+            const resp = await fetch(healthUrl, { signal: AbortSignal.timeout(2000), cache: 'no-cache' });
+            if (resp.ok) this.recordSuccess(node.id, performance.now() - start);
+            else this.recordFailure(node.id);
+          }
+          continue;
+        }
+
+        if (node.type === 'edge-d1') {
+          const { ok } = await smartFetchJson(`${node.baseUrl}/health`, 2000);
+          if (ok) this.recordSuccess(node.id, performance.now() - start);
+          else this.recordFailure(node.id);
         }
       } catch {
         this.recordFailure(node.id);
@@ -254,10 +347,15 @@ class ClientLoadBalancer {
     const orderedNodes = this.getOrderedNodes(hasActiveFilters);
 
     for (const node of orderedNodes) {
+      // Static R2 buckets store per-article JSONs (/articles/:id.json), not /articles/feed.json
+      if (node.type === 'edge-cdn' || node.type === 'r2-mirror') {
+        continue;
+      }
+
       const startTime = performance.now();
       try {
         let requestUrl = '';
-        if (node.id === 'bundled-asset') {
+        if (node.type === 'bundled') {
           requestUrl = '/feed.json';
         } else if (node.type === 'edge-d1') {
           const queryParams = new URLSearchParams();
@@ -270,53 +368,42 @@ class ClientLoadBalancer {
           if (params?.search) queryParams.set('search', params.search);
           queryParams.set('limit', String(params?.limit || 100));
           requestUrl = `${node.baseUrl}/posts?${queryParams.toString()}`;
-        } else {
-          // Cloudflare CDN or Mirror feed JSON
-          requestUrl = `${node.baseUrl}/articles/feed.json`;
         }
 
-        const resp = await fetch(requestUrl, {
-          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-          headers: { 'Accept': 'application/json' },
-        });
-
-        const contentType = resp.headers.get('content-type') || '';
-        if (resp.ok && contentType.includes('application/json')) {
-          const rawText = await resp.text();
-          const trimmed = rawText.trim();
-          if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
-            this.recordFailure(node.id);
-            continue;
-          }
-          const json = JSON.parse(trimmed);
+        const { ok, json } = await smartFetchJson(requestUrl, REQUEST_TIMEOUT_MS);
+        if (ok && json) {
           let rawPosts: any[] = [];
 
           if (node.type === 'edge-d1') {
             rawPosts = (json?.articles || []).map(mapD1ArticleToPost);
           } else if (node.type === 'origin-api') {
-            rawPosts = json?.posts || [];
+            rawPosts = (json?.posts || []).map(mapD1ArticleToPost);
           } else if (Array.isArray(json)) {
-            rawPosts = json;
+            rawPosts = json.map(mapD1ArticleToPost);
           }
 
           if (rawPosts.length > 0) {
             const deletedIds = getDeletedStoryIds();
             let sanitized = rawPosts
-              .filter(p => p && p.id && !deletedIds.has(p.id))
+              .filter((p) => p && p.id && !deletedIds.has(p.id))
               .map(sanitizePostImages);
 
-            // If retrieved from static CDN but client has filters, apply client-side filtering
+            // If retrieved from static bundle/edge but client has filters, apply client-side filtering
             if (node.type !== 'origin-api' && hasActiveFilters) {
               if (params?.category && params.category !== 'All') {
-                sanitized = sanitized.filter(p => (p.category || '').toLowerCase() === params.category!.toLowerCase());
+                sanitized = sanitized.filter(
+                  (p) => (p.category || '').toLowerCase() === params.category!.toLowerCase()
+                );
               }
               if (params?.search) {
                 const term = params.search.toLowerCase();
-                sanitized = sanitized.filter(p =>
-                  (p.title || '').toLowerCase().includes(term) ||
-                  (p.excerpt || '').toLowerCase().includes(term) ||
-                  (p.content || '').toLowerCase().includes(term) ||
-                  (p.authorName || '').toLowerCase().includes(term)
+                sanitized = sanitized.filter(
+                  (p) =>
+                    (p.title || '').toLowerCase().includes(term) ||
+                    (p.excerpt || '').toLowerCase().includes(term) ||
+                    (p.content || '').toLowerCase().includes(term) ||
+                    (p.authorName || '').toLowerCase().includes(term) ||
+                    (p.hashtags || []).some((h: string) => h.toLowerCase().includes(term))
                 );
               }
             }
@@ -332,7 +419,7 @@ class ClientLoadBalancer {
         } else {
           this.recordFailure(node.id);
         }
-      } catch (err) {
+      } catch {
         this.recordFailure(node.id);
       }
     }
@@ -340,17 +427,20 @@ class ClientLoadBalancer {
     // Fallback: Local compressed storage
     const cached = getCompressedStories();
     if (cached && cached.length > 0) {
-      let filtered = cached.map(sanitizePostImages);
+      let filtered = cached.map(mapD1ArticleToPost).map(sanitizePostImages);
       if (params?.category && params.category !== 'All') {
-        filtered = filtered.filter(p => (p.category || '').toLowerCase() === params.category!.toLowerCase());
+        filtered = filtered.filter(
+          (p) => (p.category || '').toLowerCase() === params.category!.toLowerCase()
+        );
       }
       if (params?.search) {
         const term = params.search.toLowerCase();
-        filtered = filtered.filter(p =>
-          (p.title || '').toLowerCase().includes(term) ||
-          (p.excerpt || '').toLowerCase().includes(term) ||
-          (p.content || '').toLowerCase().includes(term) ||
-          (p.authorName || '').toLowerCase().includes(term)
+        filtered = filtered.filter(
+          (p) =>
+            (p.title || '').toLowerCase().includes(term) ||
+            (p.excerpt || '').toLowerCase().includes(term) ||
+            (p.content || '').toLowerCase().includes(term) ||
+            (p.authorName || '').toLowerCase().includes(term)
         );
       }
       return { posts: filtered, source: 'Local LZW Cache (Offline)' };
@@ -360,7 +450,27 @@ class ClientLoadBalancer {
   }
 
   /**
-   * Fetches single article with multi-origin load balancing and fallback.
+   * Loads an individual bundled full article from `/articles/:id.json` packaged in `public/articles/`.
+   * Guarantees 0ms offline & cold-start reading inside Android APKs and PWAs.
+   */
+  private async fetchBundledArticleById(id: string): Promise<Post | null> {
+    try {
+      const { ok, json } = await smartFetchJson(`/articles/${encodeURIComponent(id)}.json`, 1500);
+      if (ok && json && json.title && json.content) {
+        const mapped = sanitizePostImages(mapD1ArticleToPost(json));
+        saveCompressedStory(mapped);
+        this.prefetchedIds.add(id);
+        return mapped;
+      }
+    } catch {
+      // Not present in pre-packaged bundle (e.g., newly published after APK build)
+    }
+    return null;
+  }
+
+  /**
+   * Fetches single article with multi-origin load balancing, native CapacitorHttp CORS bypass,
+   * and bundled APK `/articles/:id.json` offline failover.
    */
   public async fetchArticleById(id: string): Promise<{ post: Post | null; source: string }> {
     if (!id) return { post: null, source: 'Invalid ID' };
@@ -368,51 +478,57 @@ class ClientLoadBalancer {
       return { post: null, source: 'Deleted (Tombstoned)' };
     }
 
-    // Check if a prefetch is already resolving
+    // 1. Check if a speculative prefetch is already resolving
     if (this.prefetchInFlight.has(id)) {
       const prefetched = await this.prefetchInFlight.get(id);
-      if (prefetched) {
+      if (prefetched && prefetched.content) {
         return { post: prefetched, source: 'Speculative Prefetch Cache (0ms)' };
       }
     }
 
-    // Check local compressed memory
+    // 2. Check local compressed memory for full article body
     const local = getCompressedStory(id);
     if (local && local.content && local.content.length > 200) {
-      return { post: sanitizePostImages(local), source: 'Instant User Cache (0ms)' };
+      return { post: sanitizePostImages(mapD1ArticleToPost(local)), source: 'Instant User Cache (0ms)' };
     }
 
+    // 3. If device is offline, serve directly from APK/PWA pre-packaged bundle in ~2ms
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      const bundledOffline = await this.fetchBundledArticleById(id);
+      if (bundledOffline) {
+        return { post: bundledOffline, source: 'Pre-Packaged APK Bundle (Offline 0ms)' };
+      }
+    }
+
+    // 4. Query live remote origins (using CapacitorHttp on Android APK to avoid WebView CORS)
     const orderedNodes = this.getOrderedNodes(false);
 
     for (const node of orderedNodes) {
-      if (node.id === 'bundled-asset') {
-        continue;
+      if (node.type === 'bundled') {
+        continue; // Checked immediately after live nodes (or first when offline) so live edits stay fresh
       }
+
       const startTime = performance.now();
       try {
-        const url = node.type === 'edge-d1'
-          ? `${node.baseUrl}/articles/${encodeURIComponent(id)}`
-          : (node.type === 'origin-api'
-            ? `${node.baseUrl}/posts/${id}`
-            : `${node.baseUrl}/articles/${id}.json`);
+        const encodedId = encodeURIComponent(id);
+        const url =
+          node.type === 'edge-d1'
+            ? `${node.baseUrl}/articles/${encodedId}`
+            : node.type === 'origin-api'
+            ? `${node.baseUrl}/posts/${encodedId}`
+            : `${node.baseUrl}/articles/${encodedId}.json`;
 
-        const resp = await fetch(url, {
-          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-          headers: { 'Accept': 'application/json' },
-        });
-        const contentType = resp.headers.get('content-type') || '';
-        if (resp.ok && contentType.includes('application/json')) {
-          const rawText = await resp.text();
-          const trimmed = rawText.trim();
-          if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
-            this.recordFailure(node.id);
-            continue;
-          }
-          const json = JSON.parse(trimmed);
-          const target = node.type === 'edge-d1'
-            ? mapD1ArticleToPost(json?.article)
-            : (node.type === 'origin-api' ? json?.post : json);
-          if (target && target.title) {
+        const { ok, json } = await smartFetchJson(url, REQUEST_TIMEOUT_MS);
+        if (ok && json) {
+          const rawTarget =
+            node.type === 'edge-d1'
+              ? json?.article
+              : node.type === 'origin-api'
+              ? json?.post
+              : json;
+
+          const target = rawTarget ? mapD1ArticleToPost(rawTarget) : null;
+          if (target && target.title && target.content) {
             const sanitized = sanitizePostImages(target);
             this.recordSuccess(node.id, performance.now() - startTime);
             saveCompressedStory(sanitized);
@@ -422,24 +538,28 @@ class ClientLoadBalancer {
               source: `${node.name} (${Math.round(performance.now() - startTime)}ms)`,
             };
           }
-        } else {
-          this.recordFailure(node.id);
         }
-      } catch (err) {
+        this.recordFailure(node.id);
+      } catch {
         this.recordFailure(node.id);
       }
     }
 
-    // Final fallback to local cached preview if available
-    if (local) {
-      return { post: sanitizePostImages(local), source: 'Partial Preview Cache' };
+    // 5. Instant local APK/PWA bundled full-article JSON fallback (`/articles/:id.json`)
+    const bundled = await this.fetchBundledArticleById(id);
+    if (bundled) {
+      return { post: bundled, source: 'Pre-Packaged APK Bundle' };
     }
 
-    // Check if story is available in the bundled or compressed feed
+    // 6. Final fallback to local cached preview or feed entry if available
+    if (local && local.title) {
+      return { post: sanitizePostImages(mapD1ArticleToPost(local)), source: 'Partial Preview Cache' };
+    }
+
     const compressedFeed = getCompressedStories();
-    const inFeed = compressedFeed?.find(p => p && p.id === id);
+    const inFeed = compressedFeed?.find((p) => p && p.id === id);
     if (inFeed && (inFeed.title || inFeed.content)) {
-      return { post: sanitizePostImages(inFeed), source: 'Bundled Story Feed' };
+      return { post: sanitizePostImages(mapD1ArticleToPost(inFeed)), source: 'Bundled Story Feed' };
     }
 
     return { post: null, source: 'Not Found' };
@@ -454,11 +574,10 @@ class ClientLoadBalancer {
       return;
     }
 
-    // Low priority background fetch
     const promise = (async () => {
       try {
         const { post } = await this.fetchArticleById(id);
-        if (post) {
+        if (post && post.content) {
           this.prefetchedIds.add(id);
         }
         return post;
@@ -477,7 +596,7 @@ class ClientLoadBalancer {
    */
   public getStatus() {
     return {
-      nodes: this.nodes.map(n => ({
+      nodes: this.nodes.map((n) => ({
         id: n.id,
         name: n.name,
         type: n.type,
@@ -486,7 +605,7 @@ class ClientLoadBalancer {
         failures: n.consecutiveFailures,
       })),
       prefetchedCount: this.prefetchedIds.size,
-      activeLoadBalancer: 'Weighted-Latency Multi-Origin Failover',
+      activeLoadBalancer: 'Weighted-Latency Multi-Origin Failover + CapacitorHttp Native Bridge',
     };
   }
 }

@@ -42,9 +42,13 @@ graph TD
         AdminApp -->|GET /api/admin/articles| AdminQuery[Cursor Pagination from Neon with Role Filtering]
     end
 
-    subgraph ReaderDataPipeline [Zero-Quota Public Reader Architecture]
-        ReaderApp -->|Feed & Article Reads| R2Feed[Cloudflare R2: media.currentnews.blog/articles/feed.json]
-        ReaderApp -->|Likes, Views & Comments| EdgeWorker[Cloudflare Worker api.currentnews.blog & D1 SQLite]
+    subgraph ReaderDataPipeline [Zero-Quota Web & Native Android APK Reader Architecture]
+        ReaderApp -->|Web Feed & Article Reads| R2Feed[Cloudflare R2 CDN: media.currentnews.blog/articles/:id.json]
+        NativeAPK[Android Capacitor APK: https://localhost] -->|CapacitorHttp Native Java Bridge - CORS Immune| EdgeRouter
+        NativeAPK -->|CapacitorHttp Failover| R2Feed
+        NativeAPK -->|0ms Offline & Cold-Start Failover| BundledAssets[APK Assets: /feed.json & /articles/:id.json]
+        ReaderApp -->|Likes, Views & Subscriptions| EdgeWorker[Cloudflare Worker api.currentnews.blog & D1 SQLite]
         LockedFirestore[(Firebase Firestore: Locked allow read, write: if false;)]
     end
 ```
+

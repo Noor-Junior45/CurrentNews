@@ -177,8 +177,8 @@ export default function BlogPostCard({ post, globalPenName, cardStats, isLikedBy
       <div className="p-4 sm:p-5 flex flex-col flex-1 justify-between select-text sm:h-full">
         
         <div className="flex flex-col">
-          {/* Heading of article: Relaxed leading, vertical padding, and clean line-clamp ensure Devanagari vowel matras (े, ै, ो, ौ, ं, ु, ू) are 100% visible on phone screens */}
-          <h3 className="font-display font-bold text-lg sm:text-[15px] lg:text-base text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 leading-[1.45] sm:leading-[1.38] py-1 mb-1 sm:mb-1.5 transition-colors line-clamp-2 sm:min-h-[2.9rem] overflow-hidden">
+          {/* Heading of article: Zero bottom padding + calibrated leading/max-height keep Line 1-2 matras intact while completely hiding Line 3+ Devanagari upper vowel matras */}
+          <h3 className="font-display font-bold text-lg sm:text-[15px] lg:text-base text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 leading-[1.58] sm:leading-[1.5] pt-[3px] sm:pt-[2px] pb-0 mb-1.5 transition-colors line-clamp-2 max-h-[calc(3.12em+3px)] sm:min-h-[calc(2.96em+2px)] sm:max-h-[calc(2.96em+2px)] overflow-hidden">
             <span onClick={handleOpenPost} className="text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
               {cleanTitle}
             </span>

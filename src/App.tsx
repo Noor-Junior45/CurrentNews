@@ -1,5 +1,7 @@
 import { useEffect, useLayoutEffect } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
+import { Capacitor } from '@capacitor/core';
+import { PushNotifications } from '@capacitor/push-notifications';
 import Header from './components/Header';
 import Footer from './components/Footer';
 import ConsentBanner from './components/ConsentBanner';
@@ -19,8 +21,6 @@ import ContactView from './views/ContactView';
 import EditorialPolicyView from './views/EditorialPolicyView';
 import { useAdSenseRouteGuard } from './hooks/useAdSenseRouteGuard';
 import { admobManager } from './utils/admob';
-
-import { useLocation } from 'react-router-dom';
 
 const PROFILE_PAGES = [
   '/profile',
@@ -105,17 +105,123 @@ function ScrollToTop() {
   return null;
 }
 
+function normalizeNotificationRoutePath(rawUrlOrPath: unknown): string | null {
+  if (typeof rawUrlOrPath !== 'string') return null;
+  const trimmed = rawUrlOrPath.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith('/')) return trimmed;
+  try {
+    const parsed = new URL(trimmed);
+    return `${parsed.pathname || '/'}${parsed.search || ''}${parsed.hash || ''}`;
+  } catch {
+    return null;
+  }
+}
+
+function NativeNotificationNavigator() {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    const goToArticlePath = (candidate: unknown) => {
+      const path = normalizeNotificationRoutePath(candidate);
+      if (!path) return;
+      navigate(path);
+    };
+
+    const consumePendingFromNativeBridge = () => {
+      try {
+        const win = window as unknown as {
+          __CN_PENDING_NOTIFICATION_PATH__?: string;
+          CurrentNewsNotificationBridge?: { consumePendingPath?: () => string | null };
+        };
+
+        if (win.__CN_PENDING_NOTIFICATION_PATH__) {
+          const pendingJsPath = win.__CN_PENDING_NOTIFICATION_PATH__;
+          delete win.__CN_PENDING_NOTIFICATION_PATH__;
+          if (typeof win.CurrentNewsNotificationBridge?.consumePendingPath === 'function') {
+            win.CurrentNewsNotificationBridge.consumePendingPath();
+          }
+          goToArticlePath(pendingJsPath);
+          return;
+        }
+
+        if (typeof win.CurrentNewsNotificationBridge?.consumePendingPath === 'function') {
+          const bridgePath = win.CurrentNewsNotificationBridge.consumePendingPath();
+          if (bridgePath) {
+            goToArticlePath(bridgePath);
+          }
+        }
+      } catch (err) {
+        console.debug('[NativePush] Pending route check failed:', err);
+      }
+    };
+
+    // 1. Cold-start consumption when app was closed and opened by tapping notification
+    consumePendingFromNativeBridge();
+
+    // 2. Warm/foreground consumption when app is already open
+    const handleNativeNavigate = (e: Event) => {
+      const detail = (e as CustomEvent<{ path?: string }>).detail;
+      const win = window as unknown as {
+        __CN_PENDING_NOTIFICATION_PATH__?: string;
+        CurrentNewsNotificationBridge?: { consumePendingPath?: () => string | null };
+      };
+      delete win.__CN_PENDING_NOTIFICATION_PATH__;
+      win.CurrentNewsNotificationBridge?.consumePendingPath?.();
+      if (detail?.path) {
+        goToArticlePath(detail.path);
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        consumePendingFromNativeBridge();
+      }
+    };
+
+    window.addEventListener('currentnews-native-navigate', handleNativeNavigate);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // 3. Fallback listener if FCM delivered a system notification action via Capacitor plugin
+    const actionListenerPromise = PushNotifications.addListener(
+      'pushNotificationActionPerformed',
+      (action) => {
+        const data = action.notification?.data as Record<string, unknown> | undefined;
+        const rawUrl = data?.url ?? data?.link ?? data?.target_path ?? data?.target_url;
+        if (rawUrl) {
+          goToArticlePath(rawUrl);
+        }
+      }
+    );
+
+    return () => {
+      window.removeEventListener('currentnews-native-navigate', handleNativeNavigate);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      void actionListenerPromise.then((handle) => handle.remove()).catch(() => {});
+    };
+  }, [navigate]);
+
+  return null;
+}
+
 export default function App() {
   useEffect(() => {
-    // Register PWA service worker for notifications and prompt/sync permissions on site open (omitted on admin host)
-    const isAdminHost = typeof window !== 'undefined' && window.location.hostname.startsWith('admin.');
-    if (!isAdminHost && 'serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').then(() => {
-        initPushNotificationPermissionOnSiteOpen();
-      }).catch((err) => {
-        console.debug('Service Worker registration skipped:', err);
-        initPushNotificationPermissionOnSiteOpen();
-      });
+    if (Capacitor.isNativePlatform()) {
+      // Native Android APK uses Capacitor FCM registration (no service worker)
+      void initPushNotificationPermissionOnSiteOpen();
+    } else {
+      // Register PWA service worker for notifications and prompt/sync permissions on site open (omitted on admin host)
+      const isAdminHost = typeof window !== 'undefined' && window.location.hostname.startsWith('admin.');
+      if (!isAdminHost && 'serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js').then(() => {
+          initPushNotificationPermissionOnSiteOpen();
+        }).catch((err) => {
+          console.debug('Service Worker registration skipped:', err);
+          initPushNotificationPermissionOnSiteOpen();
+        });
+      }
     }
 
     // Initialize Google AdMob when running inside native phone app
@@ -128,6 +234,7 @@ export default function App() {
     <BrowserRouter>
       <ScrollToTop />
       <AdSenseRouteWatcher />
+      <NativeNotificationNavigator />
       <div className="flex flex-col min-h-screen bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 overflow-x-hidden" id="app-root-container">
         
         {/* Dynamic Responsive Header (hidden on profile button pages) */}

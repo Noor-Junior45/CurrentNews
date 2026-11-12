@@ -36,7 +36,8 @@ import {
 import { GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
 import { motion, AnimatePresence } from 'motion/react';
 import GlassThemeToggle from './ThemeToggle';
-import { subscribeUserToPush, unsubscribeUserFromPush, isUserPushSubscribed } from '../utils/pushManager';
+import { Capacitor } from '@capacitor/core';
+import { isPushSupported, subscribeUserToPush, unsubscribeUserFromPush, isUserPushSubscribed } from '../utils/pushManager';
 
 // Glassmorphism ToggleSwitch matching the frosted glass theme toggle button
 interface ToggleSwitchProps {
@@ -465,8 +466,11 @@ export default function Header() {
   // --- Settings Modal State & Toggles ---
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   
-  // Browser notifications preference state
+  // Browser & native Android notifications preference state
   const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(() => {
+    if (Capacitor.isNativePlatform()) {
+      return localStorage.getItem('browser_notifications_enabled') === 'true';
+    }
     return localStorage.getItem('browser_notifications_enabled') === 'true' && ('Notification' in window && Notification.permission === 'granted');
   });
 
@@ -561,10 +565,14 @@ export default function Header() {
     const handleSync = () => {
       const val = localStorage.getItem('google_ads_personalized_consent');
       setAdsConsent((val as 'granted' | 'denied') || 'pending');
-      const isGranted = 'Notification' in window && Notification.permission === 'granted';
-      setNotificationsEnabled(
-        isGranted && localStorage.getItem('browser_notifications_enabled') !== 'false'
-      );
+      if (Capacitor.isNativePlatform()) {
+        void isUserPushSubscribed().then((subbed) => setNotificationsEnabled(subbed));
+      } else {
+        const isGranted = 'Notification' in window && Notification.permission === 'granted';
+        setNotificationsEnabled(
+          isGranted && localStorage.getItem('browser_notifications_enabled') !== 'false'
+        );
+      }
       if (user?.email) {
         const cached = localStorage.getItem('cn_sub_' + user.email.toLowerCase());
         if (cached) {
@@ -596,9 +604,9 @@ export default function Header() {
     };
   }, [isDropdownOpen]);
 
-  // Toggle Browser notifications and PWA alert settings
+  // Toggle Browser notifications and native Android push settings
   const toggleNotifications = async () => {
-    if (!('Notification' in window)) {
+    if (!isPushSupported()) {
       alert("This browser does not support push notifications.");
       return;
     }

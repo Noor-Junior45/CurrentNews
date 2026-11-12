@@ -23,8 +23,13 @@ function getPool(): Pool | null {
 }
 
 const BASE64URL_REGEX = /^[A-Za-z0-9_-]+$/;
+const NATIVE_FCM_ENDPOINT_REGEX = /^fcm:[A-Za-z0-9_:-]{100,400}$/;
 
-function isValidEndpoint(endpoint: unknown): boolean {
+function isNativeFcmEndpoint(endpoint: unknown): endpoint is string {
+  return typeof endpoint === 'string' && NATIVE_FCM_ENDPOINT_REGEX.test(endpoint);
+}
+
+function isWebPushEndpoint(endpoint: unknown): endpoint is string {
   if (typeof endpoint !== 'string' || endpoint.length > 500) return false;
   try {
     const parsed = new URL(endpoint);
@@ -71,32 +76,61 @@ export function handleGetVapidPublicKey(_req: Request, res: Response) {
 /**
  * POST /api/push/subscribe
  * Registers a device push subscription into Neon PostgreSQL push_subscriptions table.
+ * Supports both Web Push ({ subscription: { endpoint, keys }, userAgent })
+ * and native Android FCM ({ endpoint: "fcm:<token>", keys: { p256dh: "fcm", auth: "fcm" }, userAgent }).
  */
 export async function handleSubscribe(req: Request, res: Response) {
   try {
-    const { subscription, userAgent } = req.body || {};
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const subObj =
+      body.subscription && typeof body.subscription === 'object'
+        ? body.subscription
+        : body;
 
-    if (!subscription || !subscription.endpoint || !subscription.keys) {
+    const endpoint: unknown = subObj?.endpoint;
+    const keys: unknown = subObj?.keys;
+    const userAgent: unknown = body.userAgent;
+
+    if (!endpoint || !keys || typeof keys !== 'object') {
       return res.status(400).json({
         success: false,
-        error: 'Missing required push subscription object or keys',
+        error: 'Missing required push subscription endpoint or keys',
       });
     }
 
-    if (!isValidEndpoint(subscription.endpoint)) {
+    const p256dh = (keys as Record<string, unknown>).p256dh;
+    const auth = (keys as Record<string, unknown>).auth;
+
+    let resolvedP256dh: string;
+    let resolvedAuth: string;
+
+    if (isNativeFcmEndpoint(endpoint)) {
+      if (p256dh !== 'fcm' || auth !== 'fcm') {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid native FCM subscription keys: p256dh and auth must both be "fcm"',
+        });
+      }
+      resolvedP256dh = 'fcm';
+      resolvedAuth = 'fcm';
+    } else if (isWebPushEndpoint(endpoint)) {
+      if (
+        p256dh === 'fcm' ||
+        auth === 'fcm' ||
+        !isValidBase64UrlKey(p256dh, 200) ||
+        !isValidBase64UrlKey(auth, 50)
+      ) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid subscription keys: p256dh must be base64url <= 200 chars and auth must be base64url <= 50 chars',
+        });
+      }
+      resolvedP256dh = (p256dh as string).trim();
+      resolvedAuth = (auth as string).trim();
+    } else {
       return res.status(400).json({
         success: false,
-        error: 'Invalid subscription endpoint: must be https and hosted by an authorized push gateway (fcm.googleapis.com, push.apple.com, notify.windows.com, or updates.push.services.mozilla.com) under 500 characters',
-      });
-    }
-
-    const p256dh = subscription.keys.p256dh;
-    const auth = subscription.keys.auth;
-
-    if (!isValidBase64UrlKey(p256dh, 200) || !isValidBase64UrlKey(auth, 50)) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid subscription keys: p256dh must be base64url <= 200 chars and auth must be base64url <= 50 chars',
+        error: 'Invalid subscription endpoint: must be an authorized https Web Push gateway or valid fcm:<token> endpoint',
       });
     }
 
@@ -117,7 +151,7 @@ export async function handleSubscribe(req: Request, res: Response) {
       `INSERT INTO push_subscriptions (endpoint, p256dh, auth, user_agent)
        VALUES ($1, $2, $3, $4)
        ON CONFLICT (endpoint) DO NOTHING`,
-      [subscription.endpoint, p256dh, auth, rawUserAgent]
+      [endpoint, resolvedP256dh, resolvedAuth, rawUserAgent]
     );
 
     return res.json({
@@ -141,10 +175,10 @@ export async function handleUnsubscribe(req: Request, res: Response) {
   try {
     const { endpoint } = req.body || {};
 
-    if (!isValidEndpoint(endpoint)) {
+    if (!isNativeFcmEndpoint(endpoint) && !isWebPushEndpoint(endpoint)) {
       return res.status(400).json({
         success: false,
-        error: 'Invalid subscription endpoint: must be https and hosted by an authorized push gateway under 500 characters',
+        error: 'Invalid subscription endpoint: must be an authorized https Web Push gateway or valid fcm:<token> endpoint',
       });
     }
 

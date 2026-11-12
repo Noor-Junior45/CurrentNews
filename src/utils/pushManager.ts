@@ -3,9 +3,19 @@
  * Handles Web Push & Android Push subscriptions, syncing to backend server for automated dispatches.
  */
 
+import { Capacitor } from '@capacitor/core';
 import { webUrl } from './webBase';
+import {
+  initNativePush,
+  subscribeNativePush,
+  unsubscribeNativePush,
+  isNativePushSubscribed,
+} from './nativePush';
 
 export function isPushSupported(): boolean {
+  if (Capacitor.isNativePlatform()) {
+    return true;
+  }
   return (
     typeof window !== 'undefined' &&
     'serviceWorker' in navigator &&
@@ -43,9 +53,13 @@ async function getVapidPublicKey(): Promise<string> {
 }
 
 /**
- * Prompt user for permission, subscribe to PushManager, and register device token in Firestore
+ * Prompt user for permission, subscribe to PushManager (or native FCM), and register device token on server
  */
 export async function subscribeUserToPush(): Promise<{ success: boolean; message?: string }> {
+  if (Capacitor.isNativePlatform()) {
+    return subscribeNativePush();
+  }
+
   if (!isPushSupported()) {
     return { success: false, message: 'Push notifications are not supported on this device/browser.' };
   }
@@ -104,6 +118,10 @@ export async function subscribeUserToPush(): Promise<{ success: boolean; message
  * Unsubscribe user from push alerts and delete token from backend
  */
 export async function unsubscribeUserFromPush(): Promise<{ success: boolean; message?: string }> {
+  if (Capacitor.isNativePlatform()) {
+    return unsubscribeNativePush();
+  }
+
   if (!isPushSupported()) {
     return { success: true };
   }
@@ -136,6 +154,10 @@ export async function unsubscribeUserFromPush(): Promise<{ success: boolean; mes
  * Check if the user is currently subscribed to push
  */
 export async function isUserPushSubscribed(): Promise<boolean> {
+  if (Capacitor.isNativePlatform()) {
+    return isNativePushSubscribed();
+  }
+
   if (!isPushSupported() || Notification.permission !== 'granted') {
     return false;
   }
@@ -152,6 +174,11 @@ export async function isUserPushSubscribed(): Promise<boolean> {
  * Silently synchronizes active subscription with backend on app boot
  */
 export async function syncPushSubscriptionOnAppBoot(): Promise<void> {
+  if (Capacitor.isNativePlatform()) {
+    await initNativePush();
+    return;
+  }
+
   if (!isPushSupported()) return;
 
   if (Notification.permission === 'granted' && localStorage.getItem('browser_notifications_enabled') !== 'false') {
@@ -186,13 +213,16 @@ export async function syncPushSubscriptionOnAppBoot(): Promise<void> {
 }
 
 /**
- * Triggers native browser notification permission prompt when a user opens the site.
- * If granted, registers push subscription with backend, saves local state, and syncs
- * with settings toggle so the button inside Settings tab is ON.
- * If already granted, ensures the subscription string is connected to Neon backend
- * and verifies the Settings toggle button is ON.
+ * Triggers notification permission prompt when a user opens the site or native app.
+ * On Android native (Capacitor), delegates to nativePush.ts instead of service workers.
+ * On web browsers, preserves service worker Web Push flow unchanged.
  */
 export async function initPushNotificationPermissionOnSiteOpen(): Promise<void> {
+  if (Capacitor.isNativePlatform()) {
+    await initNativePush();
+    return;
+  }
+
   if (!isPushSupported()) return;
 
   // Case 1: Permission is already granted - keep button open and verify subscription string

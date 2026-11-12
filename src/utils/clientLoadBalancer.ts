@@ -216,6 +216,7 @@ class ClientLoadBalancer {
 
   private prefetchedIds = new Set<string>();
   private prefetchInFlight = new Map<string, Promise<Post | null>>();
+  private bundledFeedEmpty = false;
 
   constructor() {
     // Run an initial non-blocking background latency probe
@@ -282,8 +283,6 @@ class ClientLoadBalancer {
 
   /**
    * Background latency probe for nodes that expose dedicated health endpoints.
-   * Note: Static R2 buckets (`edge-cdn` / `r2-mirror`) store individual `/articles/:id.json` objects
-   * without a `/health` endpoint, so we do not falsely trip their circuit breakers during warmup.
    */
   public async probeLatencies(): Promise<void> {
     for (const node of this.nodes) {
@@ -297,8 +296,13 @@ class ClientLoadBalancer {
       const start = performance.now();
       try {
         if (node.type === 'bundled') {
-          const { ok } = await smartFetchJson('/feed.json', 2000);
-          if (ok) this.recordSuccess(node.id, performance.now() - start);
+          if (this.bundledFeedEmpty) continue;
+          const { ok, json } = await smartFetchJson('/feed.json', 2000);
+          if (ok && Array.isArray(json) && json.length > 0) {
+            this.recordSuccess(node.id, performance.now() - start);
+          } else if (ok && Array.isArray(json) && json.length === 0) {
+            this.bundledFeedEmpty = true;
+          }
           continue;
         }
 
@@ -347,8 +351,7 @@ class ClientLoadBalancer {
     const orderedNodes = this.getOrderedNodes(hasActiveFilters);
 
     for (const node of orderedNodes) {
-      // Static R2 buckets store per-article JSONs (/articles/:id.json), not /articles/feed.json
-      if (node.type === 'edge-cdn' || node.type === 'r2-mirror') {
+      if (node.type === 'bundled' && this.bundledFeedEmpty) {
         continue;
       }
 
@@ -368,10 +371,19 @@ class ClientLoadBalancer {
           if (params?.search) queryParams.set('search', params.search);
           queryParams.set('limit', String(params?.limit || 100));
           requestUrl = `${node.baseUrl}/posts?${queryParams.toString()}`;
+        } else {
+          // Cloudflare Edge CDN or R2 Secondary Mirror feed JSON
+          requestUrl = `${node.baseUrl}/articles/feed.json`;
         }
 
         const { ok, json } = await smartFetchJson(requestUrl, REQUEST_TIMEOUT_MS);
-        if (ok && json) {
+        if (ok && json !== null && json !== undefined) {
+          if (node.type === 'bundled' && Array.isArray(json) && json.length === 0) {
+            // Empty static feed.json ([]): cleanly skip without error and move on to the next source
+            this.bundledFeedEmpty = true;
+            continue;
+          }
+
           let rawPosts: any[] = [];
 
           if (node.type === 'edge-d1') {
@@ -416,6 +428,8 @@ class ClientLoadBalancer {
               source: `${node.name} (${Math.round(performance.now() - startTime)}ms)`,
             };
           }
+          // Valid empty response from this node — move cleanly to the next source without error
+          continue;
         } else {
           this.recordFailure(node.id);
         }
@@ -450,10 +464,11 @@ class ClientLoadBalancer {
   }
 
   /**
-   * Loads an individual bundled full article from `/articles/:id.json` packaged in `public/articles/`.
-   * Guarantees 0ms offline & cold-start reading inside Android APKs and PWAs.
+   * Loads an individual bundled full article from `/articles/:id.json` if packaged in `public/articles/`.
+   * Safely skips when static bundle is empty (`[]`).
    */
   private async fetchBundledArticleById(id: string): Promise<Post | null> {
+    if (this.bundledFeedEmpty) return null;
     try {
       const { ok, json } = await smartFetchJson(`/articles/${encodeURIComponent(id)}.json`, 1500);
       if (ok && json && json.title && json.content) {
@@ -463,7 +478,7 @@ class ClientLoadBalancer {
         return mapped;
       }
     } catch {
-      // Not present in pre-packaged bundle (e.g., newly published after APK build)
+      // Not present in pre-packaged bundle
     }
     return null;
   }

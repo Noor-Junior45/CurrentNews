@@ -1,5 +1,6 @@
 package blog.currentnews.app
 
+import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
@@ -7,8 +8,11 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.RingtoneManager
+import android.net.Uri
+import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import com.capacitorjs.plugins.pushnotifications.PushNotificationsPlugin
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import java.io.InputStream
@@ -19,55 +23,72 @@ class CurrentNewsFirebaseMessagingService : FirebaseMessagingService() {
 
     override fun onNewToken(token: String) {
         super.onNewToken(token)
-        Log.d(TAG, "Refreshed FCM device token: $token")
-        // Token can be synced to server if targeting specific devices
+        Log.d(TAG, "FCM token refreshed")
+        try {
+            // Forward refreshed token to Capacitor PushNotifications plugin ('registration' listener in JS)
+            PushNotificationsPlugin.onNewToken(token)
+        } catch (e: Throwable) {
+            Log.w(TAG, "Could not forward refreshed token to Capacitor plugin: ${e.message}")
+        }
     }
 
     override fun onMessageReceived(remoteMessage: RemoteMessage) {
         super.onMessageReceived(remoteMessage)
-        Log.d(TAG, "Incoming push dispatch from: ${remoteMessage.from}")
+        val data = remoteMessage.data
 
-        // 1. Extract title and body from notification payload or data payload
-        val title = remoteMessage.notification?.title
-            ?: remoteMessage.data["title"]
+        // Support data-only messages (title, body, url, imageUrl in data map) as well as notification payloads
+        val title = data["title"]?.takeIf { it.isNotBlank() }
+            ?: remoteMessage.notification?.title?.takeIf { it.isNotBlank() }
             ?: getString(R.string.app_name)
 
-        val body = remoteMessage.notification?.body
-            ?: remoteMessage.data["body"]
-            ?: "A new article has just been published on Current News."
+        val body = data["body"]?.takeIf { it.isNotBlank() }
+            ?: remoteMessage.notification?.body?.takeIf { it.isNotBlank() }
+            ?: if (data.isNotEmpty()) "Tap to read the latest update on Current News." else return
 
-        val targetUrl = remoteMessage.data["url"]
-            ?: remoteMessage.data["link"]
+        val rawUrl = data["url"]?.takeIf { it.isNotBlank() }
+            ?: data["link"]?.takeIf { it.isNotBlank() }
             ?: remoteMessage.notification?.clickAction
-            ?: getString(R.string.web_url)
+            ?: "/"
 
-        val imageUrl = remoteMessage.notification?.imageUrl?.toString()
-            ?: remoteMessage.data["imageUrl"]
-            ?: remoteMessage.data["image"]
+        val imageUrl = data["imageUrl"]?.takeIf { it.isNotBlank() }
+            ?: data["image"]?.takeIf { it.isNotBlank() }
+            ?: remoteMessage.notification?.imageUrl?.toString()
 
-        showNotification(title, body, targetUrl, imageUrl)
+        val targetPath = extractArticlePath(rawUrl)
+        showNotification(title, body, rawUrl, targetPath, imageUrl)
     }
 
-    private fun showNotification(title: String, body: String, targetUrl: String, imageUrl: String?) {
-        val channelId = "breaking_news_channel"
+    private fun showNotification(
+        title: String,
+        body: String,
+        rawUrl: String,
+        targetPath: String,
+        imageUrl: String?
+    ) {
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        ensureChannelExists(notificationManager)
 
-        // Intent to launch MainActivity and open article URL
+        val notificationId = ((System.currentTimeMillis() and 0x7FFFFFFF) % 1000000).toInt()
+
+        // Launch or foreground MainActivity (singleTask) and pass target article path
         val intent = Intent(this, MainActivity::class.java).apply {
+            action = ACTION_OPEN_NOTIFICATION_ARTICLE
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-            putExtra("target_url", targetUrl)
+            putExtra(EXTRA_TARGET_PATH, targetPath)
+            putExtra(EXTRA_TARGET_URL, rawUrl)
         }
 
         val pendingIntent = PendingIntent.getActivity(
             this,
-            System.currentTimeMillis().toInt(),
+            notificationId,
             intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
         val defaultSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
 
-        val notificationBuilder = NotificationCompat.Builder(this, channelId)
-            .setSmallIcon(R.mipmap.ic_launcher)
+        val notificationBuilder = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_stat_notification)
             .setContentTitle(title)
             .setContentText(body)
             .setAutoCancel(true)
@@ -75,7 +96,6 @@ class CurrentNewsFirebaseMessagingService : FirebaseMessagingService() {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(pendingIntent)
 
-        // If rich image is provided, display BigPictureStyle
         if (!imageUrl.isNullOrBlank()) {
             val bitmap = getBitmapFromUrl(imageUrl)
             if (bitmap != null) {
@@ -83,6 +103,7 @@ class CurrentNewsFirebaseMessagingService : FirebaseMessagingService() {
                 notificationBuilder.setStyle(
                     NotificationCompat.BigPictureStyle()
                         .bigPicture(bitmap)
+                        .bigLargeIcon(null as Bitmap?)
                         .setSummaryText(body)
                 )
             } else {
@@ -92,28 +113,73 @@ class CurrentNewsFirebaseMessagingService : FirebaseMessagingService() {
             notificationBuilder.setStyle(NotificationCompat.BigTextStyle().bigText(body))
         }
 
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val notificationId = (System.currentTimeMillis() % 100000).toInt()
         notificationManager.notify(notificationId, notificationBuilder.build())
     }
 
+    private fun ensureChannelExists(notificationManager: NotificationManager) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val existing = notificationManager.getNotificationChannel(CHANNEL_ID)
+            if (existing == null) {
+                val channel = NotificationChannel(
+                    CHANNEL_ID,
+                    getString(R.string.channel_name),
+                    NotificationManager.IMPORTANCE_HIGH
+                ).apply {
+                    description = getString(R.string.channel_description)
+                    enableLights(true)
+                    enableVibration(true)
+                }
+                notificationManager.createNotificationChannel(channel)
+            }
+        }
+    }
+
     private fun getBitmapFromUrl(imageUrl: String): Bitmap? {
+        var connection: HttpURLConnection? = null
         return try {
             val url = URL(imageUrl)
-            val connection = url.openConnection() as HttpURLConnection
-            connection.doInput = true
-            connection.connectTimeout = 4000
-            connection.readTimeout = 4000
-            connection.connect()
+            connection = (url.openConnection() as HttpURLConnection).apply {
+                doInput = true
+                connectTimeout = 4000
+                readTimeout = 4000
+                connect()
+            }
             val input: InputStream = connection.inputStream
-            BitmapFactory.decodeStream(input)
+            input.use { BitmapFactory.decodeStream(it) }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to download notification image bitmap: ${e.message}")
             null
+        } finally {
+            connection?.disconnect()
         }
     }
 
     companion object {
         private const val TAG = "FCM_CurrentNews"
+        const val CHANNEL_ID = "breaking_news_channel"
+        const val ACTION_OPEN_NOTIFICATION_ARTICLE = "blog.currentnews.app.OPEN_NOTIFICATION_ARTICLE"
+        const val EXTRA_TARGET_PATH = "target_path"
+        const val EXTRA_TARGET_URL = "target_url"
+
+        /**
+         * Extracts the SPA route path (plus optional query/fragment) from a full URL or relative path,
+         * e.g. "https://currentnews.blog/post/123/my-slug" -> "/post/123/my-slug".
+         */
+        fun extractArticlePath(rawUrl: String?): String {
+            val trimmed = rawUrl?.trim().orEmpty()
+            if (trimmed.isEmpty()) return "/"
+            if (trimmed.startsWith("/")) return trimmed
+
+            return try {
+                val uri = Uri.parse(trimmed)
+                val path = uri.encodedPath?.takeIf { it.isNotEmpty() } ?: "/"
+                val query = uri.encodedQuery?.takeIf { it.isNotEmpty() }?.let { "?$it" } ?: ""
+                val fragment = uri.encodedFragment?.takeIf { it.isNotEmpty() }?.let { "#$it" } ?: ""
+                val combined = "$path$query$fragment"
+                if (combined.startsWith("/")) combined else "/$combined"
+            } catch (_: Exception) {
+                "/"
+            }
+        }
     }
 }

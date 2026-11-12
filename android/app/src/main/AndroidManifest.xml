@@ -59,6 +59,19 @@
             </intent-filter>
         </service>
 
+        <!-- Remove Capacitor PushNotifications plugin's built-in MessagingService so CurrentNewsFirebaseMessagingService is the sole FCM service -->
+        <service
+            android:name="com.capacitorjs.plugins.pushnotifications.MessagingService"
+            tools:node="remove" />
+
+        <!-- Default FCM monochrome notification small icon & channel -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_notification" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="breaking_news_channel" />
+
         <!-- Google AdMob Mobile Ads SDK Application ID (Publisher pub-5865716270182311) -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"

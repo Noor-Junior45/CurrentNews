@@ -15,7 +15,8 @@ import { useAuthState } from '../hooks/useAuthState';
 import ProfilePageNavbar from '../components/ProfilePageNavbar';
 import GlassThemeToggle from '../components/ThemeToggle';
 import ToggleSwitch from '../components/ToggleSwitch';
-import { subscribeUserToPush, unsubscribeUserFromPush, isUserPushSubscribed } from '../utils/pushManager';
+import { Capacitor } from '@capacitor/core';
+import { isPushSupported, subscribeUserToPush, unsubscribeUserFromPush, isUserPushSubscribed } from '../utils/pushManager';
 import { signInWithGoogleSafe } from '../utils/authHelper';
 import { updateDocumentSEO } from '../utils/seo';
 
@@ -55,7 +56,14 @@ export default function SettingsView() {
 
     // Sync notification and ads preferences
     const handleSync = async () => {
-      if ('Notification' in window && Notification.permission === 'granted') {
+      if (Capacitor.isNativePlatform()) {
+        const isSubbed = await isUserPushSubscribed();
+        setNotificationsEnabled(isSubbed);
+      } else if (
+        'Notification' in window &&
+        Notification.permission === 'granted' &&
+        localStorage.getItem('browser_notifications_enabled') !== 'false'
+      ) {
         setNotificationsEnabled(true);
         const isSubbed = await isUserPushSubscribed();
         if (!isSubbed) {
@@ -120,7 +128,7 @@ export default function SettingsView() {
 
   // Toggle Browser & Android Push notifications
   const toggleNotifications = async () => {
-    if (!('Notification' in window)) {
+    if (!isPushSupported()) {
       showToast("This browser does not support push notifications.");
       return;
     }

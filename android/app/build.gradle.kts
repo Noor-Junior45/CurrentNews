@@ -16,10 +16,10 @@ android {
 
     defaultConfig {
         applicationId = "blog.currentnews.app"
-        minSdk = 33 // Android 13 (Tiramisu) and above
+        minSdk = 31 // Android 12 (S) and above
         targetSdk = 36 // Android 16 / API 36
-        versionCode = 4
-        versionName = "1.0.3"
+        versionCode = 5
+        versionName = "1.0.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

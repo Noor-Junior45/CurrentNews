@@ -143,12 +143,47 @@ export default function HomeView() {
     const compressed = getCompressedStories();
     return Boolean(compressed && compressed.length > 0);
   });
-  const [searchTerm, setSearchTerm] = useState('');
-  const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
+  const [searchTerm, setSearchTerm] = useState<string>(() => searchParams.get('search') || '');
+  const [isHeaderSearchOpen, setIsHeaderSearchOpen] = useState<boolean>(() => {
+    return Boolean(
+      searchParams.get('search') ||
+      (typeof window !== 'undefined' && (window as any).__cnSearchOpen)
+    );
+  });
   const navigate = useNavigate();
   const location = useLocation();
   const selectedCategory = searchParams.get('category') || 'All';
+
+  // Synchronize searchTerm and Line 2 category bar visibility with Header search bar
+  useEffect(() => {
+    const urlQuery = searchParams.get('search') || '';
+    setSearchTerm(urlQuery);
+    if (urlQuery) {
+      setIsHeaderSearchOpen(true);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    const handleSearchToggled = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (detail && typeof detail.open === 'boolean') {
+        setIsHeaderSearchOpen(detail.open);
+      }
+    };
+    const handleSearchQueryChanged = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (detail && typeof detail.query === 'string') {
+        setSearchTerm(detail.query);
+      }
+    };
+    window.addEventListener('currentnews-search-toggled', handleSearchToggled);
+    window.addEventListener('search-query-changed', handleSearchQueryChanged);
+    return () => {
+      window.removeEventListener('currentnews-search-toggled', handleSearchToggled);
+      window.removeEventListener('search-query-changed', handleSearchQueryChanged);
+    };
+  }, []);
 
   // Support opening posts via legacy query parameters with history replacement
   useEffect(() => {
@@ -407,12 +442,13 @@ export default function HomeView() {
     // Hide drafts from general public readers
     if (post.status === 'draft') return false;
 
-    const term = searchTerm.toLowerCase();
-    const matchesSearch = (
-      post.title.toLowerCase().includes(term) ||
-      post.content.toLowerCase().includes(term)
-    );
-    if (!matchesSearch) return false;
+    const term = searchTerm.trim().toLowerCase();
+    if (term) {
+      const haystack = `${post.title || ''} ${post.excerpt || ''} ${post.content || ''} ${post.category || ''} ${(post.hashtags || []).join(' ')}`.toLowerCase();
+      const tokens = term.split(/\s+/).filter(Boolean);
+      const matchesSearch = haystack.includes(term) || (tokens.length > 1 && tokens.every(t => haystack.includes(t)));
+      if (!matchesSearch) return false;
+    }
     return checkPostCategoryMatch(post, selectedCategory);
   });
 
@@ -568,9 +604,12 @@ export default function HomeView() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-0" id="homepage-view">
 
-      {/* Category Filter Tabs positioned directly below the main header as line 2 of the unified navbar */}
+      {/* Category Filter Tabs positioned directly below the main header as line 2 of the unified navbar (hidden when Line 2 search bar is open) */}
+      {isHeaderSearchOpen ? (
+        <div className="h-8 w-full shrink-0" aria-hidden="true" />
+      ) : (
       <div 
-        className="relative z-30 bg-[#fbf1e5] border-b border-slate-300/70 dark:border-slate-800/80 rounded-b-2xl sm:rounded-b-3xl py-2 mb-8 shadow-xs" 
+        className="relative z-30 bg-[#fbf1e5] border-b border-slate-300/70 dark:border-slate-800/80 rounded-b-2xl sm:rounded-b-3xl py-2 mb-8 shadow-xs animate-in fade-in duration-200" 
         style={{ width: '100vw', marginLeft: 'calc(-50vw + 50%)' }}
         id="category-filter-header"
       >
@@ -618,6 +657,7 @@ export default function HomeView() {
           })}
         </div>
       </div>
+      )}
 
       {isOfflineCached && (
         <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-900/60 rounded-xl p-3 px-4 mb-6 flex items-center justify-between gap-3 text-amber-900 dark:text-amber-200 text-xs font-medium" id="offline-banner">
@@ -635,6 +675,7 @@ export default function HomeView() {
       )}
       
       {/* 🏛️ Professional Editorial Hero Section — Animated Multi-Poster Showcase (Beige, Blue & Brown Theme) */}
+      {!searchTerm.trim() && (
       <section 
         aria-label="Featured Story Poster Showcase" 
         className="mb-10" 
@@ -749,9 +790,18 @@ export default function HomeView() {
           )}
         </div>
       </section>
+      )}
+
+      {searchTerm.trim() && !loading && !error && filteredPosts.length > 0 && (
+        <div className="mb-5 flex items-center justify-between text-xs sm:text-sm text-slate-600 dark:text-slate-400 font-sans" id="active-search-summary">
+          <span>
+            Showing <strong className="font-bold text-slate-900 dark:text-white">{filteredPosts.length}</strong> {filteredPosts.length === 1 ? 'result' : 'results'} for <strong className="font-bold text-slate-900 dark:text-white">&ldquo;{searchTerm.trim()}&rdquo;</strong>
+          </span>
+        </div>
+      )}
 
       {/* 🔖 Pick Up Where You Left Off (Saved In Cache Memory) */}
-      {inProgressArticles.length > 0 && (
+      {!searchTerm.trim() && inProgressArticles.length > 0 && (
         <section aria-label="Continue Reading" className="mb-10 p-5 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent dark:from-amber-950/30 dark:via-amber-900/15 dark:to-transparent border border-amber-300/50 dark:border-amber-700/40 rounded-2xl shadow-3xs" id="continue-reading-section">
           <div className="flex items-center justify-between mb-3.5">
             <div className="flex items-center gap-2">
@@ -853,7 +903,12 @@ export default function HomeView() {
           </p>
           {searchTerm && (
             <button 
-              onClick={() => setSearchTerm('')}
+              onClick={() => {
+                setSearchTerm('');
+                const nextParams = new URLSearchParams(searchParams);
+                nextParams.delete('search');
+                setSearchParams(nextParams);
+              }}
               className="mt-4 text-sm font-semibold text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 cursor-pointer"
             >
               Clear Search Guard

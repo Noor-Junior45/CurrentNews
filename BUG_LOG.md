@@ -323,3 +323,13 @@
 - [x] **Bug ID & Summary:** BUG-058 — Android Studio Release Build Failure on Task `:app:processReleaseMainManifest` (AD_SERVICES_CONFIG Conflict).
   - **Root Cause:** Both Firebase Analytics (`play-services-measurement-api:22.1.2`) and Google Mobile Ads (`play-services-ads:23.6.0` / `play-services-ads-lite`) register `<property android:name="android.adservices.AD_SERVICES_CONFIG">` with differing resources (`@xml/ga_ad_services_config` vs `@xml/gma_ad_services_config`), causing Android Studio's Manifest Merger to abort with error code 1 during release APK assembly.
   - **Permanent Guardrail:** In `android/app/src/main/AndroidManifest.xml`, declare `<property android:name="android.adservices.AD_SERVICES_CONFIG" android:resource="@xml/gma_ad_services_config" tools:replace="android:resource" />` inside `<application>`. This instructs the Gradle Manifest Merger to explicitly override and resolve the collision.
+
+- [x] **Bug ID & Summary:** BUG-059 — Side Menu Drawer Header Vertical Height Mismatch & Compressed Non-Scrolling Category Buttons.
+  - **Root Cause:** In `src/components/Header.tsx`, the side menu drawer header had vertical padding of `py-2` (~48px) which mismatched the main navbar's vertical height (`h-18` / 72px), breaking visual alignment across the top horizon. Simultaneously, the categories list container was constrained to `justify-evenly` without scroll capabilities, cramping category buttons on smaller viewport heights.
+  - **Permanent Guardrail:** Set drawer header container (`div:nth-of-type(1)`) to explicit `h-18 px-4 box-border` matching `#main-header` (`h-18`), vertically centering the title and close icon. Enforce `min-h-[46px] py-3 px-3.5` on category buttons and add `flex-1 overflow-y-auto scroll-smooth overscroll-contain` to `#side-menu-categories-list` while preserving the bottom container and "Return to Home Feed" button height.
+
+- [x] **Bug ID & Summary:** BUG-060 — HomeView Disconnected From URL `?search=` Query Parameter & Light-Feed Excerpt Omission in Search Filter.
+  - **Root Cause:** `HomeView.tsx` initialized `searchTerm` as `''` without reading `searchParams.get('search')` and filtered only `post.title` and `post.content` (which is empty on light R2 feed items where preview text lives in `post.excerpt` and `post.hashtags`), causing navbar search submissions (`/?search=...`) to fail to filter the feed.
+  - **Permanent Guardrail:** Always synchronize `searchTerm` with `searchParams.get('search')` and `search-query-changed` events, match across `title`, `excerpt`, `content`, `category`, and `hashtags`, and keep suggestion strings untruncated in state (relying on CSS `truncate` visually) so selecting a headline suggestion matches the published article accurately.
+
+

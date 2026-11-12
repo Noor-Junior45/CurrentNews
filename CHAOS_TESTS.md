@@ -253,3 +253,15 @@ curl -s http://localhost:3000/api/posts?limit=5 | grep -o '/uploads/photo.jpg/im
 # Expected: (empty - 0 matches)
 ```
 
+## 10. Line 2 Pill Search Bar & Multi-Purpose Cross `[x]` Chaos Tests
+
+- **Test A: 3-Stage Multi-Purpose `[x]` Button Flow:**
+  1. Click `#header-search-trigger` (magnifying glass) -> Verify `#category-filter-header` hides and `#navbar-search-line-2` pill opens with white background inside `#fbf1e5` navbar.
+  2. Type `"Ranchi"` without pressing Enter -> Verify `#header-search-suggestions-dropdown` displays matching suggestions. Click `#navbar-search-clear-cross-button` (`[x]`) -> Verify half-written text clears (`""`), dropdown closes, and cursor remains focused inside `#navbar-search-input`.
+  3. Type `"Ranchi"` and press `Enter` -> Verify URL updates to `/?search=Ranchi` and feed filters to matching stories. Edit input to `"Ranchi live"` (half-written edit) and click `[x]` -> Verify half-written text clears first; click `[x]` second time -> Verify active search result clears (`/?search` removed, full feed restored) and cursor stays focused in empty search bar; click `[x]` third time -> Verify empty search bar smoothly animates back into `#header-search-trigger` and category buttons reappear.
+
+- **Test B: Adversarial Payloads & Rapid Toggling:**
+  - Paste `"><img src=x onerror=alert(1)>` or `[[[***+++` into `#navbar-search-input` -> Verify zero console errors, zero XSS execution, and clean literal text handling in suggestion highlights and `#empty-feed`.
+  - Rapidly double-click `#header-search-trigger` and `[x]` on 360px mobile and 1440px laptop viewports -> Verify pill preserves `px-3.5` left/right phone margins and `max-w-[480px]` laptop cap with zero layout shift.
+
+

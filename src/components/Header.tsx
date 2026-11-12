@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { auth } from '../firebase';
 import { api } from '../utils/api';
 import { useAuthState } from '../hooks/useAuthState';
 import { getCanonicalSiteOrigin } from '../utils/shareUrl';
 import UserAvatar from './UserAvatar';
+import { getCompressedStories } from '../utils/compressedStorage';
+import { Post } from '../types';
 import { 
   LogIn, 
   LogOut, 
@@ -17,7 +19,7 @@ import {
   Search, 
   ThumbsUp, 
   X, 
-  ArrowLeft,
+  ArrowUpLeft,
   ChevronLeft,
   CheckCircle2,
   Settings as SettingsIcon, 
@@ -114,15 +116,346 @@ const SIDE_MENU_CATEGORIES = [
   'General',
 ];
 
+interface SearchSuggestion {
+  text: string;
+  kind: 'section' | 'topic' | 'article';
+}
+
+const SEARCH_SUGGESTION_SECTIONS = [
+  'Jharkhand', 'Politics', 'World', 'National', 'Tech', 'Sports',
+  'Business', 'Health', 'Crime', 'Education', 'Entertainment', 'Opinion', 'General'
+];
+
+const SEARCH_SUGGESTION_TOPICS = [
+  'Ranchi', 'Dhanbad', 'Jamshedpur', 'Bokaro', 'Deoghar', 'Hazaribagh', 'Godda',
+  'Jharkhand News', 'Breaking News', 'Live Updates', 'India News', 'World Affairs',
+  'Elections', 'Artificial Intelligence', 'Finance', 'Stock Market', 'Climate',
+  'Supreme Court', 'Budget', 'Space', 'Defense', 'झारखंड समाचार', 'रांची', 'ताजा खबर'
+];
+
+function renderSuggestionHighlight(text: string, query: string) {
+  const cleanQuery = query.trim();
+  if (!cleanQuery) return <span className="font-normal text-slate-800">{text}</span>;
+  const idx = text.toLowerCase().indexOf(cleanQuery.toLowerCase());
+  if (idx === -1) return <span className="font-medium text-slate-800">{text}</span>;
+  const before = text.substring(0, idx);
+  const match = text.substring(idx, idx + cleanQuery.length);
+  const after = text.substring(idx + cleanQuery.length);
+  return (
+    <>
+      <span className="font-normal text-slate-700">{before}</span>
+      <span className="font-bold text-slate-950">{match}</span>
+      <span className="font-bold text-slate-950">{after}</span>
+    </>
+  );
+}
+
 export default function Header() {
   const { user, loading, isAdmin } = useAuthState();
   const navigate = useNavigate();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
-  const [headerSearch, setHeaderSearch] = useState('');
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
+
+  // Search Bar Redesign State (Line 2 Pill Search Bar)
+  const activeSearchFromUrl = searchParams.get('search') || '';
+  const [searchQuery, setSearchQuery] = useState(activeSearchFromUrl);
+  const [isSearchOpen, setIsSearchOpen] = useState<boolean>(() => {
+    return Boolean(activeSearchFromUrl || (typeof window !== 'undefined' && (window as any).__cnSearchOpen));
+  });
+  const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [highlightedSuggestionIndex, setHighlightedSuggestionIndex] = useState(-1);
+  const [pillOriginOffset, setPillOriginOffset] = useState<{ x: number; y: number }>({ x: 140, y: -56 });
   const [isSideMenuOpen, setIsSideMenuOpen] = useState(false);
+
+  const searchTriggerRef = useRef<HTMLButtonElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+  const fallbackCatalogRef = useRef<Post[]>([]);
+
+  // Broadcast search bar open/close state so HomeView hides/shows category buttons in sync
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).__cnSearchOpen = isSearchOpen;
+      window.dispatchEvent(new CustomEvent('currentnews-search-toggled', { detail: { open: isSearchOpen } }));
+    }
+  }, [isSearchOpen]);
+
+  // Measure magnifying glass coordinates so the pill animates from/to the exact magnifying glass spot
+  const measureMagnifyingGlassOrigin = useCallback(() => {
+    if (typeof window === 'undefined' || !searchTriggerRef.current) return;
+    const rect = searchTriggerRef.current.getBoundingClientRect();
+    const triggerCenterX = rect.left + rect.width / 2;
+    const triggerCenterY = rect.top + rect.height / 2;
+    const pillCenterX = window.innerWidth / 2;
+    const pillCenterY = 98; // Vertical center of Line 2 pill inside fixed navbar
+    setPillOriginOffset({
+      x: Math.round(triggerCenterX - pillCenterX),
+      y: Math.round(triggerCenterY - pillCenterY),
+    });
+  }, []);
+
+  useEffect(() => {
+    measureMagnifyingGlassOrigin();
+    window.addEventListener('resize', measureMagnifyingGlassOrigin, { passive: true });
+    return () => window.removeEventListener('resize', measureMagnifyingGlassOrigin);
+  }, [measureMagnifyingGlassOrigin]);
+
+  // Warm fallback article catalog if local compressed cache is cold when search opens
+  useEffect(() => {
+    if (!isSearchOpen) return;
+    const cached = getCompressedStories();
+    if (cached && cached.length > 0) {
+      fallbackCatalogRef.current = cached;
+      return;
+    }
+    if (fallbackCatalogRef.current.length > 0) return;
+
+    const controller = new AbortController();
+    fetch('/feed.json', { headers: { Accept: 'application/json' }, signal: controller.signal })
+      .then(async (res) => {
+        if (!res.ok) return;
+        const text = await res.text();
+        if (!text.trim().startsWith('[') && !text.trim().startsWith('{')) return;
+        const parsed = JSON.parse(text);
+        const list = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.articles) ? parsed.articles : [];
+        if (list.length > 0) {
+          fallbackCatalogRef.current = list;
+        }
+      })
+      .catch(() => {});
+
+    return () => controller.abort();
+  }, [isSearchOpen]);
+
+  // Synchronize searchQuery with URL searchParam changes
+  useEffect(() => {
+    const fromUrl = searchParams.get('search') || '';
+    setSearchQuery(fromUrl);
+    if (fromUrl) {
+      setIsSearchOpen(true);
+    }
+  }, [searchParams]);
+
+  // Click outside listener for suggestions dropdown
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Compute Google-style suggested & similar search results while typing
+  const generateSuggestions = useCallback((rawQuery: string) => {
+    const q = rawQuery.trim().toLowerCase();
+    if (!q) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      setHighlightedSuggestionIndex(-1);
+      return;
+    }
+
+    const tokens = q.split(/\s+/).filter(Boolean);
+    const scored: { item: SearchSuggestion; score: number }[] = [];
+    const seen = new Set<string>();
+
+    const pushCandidate = (text: string, kind: SearchSuggestion['kind'], boost = 0) => {
+      const clean = text.replace(/\s+/g, ' ').trim();
+      if (!clean) return;
+      const key = clean.toLowerCase();
+      if (seen.has(key)) return;
+
+      let score = 0;
+      if (key === q) score = 120;
+      else if (key.startsWith(q)) score = 100;
+      else if (key.split(/[\s,#-]+/).some(w => w.startsWith(q))) score = 85;
+      else if (key.includes(q)) score = 70;
+      else if (tokens.length > 1 && tokens.every(t => key.includes(t))) score = 60;
+      else if (tokens.some(t => t.length >= 3 && key.includes(t))) score = 40;
+
+      if (score > 0) {
+        seen.add(key);
+        scored.push({ item: { text: clean, kind }, score: score + boost });
+      }
+    };
+
+    // 1. Newsroom sections
+    for (const sec of SEARCH_SUGGESTION_SECTIONS) {
+      pushCandidate(sec, 'section', 10);
+      pushCandidate(`${sec} News`, 'topic', 4);
+    }
+
+    // 2. Curated & regional search topics
+    for (const top of SEARCH_SUGGESTION_TOPICS) {
+      pushCandidate(top, 'topic', 6);
+    }
+
+    // 3. Live published article headlines & hashtags
+    const articles = getCompressedStories() || fallbackCatalogRef.current || [];
+    for (const post of articles) {
+      if (!post || post.status === 'draft') continue;
+      if (Array.isArray(post.hashtags)) {
+        for (const tag of post.hashtags) {
+          const cleanTag = String(tag || '').replace(/^#+/, '').trim();
+          if (cleanTag) pushCandidate(cleanTag, 'topic', 5);
+        }
+      }
+      if (post.title) {
+        pushCandidate(post.title, 'article', 2);
+      }
+    }
+
+    scored.sort((a, b) => b.score - a.score);
+    const results = scored.slice(0, 7).map(s => s.item);
+
+    // Ensure typed query appears as direct search option if no close matches exist
+    if (results.length === 0) {
+      results.push({ text: rawQuery.trim(), kind: 'topic' });
+    }
+
+    setSuggestions(results);
+    setHighlightedSuggestionIndex(-1);
+    setShowSuggestions(true);
+  }, []);
+
+  const handleSearchInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setSearchQuery(val);
+    generateSuggestions(val);
+  };
+
+  const executeSearch = (rawText: string) => {
+    const text = rawText.trim();
+    setShowSuggestions(false);
+    setSuggestions([]);
+    setHighlightedSuggestionIndex(-1);
+
+    if (text) {
+      setSearchQuery(text);
+      if (location.pathname !== '/' && location.pathname !== '') {
+        navigate(`/?search=${encodeURIComponent(text)}`);
+      } else {
+        const nextParams = new URLSearchParams(searchParams);
+        nextParams.set('search', text);
+        nextParams.delete('category');
+        nextParams.delete('page');
+        setSearchParams(nextParams);
+      }
+      window.dispatchEvent(new CustomEvent('search-query-changed', { detail: { query: text } }));
+    } else {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete('search');
+      setSearchParams(nextParams);
+      window.dispatchEvent(new CustomEvent('search-query-changed', { detail: { query: '' } }));
+    }
+  };
+
+  const handleSelectSuggestion = (text: string) => {
+    executeSearch(text);
+  };
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (suggestions.length > 0) {
+        setShowSuggestions(true);
+        setHighlightedSuggestionIndex(prev => (prev < suggestions.length - 1 ? prev + 1 : 0));
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (suggestions.length > 0) {
+        setHighlightedSuggestionIndex(prev => (prev > 0 ? prev - 1 : suggestions.length - 1));
+      }
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (highlightedSuggestionIndex >= 0 && suggestions[highlightedSuggestionIndex]) {
+        executeSearch(suggestions[highlightedSuggestionIndex].text);
+      } else {
+        executeSearch(searchQuery);
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      if (showSuggestions) {
+        setShowSuggestions(false);
+      } else {
+        handleCloseSearch();
+      }
+    }
+  };
+
+  const handleCloseSearch = () => {
+    measureMagnifyingGlassOrigin();
+    setIsSearchOpen(false);
+    setShowSuggestions(false);
+    setSuggestions([]);
+    setHighlightedSuggestionIndex(-1);
+    setTimeout(() => {
+      searchTriggerRef.current?.focus({ preventScroll: true });
+    }, 180);
+  };
+
+  const handleToggleSearch = () => {
+    measureMagnifyingGlassOrigin();
+    if (isSearchOpen) {
+      if (!searchQuery.trim() && !searchParams.has('search')) {
+        handleCloseSearch();
+      } else {
+        searchInputRef.current?.focus();
+      }
+    } else {
+      setIsSearchOpen(true);
+      setTimeout(() => {
+        searchInputRef.current?.focus();
+        if (searchQuery.trim().length > 0) {
+          generateSuggestions(searchQuery);
+        }
+      }, 50);
+    }
+  };
+
+  // Multi-purpose right-side cross button [x] (no background):
+  // 1. Clears half-written text when typing
+  // 2. Clears search result when user already searched anything
+  // 3. Closes search bar and animates back to magnifying glass spot when empty
+  const handleMultiPurposeCrossClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const currentActiveSearch = (searchParams.get('search') || '').trim();
+    const currentTyped = searchQuery.trim();
+
+    // 1. Clear half-written text (unsubmitted text or edited text)
+    if (currentTyped.length > 0 && currentTyped !== currentActiveSearch) {
+      setSearchQuery('');
+      setSuggestions([]);
+      setShowSuggestions(false);
+      setHighlightedSuggestionIndex(-1);
+      searchInputRef.current?.focus();
+      return;
+    }
+
+    // 2. Clear active search result when user already searched anything
+    if (currentActiveSearch.length > 0) {
+      setSearchQuery('');
+      setSuggestions([]);
+      setShowSuggestions(false);
+      setHighlightedSuggestionIndex(-1);
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete('search');
+      nextParams.delete('page');
+      setSearchParams(nextParams);
+      window.dispatchEvent(new CustomEvent('search-query-changed', { detail: { query: '' } }));
+      searchInputRef.current?.focus();
+      return;
+    }
+
+    // 3. Empty search bar with pointer on and no text -> close search bar to magnifying glass spot
+    handleCloseSearch();
+  };
 
   // Auto-close side menu on route change
   useEffect(() => {
@@ -151,21 +484,23 @@ export default function Header() {
   // Personalized Ads consent states
   const [adsConsent, setAdsConsent] = useState<'granted' | 'denied' | 'pending'>('pending');
 
-  // Sync search input with URL search param
+  // Handle global Escape key when search bar is open and input is not focused
   useEffect(() => {
-    setHeaderSearch(searchParams.get('search') || '');
-  }, [searchParams]);
-
-  // Handle escape key to close search pop-up overlay
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+    if (!isSearchOpen) return;
+    const handleGlobalEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        setIsSearchOpen(false);
+        if (showSuggestions) {
+          setShowSuggestions(false);
+        } else {
+          setIsSearchOpen(false);
+          setSuggestions([]);
+          setHighlightedSuggestionIndex(-1);
+        }
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+    window.addEventListener('keydown', handleGlobalEscape);
+    return () => window.removeEventListener('keydown', handleGlobalEscape);
+  }, [isSearchOpen, showSuggestions]);
 
   // Listen to PWA installation prompts
   useEffect(() => {
@@ -414,17 +749,17 @@ export default function Header() {
     };
   }, []);
 
-  const isLine2Hidden = !isHome || isScrolledPastLine2;
+  const isLine2Hidden = (!isHome || isScrolledPastLine2) && !isSearchOpen;
 
   return (
     <>
-      <header className={`fixed top-0 left-0 right-0 w-full z-50 bg-[#fbf1e5] ${isLine2Hidden ? 'rounded-b-2xl sm:rounded-b-3xl border-b border-slate-300/70 dark:border-slate-800/80 shadow-xs' : 'border-b-0 shadow-none rounded-none'} transition-all duration-200 adsbygoogle-noablate`} id="main-header">
+      <header className={`fixed top-0 left-0 right-0 w-full z-50 bg-[#fbf1e5] ${isSearchOpen || isLine2Hidden ? 'rounded-b-2xl sm:rounded-b-3xl border-b border-slate-300/70 dark:border-slate-800/80 shadow-xs' : 'border-b-0 shadow-none rounded-none'} transition-all duration-200 adsbygoogle-noablate`} id="main-header">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between">
         
         {/* Brand Name & Newsroom Navigation */}
         <div className="flex items-center space-x-1.5 sm:space-x-2.5 min-w-0">
-          {/* 3 horizontal line menu trigger: hidden when 2nd line navbar is visible; visible when 2nd line navbar is hidden or scrolled */}
-          {isLine2Hidden && (
+          {/* 3 horizontal line menu trigger: hidden when 2nd line navbar is visible or search is active; visible when 2nd line navbar is hidden or scrolled */}
+          {isLine2Hidden && !isSearchOpen && (
             <button
               type="button"
               onClick={() => setIsSideMenuOpen(true)}
@@ -460,12 +795,18 @@ export default function Header() {
         {/* Global Action Controls */}
         <div className="flex items-center space-x-2.5 sm:space-x-4">
           
-          {/* Elegant Magnifying Glass Button triggers overlay like YouTube */}
+          {/* Google-style Search Bar Trigger in Navbar */}
           <button
-            onClick={() => setIsSearchOpen(true)}
-            className="h-11 w-11 rounded-full text-slate-700 hover:text-slate-950 dark:text-slate-700 dark:hover:text-slate-950 hover:bg-black/5 dark:hover:bg-black/5 transition-colors cursor-pointer flex items-center justify-center"
+            ref={searchTriggerRef}
+            type="button"
+            onClick={handleToggleSearch}
+            className={`h-11 w-11 rounded-full text-slate-700 hover:text-slate-950 dark:text-slate-700 dark:hover:text-slate-950 hover:bg-black/5 dark:hover:bg-black/5 transition-colors cursor-pointer flex items-center justify-center ${
+              isSearchOpen ? 'bg-black/10 text-slate-950 ring-2 ring-amber-500/30' : ''
+            }`}
             id="header-search-trigger"
-            title="Open dispatch search panel"
+            title={isSearchOpen ? "Close search bar" : "Open search bar"}
+            aria-expanded={isSearchOpen}
+            aria-controls="navbar-search-line-2"
           >
             <Search className="h-5 w-5" />
           </button>
@@ -865,139 +1206,152 @@ export default function Header() {
         </div>
       )}
 
-      {/* YouTube-style Search Overlay Pop-up Modal */}
-      {isSearchOpen && (
-        <div 
-          className="fixed inset-0 z-55 bg-[#faf8f2]/98 dark:bg-[#121211]/98 backdrop-blur-md flex flex-col pt-3 sm:pt-5 px-3 sm:px-6 transition-all duration-300"
-          id="search-overlay"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setIsSearchOpen(false);
-            }
-          }}
-        >
-          {/* Top Header of Search Page holding the Search Bar */}
-          <div className="max-w-2xl w-full mx-auto" id="search-modal-box">
-            <div className="flex items-center gap-2.5 sm:gap-3 w-full mb-6 pb-2" id="search-header-bar">
-              {/* Back / Close button */}
-              <button
-                type="button"
-                onClick={() => setIsSearchOpen(false)}
-                className="p-2 sm:p-2.5 rounded-full text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-200/70 dark:hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
-                title="Back / Close search"
-                id="search-back-arrow-button"
-              >
-                <ArrowLeft className="h-5 w-5" />
-              </button>
-
-              {/* Top Search Bar */}
-              <form 
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  navigate(`/?search=${encodeURIComponent(headerSearch)}`);
-                  if (location.pathname === '/' || location.pathname === '') {
-                    const nextParams = new URLSearchParams(searchParams);
-                    if (!headerSearch) {
-                      nextParams.delete('search');
-                    } else {
-                      nextParams.set('search', headerSearch);
-                    }
-                    setSearchParams(nextParams);
-                  }
-                  setIsSearchOpen(false);
-                }}
-                className="relative flex-1"
-                id="search-form-top"
-              >
-                <Search className="absolute left-3.5 sm:left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 dark:text-slate-500 pointer-events-none" />
-                <input
-                  type="text"
-                  placeholder="Search report titles, tags, or topics..."
-                  autoFocus
-                  value={headerSearch}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setHeaderSearch(val);
-                    if (location.pathname === '/' || location.pathname === '') {
-                      const nextParams = new URLSearchParams(searchParams);
-                      if (!val) {
-                        nextParams.delete('search');
-                      } else {
-                        nextParams.set('search', val);
-                      }
-                      setSearchParams(nextParams);
-                    }
+        {/* Line 2: Google-style Pill Search Bar in Navbar (replaces Category Bar when open) */}
+        <AnimatePresence initial={false}>
+          {isSearchOpen && (
+            <motion.div
+              key="navbar-search-line-2"
+              id="navbar-search-line-2"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+              className="w-full bg-[#fbf1e5] relative overflow-visible"
+            >
+              <div className="pt-1 pb-3.5 px-3.5 sm:px-6">
+                <motion.div
+                  ref={searchContainerRef}
+                  id="header-search-container"
+                  initial={{
+                    opacity: 0,
+                    scaleX: 0.16,
+                    scaleY: 0.78,
+                    x: pillOriginOffset.x,
+                    y: pillOriginOffset.y,
                   }}
-                  className="w-full pl-11 sm:pl-12 pr-11 sm:pr-12 py-3 text-base sm:text-lg rounded-2xl bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-hidden focus:ring-4 focus:ring-indigo-500/15 focus:border-indigo-600 dark:focus:ring-indigo-500/30 transition-all placeholder-slate-400 font-medium shadow-2xs"
-                  id="overlay-search-input"
-                />
-
-                {/* Cross button inside search bar to clear text & search results */}
-                {headerSearch && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setHeaderSearch('');
-                      const nextParams = new URLSearchParams(searchParams);
-                      nextParams.delete('search');
-                      setSearchParams(nextParams);
-                      if (location.pathname !== '/' && location.pathname !== '') {
-                        navigate('/');
-                      }
+                  animate={{
+                    opacity: 1,
+                    scaleX: 1,
+                    scaleY: 1,
+                    x: 0,
+                    y: 0,
+                  }}
+                  exit={{
+                    opacity: 0,
+                    scaleX: 0.14,
+                    scaleY: 0.72,
+                    x: pillOriginOffset.x,
+                    y: pillOriginOffset.y,
+                  }}
+                  transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
+                  className="w-full sm:max-w-[420px] md:max-w-[460px] lg:max-w-[480px] mx-auto relative"
+                >
+                  {/* Google-style Pill Search Bar with pure white interior */}
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      executeSearch(searchQuery);
                     }}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 h-7 w-7 flex items-center justify-center rounded-full text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-                    title="Clear text and search results"
-                    id="search-clear-cross-button"
+                    className="relative flex items-center w-full h-11 bg-white rounded-full border border-slate-300/85 shadow-[0_1px_6px_rgba(32,33,36,0.10)] hover:shadow-[0_2px_8px_rgba(32,33,36,0.15)] focus-within:shadow-[0_2px_10px_rgba(32,33,36,0.18)] focus-within:border-slate-400 transition-shadow duration-200 pl-4 pr-2.5"
+                    id="navbar-search-pill-form"
                   >
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
-              </form>
-            </div>
+                    <Search className="h-4 w-4 text-slate-400 shrink-0 mr-2.5 pointer-events-none" />
 
-            {/* Suggested Popular Topics */}
-            <div>
-              <h4 className="text-[10px] font-mono font-bold tracking-widest text-slate-500 dark:text-slate-450 uppercase mb-4">
-                Popular Search Terms
-              </h4>
-              <div className="flex flex-wrap gap-2.5" id="search-suggested-topics">
-                {[
-                  'Politics',
-                  'Finance',
-                  'Technology',
-                  'Artificial Intelligence',
-                  'Climate Emergency',
-                  'Global Affairs',
-                  'Elections',
-                  'Sports Dispatches',
-                  'Wall Street'
-                ].map((topic) => (
-                  <button
-                    key={topic}
-                    type="button"
-                    onClick={() => {
-                      setHeaderSearch(topic);
-                      navigate(`/?search=${encodeURIComponent(topic)}`);
-                      if (location.pathname === '/' || location.pathname === '') {
-                        const nextParams = new URLSearchParams(searchParams);
-                        nextParams.set('search', topic);
-                        setSearchParams(nextParams);
+                    <input
+                      ref={searchInputRef}
+                      type="text"
+                      value={searchQuery}
+                      onChange={handleSearchInputChange}
+                      onKeyDown={handleSearchKeyDown}
+                      onFocus={() => {
+                        if (searchQuery.trim().length > 0) {
+                          generateSuggestions(searchQuery);
+                        }
+                      }}
+                      placeholder="Search news, topics, or regions..."
+                      className="flex-1 bg-transparent text-slate-900 placeholder:text-slate-400 text-[13.5px] sm:text-sm font-normal focus:outline-hidden min-w-0"
+                      id="navbar-search-input"
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+
+                    {/* Multi-Purpose Right Cross Button [x] with strictly NO background */}
+                    <button
+                      type="button"
+                      onClick={handleMultiPurposeCrossClick}
+                      className="h-9 w-9 bg-transparent hover:bg-transparent active:bg-transparent border-0 shadow-none text-slate-500 hover:text-slate-900 transition-colors cursor-pointer shrink-0 ml-1 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-slate-400/50 rounded-full active:scale-90 flex items-center justify-center"
+                      title={
+                        searchQuery.trim().length > 0 && searchQuery.trim() !== (searchParams.get('search') || '').trim()
+                          ? "Clear typed text"
+                          : searchParams.has('search')
+                          ? "Clear search results"
+                          : "Close search bar"
                       }
-                      setIsSearchOpen(false);
-                    }}
-                    className="px-4 py-2.5 text-xs font-semibold bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-850 text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white rounded-xl border border-slate-205 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 shadow-3xs cursor-pointer transition-all active:scale-98"
-                  >
-                    <span className="text-amber-600 dark:text-amber-500 font-bold mr-1">#</span>{topic}
-                  </button>
-                ))}
+                      id="navbar-search-clear-cross-button"
+                      aria-label={
+                        searchQuery.trim().length > 0 && searchQuery.trim() !== (searchParams.get('search') || '').trim()
+                          ? "Clear typed text"
+                          : searchParams.has('search')
+                          ? "Clear search results"
+                          : "Close search bar"
+                      }
+                    >
+                      <X className="h-4.5 w-4.5 stroke-[2]" />
+                    </button>
+                  </form>
+
+                  {/* Google-style Suggested / Similar Search Results Dropdown */}
+                  <AnimatePresence>
+                    {showSuggestions && suggestions.length > 0 && (
+                      <motion.div
+                        id="header-search-suggestions-dropdown"
+                        role="listbox"
+                        aria-label="Search suggestions"
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -4 }}
+                        transition={{ duration: 0.14, ease: 'easeOut' }}
+                        className="absolute left-0 right-0 top-full mt-1.5 bg-white rounded-2xl shadow-[0_10px_28px_rgba(32,33,36,0.16)] border border-slate-200/90 overflow-hidden z-[70] py-1.5 font-sans"
+                      >
+                        {suggestions.map((item, idx) => (
+                          <button
+                            key={`${item.kind}-${item.text}-${idx}`}
+                            type="button"
+                            role="option"
+                            aria-selected={highlightedSuggestionIndex === idx}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              handleSelectSuggestion(item.text);
+                            }}
+                            onMouseEnter={() => setHighlightedSuggestionIndex(idx)}
+                            className={`w-full min-h-[42px] px-4 py-2 text-left text-[13px] sm:text-sm flex items-center justify-between gap-3 transition-colors cursor-pointer ${
+                              highlightedSuggestionIndex === idx ? 'bg-slate-100 text-slate-950' : 'bg-white hover:bg-slate-50 text-slate-800'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                              <Search className="h-4 w-4 text-slate-400 shrink-0" />
+                              <span className="truncate">
+                                {renderSuggestionHighlight(item.text, searchQuery)}
+                              </span>
+                            </div>
+                            <ArrowUpLeft className="h-3.5 w-3.5 text-slate-400 shrink-0" aria-hidden="true" />
+                          </button>
+                        ))}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </header>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </header>
       {/* Fixed navbar height spacer keeping page content aligned directly under the header */}
-      <div className="h-18 w-full shrink-0 pointer-events-none" aria-hidden="true" id="header-fixed-spacer" />
+      <div 
+        className={`w-full shrink-0 pointer-events-none transition-[height] duration-200 ${isHome && isSearchOpen ? 'h-[134px]' : 'h-18'}`} 
+        aria-hidden="true" 
+        id="header-fixed-spacer" 
+      />
 
       {/* Beige Side Drawer Menu (active when user is inside articles and Line 2 is hidden) */}
       <AnimatePresence>
@@ -1014,39 +1368,39 @@ export default function Header() {
               aria-label="Close menu"
             />
 
-            {/* Left-Side Drawer: Compact proportional scaling to fit all device length ratios without scrolling */}
+            {/* Left-Side Drawer: Vertically aligned with main navbar h-18 and smoothly scrollable categories list */}
             <motion.aside
               initial={{ x: '-100%' }}
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
               transition={{ type: 'spring', damping: 28, stiffness: 320 }}
-              className="relative z-10 w-[72vw] max-w-[270px] sm:w-76 h-full bg-[#fbf1e5] border-r border-[#e8dbcc] dark:border-slate-800 shadow-2xl flex flex-col justify-between overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+              className="relative z-10 w-[78vw] max-w-[290px] sm:w-80 h-full bg-[#fbf1e5] border-r border-[#e8dbcc] dark:border-slate-800 shadow-2xl flex flex-col justify-between overflow-hidden"
               id="article-side-menu-panel"
             >
-              {/* Drawer Header with Brand Title & Close Button */}
-              <div className="px-3.5 py-2 sm:py-2.5 border-b border-[#e8dbcc]/80 flex items-center justify-between shrink-0 bg-[#fbf1e5]/95 backdrop-blur-xs sticky top-0 z-10">
-                <div className="flex flex-col">
-                  <span className="font-playfair font-black text-sm sm:text-base text-slate-950 uppercase leading-none tracking-tight">
+              {/* Drawer Header: Exactly equal to main navbar vertical height (h-18 / 72px) */}
+              <div className="h-18 px-4 border-b border-[#e8dbcc]/80 flex items-center justify-between shrink-0 bg-[#fbf1e5] sticky top-0 z-10 box-border">
+                <div className="flex flex-col justify-center min-w-0">
+                  <span className="font-playfair font-black text-base sm:text-lg text-slate-950 uppercase leading-none tracking-tight truncate">
                     Current News
                   </span>
-                  <span className="font-lora text-[8.5px] sm:text-[9.5px] text-slate-600 uppercase tracking-wider font-semibold mt-0.5">
+                  <span className="font-lora text-[9px] sm:text-[10px] text-slate-600 uppercase tracking-wider font-semibold mt-1 truncate">
                     Newsroom Sections
                   </span>
                 </div>
                 <button
                   type="button"
                   onClick={() => setIsSideMenuOpen(false)}
-                  className="h-7 w-7 rounded-full text-slate-600 hover:text-slate-900 hover:bg-black/5 transition-colors cursor-pointer flex items-center justify-center active:scale-90"
+                  className="h-9 w-9 rounded-full text-slate-600 hover:text-slate-900 hover:bg-black/5 transition-colors cursor-pointer flex items-center justify-center active:scale-90 shrink-0"
                   title="Close categories menu"
                   id="side-menu-close-button"
                 >
-                  <X className="h-3.5 w-3.5" />
+                  <X className="h-4 w-4" />
                 </button>
               </div>
 
-              {/* All Categories Navigation List: Compact sizing without large min-height so all categories fit cleanly across any device height */}
-              <div className="px-2 py-1 sm:px-2.5 sm:py-1.5 flex-1 flex flex-col justify-evenly gap-0.5" id="side-menu-categories-list">
-                <div className="text-[8.5px] font-mono font-bold tracking-widest text-slate-500 uppercase px-2 py-0.5 shrink-0">
+              {/* All Categories Navigation List: Increased vertical button height with smooth scroll function */}
+              <div className="px-3 py-3 flex-1 overflow-y-auto space-y-1.5 scroll-smooth overscroll-contain no-scrollbar [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]" id="side-menu-categories-list">
+                <div className="text-[9px] sm:text-[10px] font-mono font-bold tracking-widest text-slate-500 uppercase px-2.5 py-1 shrink-0">
                   Browse by Category
                 </div>
                 {SIDE_MENU_CATEGORIES.map((cat) => {
@@ -1068,23 +1422,23 @@ export default function Header() {
                         }
                         window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
                       }}
-                      className={`w-full py-1 sm:py-1.2 px-2.5 text-[10.5px] sm:text-xs font-bold tracking-wider uppercase transition-all duration-150 cursor-pointer rounded-lg flex items-center justify-between text-left group active:scale-98 shrink-0 ${
+                      className={`w-full min-h-[46px] py-3 px-3.5 text-xs sm:text-[13px] font-bold tracking-wider uppercase transition-all duration-150 cursor-pointer rounded-xl flex items-center justify-between text-left group active:scale-[0.99] shrink-0 ${
                         isCurrent
-                          ? 'bg-amber-100/95 text-black border border-amber-400/50 shadow-2xs font-extrabold'
-                          : 'bg-transparent text-slate-900 hover:bg-black/5 border border-transparent'
+                          ? 'bg-amber-100/95 text-black border border-amber-400/60 shadow-xs font-extrabold'
+                          : 'bg-white/60 dark:bg-slate-900/40 text-slate-900 dark:text-slate-100 hover:bg-white dark:hover:bg-slate-800/60 border border-black/5 dark:border-white/5'
                       }`}
                       id={`side-menu-cat-tab-${cat.toLowerCase()}`}
                     >
-                      <span className="font-bold text-slate-900 group-hover:text-black">
+                      <span className="font-bold text-slate-900 dark:text-white group-hover:text-black dark:group-hover:text-white">
                         {cat}
                       </span>
-                      <ChevronRight className="h-3 w-3 text-slate-400 group-hover:text-slate-700 transition-transform group-hover:translate-x-0.5" />
+                      <ChevronRight className="h-3.5 w-3.5 text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-200 transition-transform group-hover:translate-x-0.5 shrink-0" />
                     </button>
                   );
                 })}
               </div>
 
-              {/* Bottom Return to Home Top Feed Action */}
+              {/* Bottom Return to Home Top Feed Action (Height completely preserved) */}
               <div className="p-2.5 sm:p-3 border-t border-[#e8dbcc]/80 bg-[#fbf1e5] shrink-0">
                 <button
                   type="button"

@@ -338,7 +338,19 @@
   - Social & Search Bot Server Pre-Rendering: Updated `src/server/socialPreview.ts` to recognize modern AI search agents (`GPTBot`, `PerplexityBot`, `ClaudeBot`, `Claude-Web`, `Google-Extended`, `Applebot-Extended`, `OAI-SearchBot`) alongside Googlebot and Googlebot-News. Reads article data from `data/articles/${postId}.json` and `loadLocalFeed()`, pre-rendering semantic HTML and `NewsArticle` Schema.org JSON-LD with geo tags.
   - Canonical Domain Enforcement & 301 Redirects: Added middleware in `server.ts` redirecting non-canonical domains (`*.cloud.run`, `*.run.app`, and apex `currentnews.blog`) with HTTP 301 to `https://www.currentnews.blog`, while safely bypassing localhost, internal probes, and AI Studio dev frames. Injected `Link: <https://www.currentnews.blog...>; rel="canonical"` headers on all HTML responses.
   - AI Context & Robots Directive: Created `public/llms.txt` standard specification and updated `public/robots.txt` explicitly welcoming search engines and AI agents with dual sitemap links.
+- [x] **Phase 77 (Side Menu Drawer Header Height, Category Button Height & Scroll Functionality):** [COMPLETED]
+  - Drawer Header Height Alignment: Aligned drawer header (`div:nth-of-type(1)`) vertical height to match the main navbar (`h-18` / 72px / 4.5rem) exactly, with centered vertical alignment for "Current News" / "Newsroom Sections" and close button (`X` icon `h-4 w-4`).
+  - Category Button Vertical Height: Increased button touch target height to `min-h-[46px] py-3 px-3.5` with `rounded-xl` and active scale `active:scale-[0.99]`, making category navigation comfortable and accessible on touchscreens.
+  - Categories List Scrolling: Converted `#side-menu-categories-list` to `flex-1 overflow-y-auto space-y-1.5 scroll-smooth overscroll-contain no-scrollbar`, allowing smooth scrolling across all 14 categories on any viewport height.
+  - Preserved Return Action: Kept bottom "Return to Home Feed" button container styling, padding, and vertical height (`p-2.5 sm:p-3`, button `py-1.5 sm:py-2`) strictly untouched.
+- [x] **Phase 78 (Google-Style Line 2 Pill Search Bar Redesign, Multi-Purpose Cross Button & Live Suggestions):** [COMPLETED]
+  - Deleted Old Search Overlay: Completely removed the legacy full-screen `#search-overlay` modal from `src/components/Header.tsx`.
+  - Line 2 Navbar Pill Search Bar: Pressing `#header-search-trigger` opens `#navbar-search-line-2` in the 2nd line of the `#fbf1e5` navbar, hiding `#category-filter-header` on `HomeView.tsx` with zero vertical layout shift (`134px` spacer + `32px` gap = `166px`).
+  - Responsive Proportions & Colors: Styled with pure white pill interior (`bg-white rounded-full`), navbar-matching `#fbf1e5` outer surface, `px-3.5` side margins on phone screens, and compact `sm:max-w-[420px] md:max-w-[460px] lg:max-w-[480px]` width on tablets and laptops.
+  - 3-State Multi-Purpose Cross Button (`[x]` with no background): (1) Clears half-written unsubmitted text while retaining input focus, (2) clears active search results (`?search=`) and restores full feed while retaining focus, and (3) closes the empty search bar with a smooth origin-tracked animation back into `#header-search-trigger`.
+  - Google-Style Suggestions Dropdown: Real-time ranked autocomplete & similar search suggestions across newsroom sections, regional/global topics (English & Hindi), article hashtags, and published headlines with bold match highlighting and keyboard navigation (`ArrowUp`/`ArrowDown`/`Enter`/`Escape`).
 - **Immediate Next Step:** Production deployment verification on Google Cloud Run.
+
 
 
 

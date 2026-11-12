@@ -102,6 +102,11 @@
       - `connect-src`: `https://*.facebook.com`, `https://*.facebook.net`, `https://*.fbcdn.net`.
       - Auto-Prompt Notification Guard: `initPushNotificationPermissionOnSiteOpen()` gracefully checks for native browser capability (`'Notification' in window`) and default permission state, preventing permission prompt hijacking and automatically syncing reader settings upon user grant without UI degradation.
 
+23. **Vulnerability: Search Input Regex DoS (ReDoS), XSS Reflection & Unaborted Cold-Cache Races**
+    - **Exploit Vector:** Users pasting regex metacharacters (`[.*+?^${}()|[\]\\]`), `<script>` XSS payloads, or rapidly toggling the Line 2 search bar while `/feed.json` warms in the background, causing `SyntaxError` in regex matchers, reflected DOM injection in highlight renderers, or stale state updates on unmounted inputs.
+    - **Defense:** Avoided dynamic `new RegExp(userInput)` construction entirely in `renderSuggestionHighlight`, `generateSuggestions`, and `HomeView` filtering—using pure `String.prototype.indexOf` / `includes` substring matching and React JSX text nodes (auto-escaped by React). Guarded the cold-cache `/feed.json` warm-up fetch with `AbortController` cleanup, `Accept: application/json`, and strict JSON prefix verification before `JSON.parse`.
+
+
 
 
 

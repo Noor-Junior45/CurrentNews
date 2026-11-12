@@ -19,3 +19,11 @@
 # Google Play Services Auth
 -keep class com.google.android.gms.auth.api.signin.** { *; }
 -keep class com.google.android.gms.common.api.** { *; }
+
+# Keep WebView @JavascriptInterface notification navigation bridge in release builds
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
+-keep class blog.currentnews.app.MainActivity$NotificationNavBridge {
+    public *;
+}

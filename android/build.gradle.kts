@@ -16,5 +16,6 @@ extra["androidxFragmentVersion"] = "1.8.5"
 extra["androidxAppCompatVersion"] = "1.7.0"
 extra["androidxWebkitVersion"] = "1.12.1"
 extra["androidxCoordinatorLayoutVersion"] = "1.3.0"
+extra["firebaseMessagingVersion"] = "24.1.0"
 
 

@@ -68,12 +68,12 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
     }
 
     kotlinOptions {
-        jvmTarget = "17"
+        jvmTarget = "21"
     }
 
     buildFeatures {
@@ -96,10 +96,15 @@ dependencies {
         implementation("androidx.activity:activity-ktx:1.9.3") {
             because("androidx.activity-ktx 1.11.0 requires AGP 8.9.1+")
         }
+        implementation("com.google.firebase:firebase-messaging:24.1.0") {
+            because("Aligns :capacitor-push-notifications with firebase-bom 33.7.0 and prevents duplicate ktx classes from 25.0.1")
+        }
     }
 
-    // Capacitor Android Core Bridge
+    // Capacitor Android Core Bridge & Native Plugins
     implementation(project(":capacitor-android"))
+    implementation(project(":capacitor-app"))
+    implementation(project(":capacitor-push-notifications"))
 
     // AndroidX & UI (Targeted for Android 13+ / API 33-36)
     implementation("androidx.core:core-ktx:1.15.0")

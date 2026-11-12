@@ -357,7 +357,12 @@
   - Added allowlisted CORS middleware (`https://localhost`, `http://localhost`, `capacitor://localhost`, `https://currentnews.blog`, `https://www.currentnews.blog`) on `/api/*`, `/healthz`, `/feed.json`, and `/articles/*` in `server.ts`.
   - Added `scripts/sync-public-articles.mjs` to `npm run build`, bundling PII-stripped full article JSONs into `public/articles/*.json` (`dist/articles/*.json`) for guaranteed `0ms` offline/cold-start APK reading.
   - Fixed `compressedStorage.ts` LZW UTF-16 end-of-stream bit packing and `16384` bitmask (bumping cache keys to `v3`), and hardened `PostDetailView.tsx` so cached/preview articles are never overwritten by an error screen.
-- **Immediate Next Step:** Rebuild Android APK (`npm run cap:build` -> Android Studio `Assemble Release`) and deploy updated server to Google Cloud Run.
+- [x] **Phase 81 (Cloud Build / Cloud Run Multi-Stage Dockerfile, Lockfile Sync & Cold-Start Fix):** [COMPLETED]
+  - Fixed fatal Google Cloud Build Step 17/21 failure (`COPY --from=builder /app/data ./data` -> `stat app/data: file does not exist`) on clean GitHub checkouts where `data/` is gitignored by initializing `/app/data/img`, `/app/data/articles`, `/app/public`, and `/app/api` (plus guarding `firebase-applet-config.json`) in `Dockerfile` Stage 1 (`builder`).
+  - Synchronized `package-lock.json` with `package.json` (adding `@capacitor/push-notifications@8.1.3` and removing duplicate `vite` entry) so `npm ci` and `npm ci --omit=dev` succeed cleanly with zero `EUSAGE` fallback penalties.
+  - Replaced top-level `import { createServer } from 'vite'` in `server.ts` with dynamic `await import('vite')` gated behind `process.env.NODE_ENV !== "production"`, eliminating production `require("vite")` errors under `--omit=dev` and speeding up Cloud Run cold starts.
+  - Hardened `.dockerignore` with `*downloaded-logs*`, `public/assets/aistudio`, `server.cjs`, and `*.map` so diagnostic build logs and local artifacts never leak into public container assets.
+- **Immediate Next Step:** Commit and push `Dockerfile`, `.dockerignore`, `server.ts`, `package.json`, and `package-lock.json` to `main` to trigger automated Google Cloud Build & Cloud Run deployment.
 
 
 

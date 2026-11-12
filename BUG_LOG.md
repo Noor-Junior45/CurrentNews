@@ -344,4 +344,15 @@
   - **Permanent Guardrail:**
     1. Always route external `https://` requests in native Capacitor apps through `CapacitorHttp.get` / `CapacitorHttp.request` (native Android Java HTTP stack, immune to WebView CORS) without enabling global `window.fetch` monkey-patching.
     2. Maintain strict allowlisted CORS headers (`https://localhost`, `http://localhost`, `capacitor://localhost`, `https://currentnews.blog`, `https://www.currentnews.blog`) on `/api/*`, `/healthz`, `/feed.json`, and `/articles/*` in `server.ts`.
-    3. Keep `scripts/sync-public-articles.mjs` in `npm run build` so sanitized `public/articles/*.json` (stripped of PII `authorEmail`/`authorId`) are bundled into `dist/articles/` for `0ms` APK/offline failover, and never overwrite a valid `previewPost` with an error screen in `PostDetailView.tsx`.
+    3. Keep `scripts/sync-public-articles.mjs` in `npm run build` and never overwrite a valid `previewPost` with an error screen in `PostDetailView.tsx`.
+
+- [x] **Bug ID & Summary:** BUG-063 — Google Cloud Build / Cloud Run Deployment Failure (`Step 17/21: COPY failed: stat app/data: file does not exist`) & `npm ci` Lockfile Drift (`EUSAGE`).
+  - **Root Cause:**
+    1. **Missing Gitignored `/app/data` in Builder Stage:** `data/` is listed in `.gitignore`, so clean GitHub checkouts in Cloud Build (`FETCHSOURCE`) contain no `/app/data` directory. Because `scripts/sync-public-articles.mjs` no longer creates `data/` and `Dockerfile` only ran `mkdir -p data/img data/articles` in Stage 2 (`runner`) *after* `COPY --from=builder /app/data ./data`, Docker aborted at Step 17/21 with `COPY failed: stat app/data: file does not exist`.
+    2. **Unsynchronized `package-lock.json` (`EUSAGE`):** `@capacitor/push-notifications` (`^8.0.0`) was added to `package.json` without updating `package-lock.json`, causing `npm ci` in both Stage 1 and Stage 2 of Cloud Build to fail with `Missing: @capacitor/push-notifications@8.1.3 from lock file` and fall back to slow unpinned `npm install` runs (~40s penalty).
+    3. **Top-Level `vite` Import in `server.ts` & Unfiltered Log Attachments:** Static `import { createServer } from 'vite'` in `server.ts` compiled to a top-level `require("vite")` inside `server.cjs`, loading Vite on production cold starts or crashing when `--omit=dev` omits dev packages; meanwhile `.dockerignore` lacked `*downloaded-logs*` and `public/assets/aistudio`.
+  - **Permanent Guardrail:**
+    1. Always run `RUN mkdir -p /app/data/img /app/data/articles /app/public /app/api` (and guard `firebase-applet-config.json`) in `Dockerfile` Stage 1 (`builder`) prior to `Stage 2` `COPY --from=builder`, so clean GitHub webhook builds never fail when gitignored directories are absent.
+    2. Whenever `package.json` changes, regenerate `package-lock.json` and verify `npm ci --dry-run` exits `0` before pushing.
+    3. Dynamically `await import('vite')` strictly inside `if (process.env.NODE_ENV !== "production")` in `server.ts`, and exclude `*downloaded-logs*`, `public/assets/aistudio`, `server.cjs`, and `*.map` in `.dockerignore`.
+

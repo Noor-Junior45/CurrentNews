@@ -1,6 +1,5 @@
 import express from 'express';
 import path from 'path';
-import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
@@ -39,7 +38,7 @@ const asyncHandler = (handler: any) => {
 
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : (process.env.NODE_ENV === 'production' ? 8080 : 3000);
 
   // Trust proxy: 2 hops for Google Cloud Load Balancer (GCLB) / Google Front End and Cloudflare Anycast CDN
   app.set('trust proxy', 2);
@@ -405,6 +404,7 @@ async function startServer() {
 
   // Connect Vite configuration dynamically to support dev vs prod modes
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",

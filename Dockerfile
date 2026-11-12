@@ -11,8 +11,10 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci || npm install
 
-# Copy project files and build Vite SPA + Express bundled server
+# Copy project files and ensure gitignored runtime directories exist before Stage 2 COPY
 COPY . .
+RUN mkdir -p /app/data/img /app/data/articles /app/public /app/api && \
+    ([ -f /app/firebase-applet-config.json ] || echo '{}' > /app/firebase-applet-config.json)
 RUN npm run build
 
 # Stage 2: Production Execution Image

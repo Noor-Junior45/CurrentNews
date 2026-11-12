@@ -15,6 +15,8 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci || npm install
 COPY . .
+RUN mkdir -p /app/data/img /app/data/articles /app/public /app/api && \
+    ([ -f /app/firebase-applet-config.json ] || echo '{}' > /app/firebase-applet-config.json)
 RUN npm run build
 
 # Stage 2: Production Execution Image
@@ -28,11 +30,13 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/server.cjs ./server.cjs
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/api ./api
+COPY --from=builder /app/data ./data
 COPY --from=builder /app/firebase-applet-config.json ./firebase-applet-config.json
 RUN mkdir -p data/img data/articles
 EXPOSE 8080
 CMD ["node", "server.cjs"]
 ```
+- **`.dockerignore` Exclusions:** `node_modules`, `dist`, `.git`, `.github`, `android`, `.aistudio`, `*.log`, `*downloaded-logs*`, `public/assets/aistudio`, `server.cjs`, `*.map`, `coverage`, `build`, `.env*`.
 
 ## 3. Step-by-Step Deployment Guide from Scratch
 

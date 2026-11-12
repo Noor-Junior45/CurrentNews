@@ -6,6 +6,12 @@ dist
 android
 .aistudio
 *.log
+*downloaded-logs*
+public/assets/aistudio
+server.cjs
+*.map
+coverage
+build
 .env
 .env.local
 bun.lock

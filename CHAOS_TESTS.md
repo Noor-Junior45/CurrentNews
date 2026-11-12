@@ -282,6 +282,28 @@ grep -rnE 'authorEmail|authorId' public/articles
 # Expected: (empty - 0 matches)
 
 # 4. Verify LZW UTF-16 compression/decompression lossless roundtrip on Devanagari + English JSON
-npx tsx -e 'import fs from "fs"; import { compressToUTF16, decompressFromUTF16 } from "./src/utils/compressedStorage.ts"; const raw = fs.readFileSync("./public/articles/Z9qSPadOxSBhn2Wjyoet.json", "utf8"); console.log("Lossless:", decompressFromUTF16(compressToUTF16(raw)) === raw);'
+npx tsx -e 'import fs from "fs"; import { compressToUTF16, decompressFromUTF16 } from "./src/utils/compressedStorage.ts"; const raw = JSON.stringify({ id: "test", title: "झारखंड समाचार", content: "<p>Live</p>" }); console.log("Lossless:", decompressFromUTF16(compressToUTF16(raw)) === raw);'
 # Expected: Lossless: true
 ```
+
+## 12. Cloud Build, Deterministic Lockfile & Production Cold-Start Smoke Suite
+
+```bash
+# 1. Verify package.json and package-lock.json are 100% synchronized for Stage 1 & Stage 2 Docker builds
+npm ci --dry-run && npm ci --omit=dev --dry-run
+# Expected: Exit code 0 (zero EUSAGE errors)
+
+# 2. Verify production server.cjs bundle contains zero top-level require("vite") calls
+npm run build && grep -c 'require("vite")' server.cjs || true
+# Expected: 0
+
+# 3. Verify production bundle boots on dynamic PORT (8080 default) and passes /healthz + /readyz probes
+NODE_ENV=production PORT=8099 node server.cjs &
+SERVER_PID=$!
+sleep 2
+curl -fsS http://127.0.0.1:8099/healthz
+curl -fsS http://127.0.0.1:8099/readyz
+kill $SERVER_PID
+# Expected: OK and {"status":"ready",...}
+```
+

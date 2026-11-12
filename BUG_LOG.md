@@ -315,3 +315,7 @@
     1. Standardized all canonical URLs, Schema.org IDs, OG tags, sitemaps, RSS, and `Link` headers across the entire application strictly to `https://currentnews.blog`.
     2. Supported both `/sitemap.xml` and `/sitemap_index.xml` (serving a valid XML `<sitemapindex>` pointing to `/sitemap.xml` and `/rss.xml`) so both URLs return valid XML 200 OK.
     3. Updated `robots.txt` and `llms.txt` with active sitemap links under `https://currentnews.blog`.
+
+- [x] **Bug ID & Summary:** BUG-057 — Three Horizontal Menu Button Redundant Duplicate When 2nd Line Navbar is Visible.
+  - **Root Cause:** When the 2nd line navbar (category tabs) is in view at the top of the homepage, showing the 3 horizontal lines hamburger menu simultaneously created UI duplication between the drawer button and the visible category tabs.
+  - **Permanent Guardrail:** Enforce mutual exclusivity across website and phone APK: when the 2nd line navbar is visible (`!isLine2Hidden`), hide `button#header-side-menu-trigger`. When the 2nd line navbar scrolls out of view or the reader navigates to an article/subpage (`isLine2Hidden`), render the 3 horizontal line menu button with smooth fade-in animation.

@@ -402,11 +402,16 @@ export default function Header() {
 
   useEffect(() => {
     const handleScroll = () => {
-      setIsScrolledPastLine2(window.scrollY > 68);
+      const scrollPos = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+      setIsScrolledPastLine2(scrollPos > 45);
     };
     window.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener('touchmove', handleScroll, { passive: true });
     handleScroll();
-    return () => window.removeEventListener('scroll', handleScroll);
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('touchmove', handleScroll);
+    };
   }, []);
 
   const isLine2Hidden = !isHome || isScrolledPastLine2;
@@ -417,8 +422,8 @@ export default function Header() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between">
         
         {/* Brand Name & Newsroom Navigation */}
-        <div className="flex items-center space-x-2 sm:space-x-3 min-w-0">
-          {/* 3 horizontal line menu trigger: appears on article pages AND on home page when Line 2 of navbar hides on scroll */}
+        <div className="flex items-center space-x-1.5 sm:space-x-2.5 min-w-0">
+          {/* 3 horizontal line menu trigger: hidden when 2nd line navbar is visible; visible when 2nd line navbar is hidden or scrolled */}
           {isLine2Hidden && (
             <button
               type="button"

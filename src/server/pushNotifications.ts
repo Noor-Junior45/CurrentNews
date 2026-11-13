@@ -23,7 +23,7 @@ function getPool(): Pool | null {
 }
 
 const BASE64URL_REGEX = /^[A-Za-z0-9_-]+$/;
-const NATIVE_FCM_ENDPOINT_REGEX = /^fcm:[A-Za-z0-9_:-]{100,400}$/;
+const NATIVE_FCM_ENDPOINT_REGEX = /^fcm:[A-Za-z0-9_.:-]{64,512}$/;
 
 function isNativeFcmEndpoint(endpoint: unknown): endpoint is string {
   return typeof endpoint === 'string' && NATIVE_FCM_ENDPOINT_REGEX.test(endpoint);

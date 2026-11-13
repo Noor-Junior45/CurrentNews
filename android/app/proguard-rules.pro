@@ -1,12 +1,17 @@
-# Capacitor Plugin reflection rules
+# Capacitor Plugin & R8 Full-Mode reflection rules
+-keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod
+-keep class com.getcapacitor.annotation.** { *; }
 -keep public class * extends com.getcapacitor.Plugin {
-    public *;
+    *;
 }
 -keepclassmembers class * extends com.getcapacitor.Plugin {
-    @com.getcapacitor.PluginMethod public *;
-    @com.getcapacitor.annotation.ActivityCallback public *;
-    @com.getcapacitor.annotation.PermissionCallback public *;
+    <init>(...);
+    @com.getcapacitor.PluginMethod <methods>;
+    @com.getcapacitor.annotation.ActivityCallback <methods>;
+    @com.getcapacitor.annotation.PermissionCallback <methods>;
 }
+-keep class com.capacitorjs.plugins.** { *; }
+-keep class com.getcapacitor.community.admob.** { *; }
 
 # Keep NativeGoogleAuthPlugin specifically
 -keep class blog.currentnews.app.NativeGoogleAuthPlugin {

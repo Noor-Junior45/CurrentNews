@@ -103,6 +103,7 @@ dependencies {
 
     // Capacitor Android Core Bridge & Native Plugins
     implementation(project(":capacitor-android"))
+    implementation(project(":capacitor-community-admob"))
     implementation(project(":capacitor-app"))
     implementation(project(":capacitor-push-notifications"))
 
@@ -127,7 +128,7 @@ dependencies {
     implementation("com.google.android.gms:play-services-auth:21.3.0")
 
     // Google Mobile Ads (AdMob) SDK for Native Phone App Monetization
-    implementation("com.google.android.gms:play-services-ads:23.6.0")
+    implementation("com.google.android.gms:play-services-ads:24.2.0")
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")

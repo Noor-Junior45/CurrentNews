@@ -185,21 +185,23 @@ function NativeNotificationNavigator() {
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     // 3. Fallback listener if FCM delivered a system notification action via Capacitor plugin
-    const actionListenerPromise = PushNotifications.addListener(
-      'pushNotificationActionPerformed',
-      (action) => {
-        const data = action.notification?.data as Record<string, unknown> | undefined;
-        const rawUrl = data?.url ?? data?.link ?? data?.target_path ?? data?.target_url;
-        if (rawUrl) {
-          goToArticlePath(rawUrl);
-        }
-      }
-    );
+    const actionListenerPromise = Capacitor.isPluginAvailable('PushNotifications')
+      ? PushNotifications.addListener(
+          'pushNotificationActionPerformed',
+          (action) => {
+            const data = action.notification?.data as Record<string, unknown> | undefined;
+            const rawUrl = data?.url ?? data?.link ?? data?.target_path ?? data?.target_url;
+            if (rawUrl) {
+              goToArticlePath(rawUrl);
+            }
+          }
+        ).catch(() => null)
+      : Promise.resolve(null);
 
     return () => {
       window.removeEventListener('currentnews-native-navigate', handleNativeNavigate);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      void actionListenerPromise.then((handle) => handle.remove()).catch(() => {});
+      void actionListenerPromise.then((handle) => handle?.remove()).catch(() => {});
     };
   }, [navigate]);
 

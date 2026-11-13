@@ -17,5 +17,7 @@ extra["androidxAppCompatVersion"] = "1.7.0"
 extra["androidxWebkitVersion"] = "1.12.1"
 extra["androidxCoordinatorLayoutVersion"] = "1.3.0"
 extra["firebaseMessagingVersion"] = "24.1.0"
+extra["kotlin_version"] = "2.0.0"
+extra["playServicesAdsVersion"] = "24.2.0"
 
 

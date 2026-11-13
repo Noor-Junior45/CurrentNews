@@ -420,7 +420,22 @@ async function startServer() {
     app.use(express.static(publicPath, { maxAge: '1h' }));
     app.use(express.static(distPath, { maxAge: '1h' }));
     app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+      let decodedPath = req.path || '/';
+      try {
+        decodedPath = decodeURIComponent(decodedPath);
+      } catch {
+        return res.status(404).type('text/plain; charset=utf-8').send('Not Found');
+      }
+      const segments = decodedPath.split('/').filter(Boolean);
+      const startsWithDot =
+        decodedPath.startsWith('/.') ||
+        decodedPath.startsWith('.') ||
+        segments.some((seg) => seg.startsWith('.'));
+      const hasExtension = path.posix.extname(decodedPath) !== '';
+      if (startsWithDot || hasExtension) {
+        return res.status(404).type('text/plain; charset=utf-8').send('Not Found');
+      }
+      return res.sendFile(path.join(distPath, 'index.html'));
     });
   }
 

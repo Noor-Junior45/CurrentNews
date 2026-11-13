@@ -5,6 +5,7 @@ import {
   BannerAdSize,
   BannerAdPosition,
   BannerAdPluginEvents,
+  InterstitialAdPluginEvents,
   AdMobInitializationOptions,
   AdOptions,
   NativeAdFeed,
@@ -24,16 +25,20 @@ export const ADMOB_APP_ID = 'ca-app-pub-5865716270182311~4645476456';
 // 3. FIRST AD UNIT: Adaptive Banner (CurrentNews_Bottom_Banner)
 export const ADMOB_BANNER_ID = 'ca-app-pub-5865716270182311/2031114923';
 
-// 4. SECOND AD UNIT (Optional): Interstitial Ad Unit (full screen between articles)
-export const ADMOB_INTERSTITIAL_ID = 'ca-app-pub-5865716270182311/YYYYYYYYYY';
+// 4. SECOND AD UNIT: Interstitial Ad Unit (currentnews_Interstitial)
+export const ADMOB_INTERSTITIAL_ID = 'ca-app-pub-5865716270182311/2535355843';
 
 // 5. THIRD AD UNIT: Native Advanced (currentnew_native for inside articles & feed)
 export const ADMOB_NATIVE_ID = 'ca-app-pub-5865716270182311/1743128281';
 
-// Google Official Safe Test IDs (automatically used until production IDs are provided)
+// Google Official Safe Test IDs (automatically used if a production ID is absent/placeholder)
 export const TEST_BANNER_ID = 'ca-app-pub-3940256099942544/6300978111';
 export const TEST_INTERSTITIAL_ID = 'ca-app-pub-3940256099942544/1033173712';
 export const TEST_NATIVE_ID = 'ca-app-pub-3940256099942544/2247696110';
+
+const INTERSTITIAL_COOLDOWN_MS = 3 * 60 * 1000; // Minimum 3 minutes between interstitials
+const INTERSTITIAL_MIN_QUALIFIED_READS = 2; // Never show on 1st article; show after 2nd+ completed article transition
+const INTERSTITIAL_RETRY_BACKOFF_MS = 60 * 1000; // Wait 60s before re-requesting after failed load
 
 class AdMobManager {
   private initialized = false;
@@ -42,8 +47,82 @@ class AdMobManager {
   private nativeFeed: NativeAdFeed | null = null;
   private nativeFeedPromise: Promise<NativeAdFeed | null> | null = null;
 
+  private interstitialListenersRegistered = false;
+  private interstitialLoaded = false;
+  private interstitialShowing = false;
+  private interstitialPreparingPromise: Promise<boolean> | null = null;
+  private lastInterstitialShownAt = 0;
+  private lastInterstitialLoadAttemptAt = 0;
+  private qualifiedArticleTransitions = 0;
+  private reloadTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
   public isNative(): boolean {
     return Capacitor.isNativePlatform() && (Capacitor.getPlatform() === 'android' || Capacitor.getPlatform() === 'ios');
+  }
+
+  private isNonPersonalizedAds(): boolean {
+    try {
+      return localStorage.getItem('google_ads_personalized_consent') !== 'granted';
+    } catch {
+      return true;
+    }
+  }
+
+  private resolveInterstitialAdConfig(customAdId?: string): { adId: string; isTesting: boolean } {
+    const hasProductionInterstitial = Boolean(
+      ADMOB_INTERSTITIAL_ID &&
+      !ADMOB_INTERSTITIAL_ID.includes('YYYYYYYYYY') &&
+      !ADMOB_INTERSTITIAL_ID.includes('XXXXXXXXXX')
+    );
+    const adId = customAdId || (hasProductionInterstitial ? ADMOB_INTERSTITIAL_ID : TEST_INTERSTITIAL_ID);
+    const isTesting = !customAdId && !hasProductionInterstitial;
+    return { adId, isTesting };
+  }
+
+  private registerInterstitialListeners(): void {
+    if (this.interstitialListenersRegistered) return;
+    this.interstitialListenersRegistered = true;
+
+    AdMob.addListener(InterstitialAdPluginEvents.Loaded, () => {
+      this.interstitialLoaded = true;
+      console.debug('[AdMob] Interstitial preloaded and ready.');
+    });
+
+    AdMob.addListener(InterstitialAdPluginEvents.FailedToLoad, (err) => {
+      this.interstitialLoaded = false;
+      console.debug('[AdMob] Interstitial failed to load:', err);
+    });
+
+    AdMob.addListener(InterstitialAdPluginEvents.Showed, () => {
+      this.interstitialShowing = true;
+      this.interstitialLoaded = false;
+      this.lastInterstitialShownAt = Date.now();
+    });
+
+    AdMob.addListener(InterstitialAdPluginEvents.FailedToShow, (err) => {
+      this.interstitialShowing = false;
+      this.interstitialLoaded = false;
+      console.debug('[AdMob] Interstitial failed to show:', err);
+      this.scheduleNextInterstitialPreload(15000);
+    });
+
+    AdMob.addListener(InterstitialAdPluginEvents.Dismissed, () => {
+      this.interstitialShowing = false;
+      this.interstitialLoaded = false;
+      // Quietly pre-cache the next interstitial after user returns to content
+      this.scheduleNextInterstitialPreload(2500);
+    });
+  }
+
+  private scheduleNextInterstitialPreload(delayMs: number): void {
+    if (!this.isNative()) return;
+    if (this.reloadTimeoutId) {
+      clearTimeout(this.reloadTimeoutId);
+    }
+    this.reloadTimeoutId = setTimeout(() => {
+      this.reloadTimeoutId = null;
+      void this.preloadInterstitial();
+    }, delayMs);
   }
 
   public async initialize(): Promise<boolean> {
@@ -68,7 +147,7 @@ class AdMobManager {
 
         await AdMob.initialize(options);
 
-        // Setup lifecycle listeners
+        // Setup banner lifecycle listeners
         AdMob.addListener(BannerAdPluginEvents.Loaded, () => {
           this.bannerVisible = true;
           console.debug('[AdMob] Native Banner loaded successfully.');
@@ -79,7 +158,11 @@ class AdMobManager {
           console.debug('[AdMob] Native Banner failed to load:', err);
         });
 
+        // Setup interstitial lifecycle listeners & warm-cache first interstitial
+        this.registerInterstitialListeners();
+
         this.initialized = true;
+        this.scheduleNextInterstitialPreload(2000);
         return true;
       } catch (err) {
         console.warn('[AdMob] Initialization skipped or handled:', err);
@@ -108,6 +191,7 @@ class AdMobManager {
         position,
         margin: 0,
         isTesting: !hasProductionBanner,
+        npa: this.isNonPersonalizedAds(),
       };
 
       await AdMob.showBanner(options);
@@ -139,23 +223,112 @@ class AdMobManager {
     }
   }
 
+  /**
+   * Preloads an interstitial silently in the background so showing it on a natural
+   * transition never stalls navigation or blocks user interaction.
+   */
+  public async preloadInterstitial(customAdId?: string): Promise<boolean> {
+    if (!this.isNative()) return false;
+    if (this.interstitialLoaded) return true;
+    if (this.interstitialPreparingPromise) return this.interstitialPreparingPromise;
+
+    const now = Date.now();
+    if (this.lastInterstitialLoadAttemptAt > 0 && now - this.lastInterstitialLoadAttemptAt < INTERSTITIAL_RETRY_BACKOFF_MS) {
+      return false;
+    }
+
+    this.interstitialPreparingPromise = (async () => {
+      try {
+        const ok = await this.initialize();
+        if (!ok) return false;
+        this.registerInterstitialListeners();
+
+        this.lastInterstitialLoadAttemptAt = Date.now();
+        const { adId, isTesting } = this.resolveInterstitialAdConfig(customAdId);
+        const options: AdOptions = {
+          adId,
+          isTesting,
+          npa: this.isNonPersonalizedAds(),
+        };
+
+        await AdMob.prepareInterstitial(options);
+        this.interstitialLoaded = true;
+        return true;
+      } catch (err) {
+        this.interstitialLoaded = false;
+        console.debug('[AdMob] Interstitial preload handled:', err);
+        return false;
+      } finally {
+        this.interstitialPreparingPromise = null;
+      }
+    })();
+
+    return this.interstitialPreparingPromise;
+  }
+
+  /**
+   * Displays an already-preloaded interstitial only if cooldown and UI-safety checks pass.
+   * Never blocks navigation if no ad is ready.
+   */
+  public async showPreloadedInterstitialIfReady(customAdId?: string): Promise<boolean> {
+    if (!this.isNative()) return false;
+
+    const now = Date.now();
+    if (this.interstitialShowing) return false;
+    if (this.lastInterstitialShownAt > 0 && now - this.lastInterstitialShownAt < INTERSTITIAL_COOLDOWN_MS) {
+      return false;
+    }
+
+    if (!this.interstitialLoaded) {
+      void this.preloadInterstitial(customAdId);
+      return false;
+    }
+
+    try {
+      const { adId } = this.resolveInterstitialAdConfig(customAdId);
+      this.interstitialShowing = true;
+      await AdMob.showInterstitial({ adId });
+      this.interstitialLoaded = false;
+      this.lastInterstitialShownAt = Date.now();
+      return true;
+    } catch (err) {
+      this.interstitialShowing = false;
+      this.interstitialLoaded = false;
+      console.debug('[AdMob] Show preloaded interstitial handled:', err);
+      this.scheduleNextInterstitialPreload(15000);
+      return false;
+    }
+  }
+
+  /**
+   * Records a qualified post-reading navigation transition (leaving an article after reading)
+   * and shows a preloaded interstitial strictly between content screens with frequency capping.
+   */
+  public async recordArticleTransitionAndMaybeShowInterstitial(): Promise<boolean> {
+    if (!this.isNative()) return false;
+
+    this.qualifiedArticleTransitions += 1;
+
+    // Never show on app launch or first article; wait until 2+ completed reads
+    if (this.qualifiedArticleTransitions < INTERSTITIAL_MIN_QUALIFIED_READS) {
+      void this.preloadInterstitial();
+      return false;
+    }
+
+    return this.showPreloadedInterstitialIfReady();
+  }
+
   public async prepareAndShowInterstitial(customAdId?: string): Promise<void> {
     if (!this.isNative()) return;
 
     try {
-      const ok = await this.initialize();
-      if (!ok) return;
+      const shownImmediately = await this.showPreloadedInterstitialIfReady(customAdId);
+      if (shownImmediately) return;
 
-      const hasProductionInterstitial = ADMOB_INTERSTITIAL_ID && !ADMOB_INTERSTITIAL_ID.includes('YYYYYYYYYY');
-      const adId = customAdId || (hasProductionInterstitial ? ADMOB_INTERSTITIAL_ID : TEST_INTERSTITIAL_ID);
-
-      const options: AdOptions = {
-        adId,
-        isTesting: !hasProductionInterstitial,
-      };
-
-      await AdMob.prepareInterstitial(options);
-      await AdMob.showInterstitial();
+      const ok = await this.preloadInterstitial(customAdId);
+      if (ok) {
+        await this.showPreloadedInterstitialIfReady(customAdId);
+      }
     } catch (err) {
       console.debug('[AdMob] Interstitial handled:', err);
     }
@@ -214,3 +387,4 @@ class AdMobManager {
 }
 
 export const admobManager = new AdMobManager();
+

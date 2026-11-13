@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { admobManager } from '../utils/admob';
 
@@ -18,12 +18,20 @@ const UTILITY_OR_NON_CONTENT_ROUTES = [
   '/contact'
 ];
 
+const MIN_ARTICLE_ENGAGEMENT_MS = 6000; // Ignore rapid misclick bounces under 6 seconds
+
 export function useAdSenseRouteGuard() {
   const location = useLocation();
+  const prevPathRef = useRef<string | null>(null);
+  const articleEnteredAtRef = useRef<number>(0);
 
   useEffect(() => {
+    const currentPath = location.pathname;
+    const prevPath = prevPathRef.current;
+    prevPathRef.current = currentPath;
+
     const isUtilityRoute = UTILITY_OR_NON_CONTENT_ROUTES.some(
-      (path) => location.pathname === path || location.pathname.startsWith(path + '/')
+      (path) => currentPath === path || currentPath.startsWith(path + '/')
     );
 
     // 1. Native Mobile App Handling (Google AdMob)
@@ -31,10 +39,43 @@ export function useAdSenseRouteGuard() {
       if (isUtilityRoute) {
         // Hide banner on non-content/utility/auth screens so it never covers buttons
         admobManager.hideBanner();
-      } else {
-        // Show native banner on public content feeds and articles
-        admobManager.showBanner();
+        return;
       }
+
+      // Show native banner on public content feeds and articles
+      admobManager.showBanner();
+
+      // Natural Transition Interstitial Placement:
+      // Only after leaving an article (/post/...) that the user read for >= 6 seconds,
+      // navigating back to Home or switching to another article, with no modal/lightbox active.
+      if (
+        prevPath &&
+        prevPath !== currentPath &&
+        prevPath.startsWith('/post/') &&
+        (currentPath === '/' || currentPath.startsWith('/post/'))
+      ) {
+        const engagementMs = articleEnteredAtRef.current > 0 ? Date.now() - articleEnteredAtRef.current : 0;
+        const hasOpenOverlay = Boolean(
+          document.getElementById('image-lightbox-overlay') ||
+          document.getElementById('settings-modal-overlay')
+        );
+
+        if (engagementMs >= MIN_ARTICLE_ENGAGEMENT_MS && !hasOpenOverlay) {
+          void admobManager.recordArticleTransitionAndMaybeShowInterstitial();
+        } else {
+          void admobManager.preloadInterstitial();
+        }
+      } else if (currentPath.startsWith('/post/')) {
+        // Silently warm-cache interstitial while reader reads the article
+        void admobManager.preloadInterstitial();
+      }
+
+      if (currentPath.startsWith('/post/')) {
+        articleEnteredAtRef.current = Date.now();
+      } else {
+        articleEnteredAtRef.current = 0;
+      }
+
       return;
     }
 

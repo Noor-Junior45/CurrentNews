@@ -33,11 +33,13 @@ export default function AndroidBackGestureHandler() {
   const [showExitToast, setShowExitToast] = useState(false);
   const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Edge-swipe touch gesture states
-  const [gestureActive, setGestureActive] = useState(false);
-  const [gestureSide, setGestureSide] = useState<'left' | 'right'>('left');
-  const [gestureProgress, setGestureProgress] = useState(0);
-  const [gestureY, setGestureY] = useState(0);
+  // Edge-swipe touch gesture state batched into a single object per animation frame
+  const [gesture, setGesture] = useState<{
+    active: boolean;
+    side: 'left' | 'right';
+    progress: number;
+    y: number;
+  }>({ active: false, side: 'left', progress: 0, y: 0 });
   const gestureProgressRef = useRef(0);
 
   // Core handler that returns true if event was consumed in-app, or false if app should exit
@@ -185,6 +187,34 @@ export default function AndroidBackGestureHandler() {
     let side: 'left' | 'right' | null = null;
     let isSwiping = false;
 
+    let rafId: number | null = null;
+    let pendingGesture: { active: boolean; side: 'left' | 'right'; progress: number; y: number } | null = null;
+
+    const flushGesture = () => {
+      rafId = null;
+      if (pendingGesture) {
+        setGesture(pendingGesture);
+        pendingGesture = null;
+      }
+    };
+
+    const scheduleGesture = (next: { active: boolean; side: 'left' | 'right'; progress: number; y: number }) => {
+      pendingGesture = next;
+      if (rafId === null) {
+        rafId = window.requestAnimationFrame(flushGesture);
+      }
+    };
+
+    const resetGesture = () => {
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      pendingGesture = null;
+      gestureProgressRef.current = 0;
+      setGesture((prev) => (prev.active || prev.progress !== 0 ? { active: false, side: prev.side, progress: 0, y: prev.y } : prev));
+    };
+
     const handleTouchStart = (e: TouchEvent) => {
       if (e.touches.length !== 1) return;
       const touch = e.touches[0];
@@ -216,7 +246,7 @@ export default function AndroidBackGestureHandler() {
         // If vertical movement dominates, cancel edge swipe so normal scroll works
         if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 8) {
           side = null;
-          setGestureActive(false);
+          resetGesture();
           return;
         }
         // Inward swipe detection
@@ -229,10 +259,12 @@ export default function AndroidBackGestureHandler() {
         const distance = side === 'left' ? deltaX : -deltaX;
         const progress = Math.min(Math.max(distance / 65, 0), 1);
         gestureProgressRef.current = progress;
-        setGestureSide(side);
-        setGestureProgress(progress);
-        setGestureY(touch.clientY);
-        setGestureActive(true);
+        scheduleGesture({
+          active: true,
+          side,
+          progress,
+          y: touch.clientY,
+        });
       }
     };
 
@@ -250,17 +282,13 @@ export default function AndroidBackGestureHandler() {
       }
       side = null;
       isSwiping = false;
-      setGestureActive(false);
-      setGestureProgress(0);
-      gestureProgressRef.current = 0;
+      resetGesture();
     };
 
     const handleTouchCancel = () => {
       side = null;
       isSwiping = false;
-      setGestureActive(false);
-      setGestureProgress(0);
-      gestureProgressRef.current = 0;
+      resetGesture();
     };
 
     window.addEventListener('touchstart', handleTouchStart, { passive: true });
@@ -273,6 +301,9 @@ export default function AndroidBackGestureHandler() {
       window.removeEventListener('touchmove', handleTouchMove);
       window.removeEventListener('touchend', handleTouchEnd);
       window.removeEventListener('touchcancel', handleTouchCancel);
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+      }
     };
   }, [handleBackAction]);
 
@@ -280,31 +311,31 @@ export default function AndroidBackGestureHandler() {
     <>
       {/* Native Mobile Edge Back Gesture Indicator */}
       <AnimatePresence>
-        {gestureActive && (
+        {gesture.active && (
           <motion.div
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{
-              opacity: gestureProgress > 0.15 ? Math.min(gestureProgress * 1.2, 1) : 0,
-              scale: 0.8 + gestureProgress * 0.35,
-              x: gestureSide === 'left' ? Math.min(gestureProgress * 24, 24) : -Math.min(gestureProgress * 24, 24)
+              opacity: gesture.progress > 0.15 ? Math.min(gesture.progress * 1.2, 1) : 0,
+              scale: 0.8 + gesture.progress * 0.35,
+              x: gesture.side === 'left' ? Math.min(gesture.progress * 24, 24) : -Math.min(gesture.progress * 24, 24)
             }}
             exit={{ opacity: 0, scale: 0.6 }}
             transition={{ duration: 0.08 }}
             style={{
-              top: Math.max(Math.min(gestureY, window.innerHeight - 80), 80)
+              top: Math.max(Math.min(gesture.y, window.innerHeight - 80), 80)
             }}
-            className={`fixed z-[99999] pointer-events-none ${
-              gestureSide === 'left' ? 'left-1' : 'right-1'
+            className={`fixed z-[99999] pointer-events-none will-change-transform ${
+              gesture.side === 'left' ? 'left-1' : 'right-1'
             }`}
           >
             <div className={`w-10 h-10 rounded-full flex items-center justify-center shadow-2xl backdrop-blur-md border transition-colors ${
-              gestureProgress >= 0.8
+              gesture.progress >= 0.8
                 ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-950 border-slate-700 dark:border-white shadow-emerald-500/20'
                 : 'bg-slate-800/80 text-white/90 dark:bg-slate-900/90 dark:text-slate-200 border-slate-700/60'
             }`}>
               <ChevronLeft className={`w-5 h-5 stroke-[2.5] transition-transform ${
-                gestureSide === 'right' ? 'rotate-180' : ''
-              } ${gestureProgress >= 0.8 ? '-translate-x-0.5' : ''}`} />
+                gesture.side === 'right' ? 'rotate-180' : ''
+              } ${gesture.progress >= 0.8 ? '-translate-x-0.5' : ''}`} />
             </div>
           </motion.div>
         )}
@@ -318,7 +349,7 @@ export default function AndroidBackGestureHandler() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.9 }}
             transition={{ duration: 0.18 }}
-            className="fixed bottom-12 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none"
+            className="fixed bottom-12 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none will-change-transform"
           >
             <div className="bg-slate-900/95 dark:bg-slate-800/95 text-white text-xs font-semibold px-4 py-2.5 rounded-full shadow-2xl backdrop-blur-md border border-slate-700/60 flex items-center gap-2">
               <span>Press back again to exit Current News</span>

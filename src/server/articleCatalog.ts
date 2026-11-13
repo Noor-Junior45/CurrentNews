@@ -1,12 +1,10 @@
 import { Pool } from 'pg';
 import { cleanImageUrl, getFallbackImageUrl } from '../utils/imageUrl.ts';
-import { KNOWN_PUBLISHED_R2_IDS } from '../utils/r2KnownIds.ts';
 import {
   extractPlainExcerpt,
   getArticleFromR2,
   getDeletedArticleIds,
   getFeedFromR2,
-  getPublicBase,
   loadLocalFeed,
   registerOnArticleDeletedHook,
 } from './r2Articles.ts';
@@ -42,7 +40,6 @@ let neonArticlesBlockedUntil = 0;
 let loggedNeonPermissionNotice = false;
 
 const CATALOG_TTL_MS = 60 * 1000; // 60s fresh TTL for Neon/Worker/R2 feed
-const R2_HYDRATED_TTL_MS = 5 * 60 * 1000; // 5m TTL when hydrated from individual R2 objects
 const MAX_FULL_CACHE_ENTRIES = 300;
 
 let cachedFeed: CatalogArticle[] = [];
@@ -363,51 +360,6 @@ async function queryPublishedArticlesFromWorker(): Promise<CatalogArticle[]> {
   }
 }
 
-/**
- * Tier 3: Hydrates published articles directly from live Cloudflare R2 CDN objects
- * (`https://media.currentnews.blog/articles/<id>.json`) with bounded concurrency when
- * Neon is inaccessible and `articles/feed.json` is absent on R2.
- */
-async function hydratePublishedArticlesFromR2Objects(): Promise<CatalogArticle[]> {
-  const deletedIds = getDeletedArticleIds();
-  const base = getPublicBase();
-  const candidateIds = KNOWN_PUBLISHED_R2_IDS.filter((id) => !deletedIds.has(id));
-  const hydrated: CatalogArticle[] = [];
-  const BATCH_SIZE = 10;
-
-  for (let i = 0; i < candidateIds.length; i += BATCH_SIZE) {
-    const batch = candidateIds.slice(i, i + BATCH_SIZE);
-    const results = await Promise.all(
-      batch.map(async (id) => {
-        try {
-          const res = await fetch(`${base}/articles/${encodeURIComponent(id)}.json`, {
-            headers: { Accept: 'application/json' },
-            signal: AbortSignal.timeout(4000),
-          });
-          if (!res.ok) return null;
-          const rawText = (await res.text()).trim();
-          if (!rawText.startsWith('{')) return null;
-          const parsed = JSON.parse(rawText);
-          const normalized = normalizeReaderArticle(parsed);
-          if (!normalized || normalized.status !== 'published' || deletedIds.has(normalized.id)) {
-            return null;
-          }
-          storeFullArticleInCache(normalized);
-          return normalized;
-        } catch {
-          return null;
-        }
-      })
-    );
-
-    for (const item of results) {
-      if (item) hydrated.push(item);
-    }
-  }
-
-  return hydrated;
-}
-
 function mergeAndSortCatalog(...lists: CatalogArticle[][]): CatalogArticle[] {
   const deletedIds = getDeletedArticleIds();
   const byId = new Map<string, CatalogArticle>();
@@ -470,7 +422,6 @@ export async function getPublishedFeedCatalog(): Promise<CatalogArticle[]> {
         .filter((p): p is CatalogArticle => Boolean(p && p.status === 'published'));
 
       let merged = mergeAndSortCatalog(neonArticles, normalizedR2, localDisk);
-      let nextTtl = CATALOG_TTL_MS;
 
       // 2. If Neon + R2 feed.json + disk yielded 0 articles, try Worker D1 JSON endpoint
       if (merged.length === 0) {
@@ -478,50 +429,10 @@ export async function getPublishedFeedCatalog(): Promise<CatalogArticle[]> {
         merged = mergeAndSortCatalog(workerArticles);
       }
 
-      // 3. If still 0 articles (e.g. articles/feed.json 404 on R2 & Neon restricted/unset),
-      //    hydrate directly from live Cloudflare R2 individual article JSON objects
-      if (merged.length === 0) {
-        const hydratedR2 = await hydratePublishedArticlesFromR2Objects();
-        merged = mergeAndSortCatalog(hydratedR2);
-        nextTtl = R2_HYDRATED_TTL_MS;
-      } else if (neonArticles.length > 0 && merged.length < KNOWN_PUBLISHED_R2_IDS.length) {
-        // Ensure any historical R2-only dispatches not yet seeded into Neon remain visible
-        const missingIds = KNOWN_PUBLISHED_R2_IDS.filter(
-          (id) => !deletedIds.has(id) && !merged.some((m) => m.id === id)
-        );
-        if (missingIds.length > 0 && missingIds.length <= 45) {
-          const base = getPublicBase();
-          const extras = await Promise.all(
-            missingIds.map(async (id) => {
-              try {
-                const res = await fetch(`${base}/articles/${encodeURIComponent(id)}.json`, {
-                  headers: { Accept: 'application/json' },
-                  signal: AbortSignal.timeout(3500),
-                });
-                if (!res.ok) return null;
-                const parsed = await res.json();
-                const norm = normalizeReaderArticle(parsed);
-                if (norm && norm.status === 'published') {
-                  storeFullArticleInCache(norm);
-                  return norm;
-                }
-              } catch {
-                // ignore
-              }
-              return null;
-            })
-          );
-          merged = mergeAndSortCatalog(
-            merged,
-            extras.filter((x): x is CatalogArticle => Boolean(x))
-          );
-        }
-      }
-
       if (merged.length > 0) {
         cachedFeed = merged;
         cachedFeedAt = Date.now();
-        cachedFeedTtl = nextTtl;
+        cachedFeedTtl = CATALOG_TTL_MS;
       }
 
       return merged;

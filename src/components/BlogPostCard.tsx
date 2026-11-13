@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, memo } from 'react';
 import { Post, slugify } from '../types';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { ThumbsUp, ThumbsDown, Eye } from 'lucide-react';
@@ -46,20 +46,26 @@ function cleanPreviewText(htmlOrText: string, maxLength: number = 160): string {
   return text.substring(0, maxLength).trim() + '...';
 }
 
-export default function BlogPostCard({ post, globalPenName, cardStats, isLikedByUser }: BlogPostCardProps): React.JSX.Element {
+function BlogPostCard({ post, globalPenName, cardStats, isLikedByUser }: BlogPostCardProps): React.JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
-  const rawPreview = post.excerpt || post.content || '';
-  const previewText = cleanPreviewText(rawPreview, 160);
-  const cleanTitle = (post.title || '')
-    .replace(/&nbsp;?/gi, ' ')
-    .replace(/&#160;?/gi, ' ')
-    .replace(/\u00a0/g, ' ')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&amp;/gi, '&')
-    .replace(/&quot;/gi, '"')
-    .replace(/\s+/g, ' ')
-    .trim();
+  const previewText = useMemo(
+    () => cleanPreviewText(post.excerpt || post.content || '', 160),
+    [post.excerpt, post.content]
+  );
+  const cleanTitle = useMemo(
+    () =>
+      (post.title || '')
+        .replace(/&nbsp;?/gi, ' ')
+        .replace(/&#160;?/gi, ' ')
+        .replace(/\u00a0/g, ' ')
+        .replace(/&#39;|&apos;/gi, "'")
+        .replace(/&amp;/gi, '&')
+        .replace(/&quot;/gi, '"')
+        .replace(/\s+/g, ' ')
+        .trim(),
+    [post.title]
+  );
   const displayedAuthor = post.authorName || globalPenName || 'Current News';
   const postUrl = `/post/${post.id}/${slugify(post.title)}`;
 
@@ -162,7 +168,6 @@ export default function BlogPostCard({ post, globalPenName, cardStats, isLikedBy
     <article 
       onClick={() => handleOpenPost()}
       onMouseEnter={() => clientLoadBalancer.prefetchArticle(post.id)}
-      onTouchStart={() => clientLoadBalancer.prefetchArticle(post.id)}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
@@ -171,7 +176,7 @@ export default function BlogPostCard({ post, globalPenName, cardStats, isLikedBy
       }}
       tabIndex={0}
       role="link"
-      className="group newspaper-paper border-0 border-b border-black dark:border-slate-700 sm:border sm:border-slate-200 dark:sm:border-slate-700 sm:hover:border-slate-300 dark:sm:hover:border-slate-600 rounded-none sm:rounded-xl overflow-hidden shadow-none sm:shadow-xs sm:hover:shadow-md transition-all duration-300 flex flex-col justify-between cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/50 sm:h-[265px] sm:max-h-[265px]"
+      className="group newspaper-paper border-0 border-b border-black dark:border-slate-700 sm:border sm:border-slate-200 dark:sm:border-slate-700 sm:hover:border-slate-300 dark:sm:hover:border-slate-600 rounded-none sm:rounded-xl overflow-hidden shadow-none sm:shadow-xs sm:hover:shadow-md transition-[border-color,box-shadow] duration-200 flex flex-col justify-between cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/50 sm:h-[265px] sm:max-h-[265px]"
       id={`post-card-${post.id}`}
     >
       <div className="p-4 sm:p-5 flex flex-col flex-1 justify-between select-text sm:h-full">
@@ -299,3 +304,5 @@ export default function BlogPostCard({ post, globalPenName, cardStats, isLikedBy
     </article>
   );
 }
+
+export default memo(BlogPostCard);

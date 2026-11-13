@@ -149,10 +149,10 @@ export default function ProgressiveArticleBody({
           <React.Fragment key={chunk.id}>
             <div
               data-chunk-id={chunk.id}
-              className={`progressive-article-chunk transition-all duration-500 ease-out transform ${
+              className={`progressive-article-chunk transition-[opacity,transform] duration-400 ease-out will-change-[opacity,transform] ${
                 isVisible
                   ? 'opacity-100 translate-y-0'
-                  : 'opacity-0 translate-y-4 pointer-events-none'
+                  : 'opacity-0 translate-y-3 pointer-events-none'
               }`}
             >
               <div

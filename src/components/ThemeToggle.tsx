@@ -19,6 +19,18 @@ export default function GlassThemeToggle({ className = '', onThemeChange }: Glas
     return false;
   });
 
+  // Keep multiple ThemeToggle instances synchronized via theme-changed event
+  useEffect(() => {
+    const handleExternalThemeChange = (e: Event) => {
+      const detail = (e as CustomEvent<{ isDark?: boolean }>).detail;
+      if (detail && typeof detail.isDark === 'boolean') {
+        setIsDark((prev) => (prev === detail.isDark ? prev : Boolean(detail.isDark)));
+      }
+    };
+    window.addEventListener('theme-changed', handleExternalThemeChange);
+    return () => window.removeEventListener('theme-changed', handleExternalThemeChange);
+  }, []);
+
   // Apply theme to document and persist in storage
   useEffect(() => {
     const root = document.documentElement;
@@ -36,7 +48,16 @@ export default function GlassThemeToggle({ className = '', onThemeChange }: Glas
   }, [isDark, onThemeChange]);
 
   const toggleTheme = () => {
-    setIsDark(prev => !prev);
+    const next = !isDark;
+    const root = document.documentElement;
+    if (next) {
+      root.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      root.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+    setIsDark(next);
   };
 
   return (

@@ -37,13 +37,16 @@ class CurrentNewsFirebaseMessagingService : FirebaseMessagingService() {
         val data = remoteMessage.data
 
         // Support data-only messages (title, body, url, imageUrl in data map) as well as notification payloads
-        val title = data["title"]?.takeIf { it.isNotBlank() }
+        val rawTitle = data["title"]?.takeIf { it.isNotBlank() }
             ?: remoteMessage.notification?.title?.takeIf { it.isNotBlank() }
             ?: getString(R.string.app_name)
 
-        val body = data["body"]?.takeIf { it.isNotBlank() }
+        val rawBody = data["body"]?.takeIf { it.isNotBlank() }
             ?: remoteMessage.notification?.body?.takeIf { it.isNotBlank() }
             ?: if (data.isNotEmpty()) "Tap to read the latest update on Current News." else return
+
+        val title = cleanNotificationText(rawTitle).ifBlank { getString(R.string.app_name) }
+        val body = cleanNotificationText(rawBody).ifBlank { "Tap to read the latest update on Current News." }
 
         val rawUrl = data["url"]?.takeIf { it.isNotBlank() }
             ?: data["link"]?.takeIf { it.isNotBlank() }
@@ -160,6 +163,50 @@ class CurrentNewsFirebaseMessagingService : FirebaseMessagingService() {
         const val ACTION_OPEN_NOTIFICATION_ARTICLE = "blog.currentnews.app.OPEN_NOTIFICATION_ARTICLE"
         const val EXTRA_TARGET_PATH = "target_path"
         const val EXTRA_TARGET_URL = "target_url"
+
+        /**
+         * Strips HTML tags, figure markers, non-breaking spaces (&nbsp; / &nbsp / &#160; / \u00A0),
+         * and HTML entities so Android system notifications always render clean human-readable text.
+         */
+        fun cleanNotificationText(raw: String?): String {
+            if (raw.isNullOrBlank()) return ""
+            var text = raw
+                .replace(Regex("\\[fig(?:ure)?(?:\\.|\\s+)?\\s*\\d+[^\\]]*\\]", RegexOption.IGNORE_CASE), "")
+                .replace(Regex("<[^>]*>"), " ")
+                .replace(Regex("&amp;", RegexOption.IGNORE_CASE), "&")
+                .replace(Regex("&nbsp;?|&#0*160;?|&#x0*a0;?|&(?:ensp|emsp|thinsp);?", RegexOption.IGNORE_CASE), " ")
+                .replace(Regex("&quot;|&ldquo;|&rdquo;", RegexOption.IGNORE_CASE), "\"")
+                .replace(Regex("&#0*39;|&apos;|&lsquo;|&rsquo;", RegexOption.IGNORE_CASE), "'")
+                .replace(Regex("&ndash;", RegexOption.IGNORE_CASE), "–")
+                .replace(Regex("&mdash;", RegexOption.IGNORE_CASE), "—")
+                .replace(Regex("&hellip;", RegexOption.IGNORE_CASE), "…")
+                .replace(Regex("&lt;", RegexOption.IGNORE_CASE), "<")
+                .replace(Regex("&gt;", RegexOption.IGNORE_CASE), ">")
+
+            text = Regex("&#(\\d+);").replace(text) { match ->
+                val cp = match.groupValues[1].toIntOrNull()
+                if (cp != null && cp in 32..0x10FFFF) {
+                    if (cp == 160) " " else String(Character.toChars(cp))
+                } else {
+                    ""
+                }
+            }
+
+            text = Regex("&#x([0-9a-fA-F]+);", RegexOption.IGNORE_CASE).replace(text) { match ->
+                val cp = match.groupValues[1].toIntOrNull(16)
+                if (cp != null && cp in 32..0x10FFFF) {
+                    if (cp == 0xA0) " " else String(Character.toChars(cp))
+                } else {
+                    ""
+                }
+            }
+
+            return text
+                .replace('\u00A0', ' ')
+                .replace("\u200B", "")
+                .replace(Regex("\\s+"), " ")
+                .trim()
+        }
 
         /**
          * Extracts the SPA route path (plus optional query/fragment) from a full URL or relative path,

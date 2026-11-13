@@ -26,8 +26,49 @@ export default function SignInView(): React.JSX.Element {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [agreedToPersonalizedAds, setAgreedToPersonalizedAds] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('google_ads_personalized_consent') === 'granted';
+    } catch {
+      return false;
+    }
+  });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  const persistPersonalizedAdsConsent = (granted: boolean) => {
+    const value: 'granted' | 'denied' = granted ? 'granted' : 'denied';
+    setAgreedToPersonalizedAds(granted);
+    try {
+      localStorage.setItem('google_ads_personalized_consent', value);
+      localStorage.setItem('cn_ads_consent_updated_at', new Date().toISOString());
+      if (typeof window !== 'undefined') {
+        if (Object.prototype.hasOwnProperty.call(window, 'adsbygoogle')) {
+          try {
+            ((window as any).adsbygoogle = (window as any).adsbygoogle || []).requestNonPersonalizedAds = granted ? 0 : 1;
+          } catch {}
+        }
+        window.dispatchEvent(new Event('settings-updated'));
+      }
+    } catch (err) {
+      console.debug('Failed to persist personalized ads consent:', err);
+    }
+  };
+
+  useEffect(() => {
+    const syncConsentFromSettings = () => {
+      try {
+        const stored = localStorage.getItem('google_ads_personalized_consent');
+        setAgreedToPersonalizedAds(stored === 'granted');
+      } catch {}
+    };
+    window.addEventListener('settings-updated', syncConsentFromSettings);
+    window.addEventListener('storage', syncConsentFromSettings);
+    return () => {
+      window.removeEventListener('settings-updated', syncConsentFromSettings);
+      window.removeEventListener('storage', syncConsentFromSettings);
+    };
+  }, []);
 
   useEffect(() => {
     updateDocumentSEO({
@@ -92,6 +133,7 @@ export default function SignInView(): React.JSX.Element {
     }
 
     setIsSubmitting(true);
+    persistPersonalizedAdsConsent(agreedToPersonalizedAds);
     try {
       if (isSignUp) {
         await createUserWithEmailAndPassword(auth, trimmedEmail, password);
@@ -136,6 +178,7 @@ export default function SignInView(): React.JSX.Element {
     setIsGoogleSubmitting(true);
     setErrorMessage(null);
     setSuccessMessage(null);
+    persistPersonalizedAdsConsent(agreedToPersonalizedAds);
 
     try {
       const res = await signInWithGoogleSafe();
@@ -363,45 +406,131 @@ export default function SignInView(): React.JSX.Element {
           </button>
         </p>
 
-        {/* Terms and Privacy policy agreement */}
-        <div 
-          onClick={() => {
-            setAgreedToTerms(!agreedToTerms);
-            if (errorMessage && errorMessage.includes('tick the box')) {
-              setErrorMessage(null);
-            }
-          }}
-          className="flex items-center justify-center gap-2 text-xs text-slate-600 dark:text-slate-400 mb-8 select-none text-center cursor-pointer max-w-sm group"
-          role="checkbox"
-          aria-checked={agreedToTerms}
-          tabIndex={0}
-          onKeyDown={(e) => {
-            if (e.key === ' ' || e.key === 'Enter') {
-              e.preventDefault();
-              setAgreedToTerms(!agreedToTerms);
-            }
-          }}
+        {/* Consent Stack: 1. Accept All, 2. Personalized Ads (Optional), 3. Terms & Privacy (Required) */}
+        <div
+          className="w-fit max-w-sm mx-auto flex flex-col items-start gap-2.5 text-xs text-black dark:text-white mb-8 select-none"
+          id="signin-consent-group"
         >
-          {agreedToTerms ? (
-            <svg className="w-4 h-4 shrink-0 text-slate-900 dark:text-white transition-colors" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="10" fill="currentColor" />
-              <path d="m9 12 2 2 4-4" stroke="currentColor" className="stroke-white dark:stroke-slate-950" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          ) : (
-            <svg className={`w-4 h-4 shrink-0 transition-colors ${errorMessage && errorMessage.includes('tick the box') ? 'text-rose-500 animate-pulse' : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-700 dark:group-hover:text-slate-300'}`} viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" fill="none" />
-            </svg>
-          )}
-          <span className="leading-relaxed">
-            You agree to our{' '}
-            <Link to="/terms" onClick={(e) => e.stopPropagation()} className="underline font-semibold text-slate-800 dark:text-slate-200 hover:text-emerald-600 dark:hover:text-emerald-400">
-              Terms of service
-            </Link>{' '}
-            and{' '}
-            <Link to="/privacy" onClick={(e) => e.stopPropagation()} className="underline font-semibold text-slate-800 dark:text-slate-200 hover:text-emerald-600 dark:hover:text-emerald-400">
-              Privacy policy
-            </Link>
-          </span>
+          {/* Line 1: Accept All (ticks or unticks both Personalized Ads and Terms/Privacy together) */}
+          <div
+            onClick={() => {
+              const nextAll = !(agreedToTerms && agreedToPersonalizedAds);
+              setAgreedToTerms(nextAll);
+              persistPersonalizedAdsConsent(nextAll);
+              if (nextAll && errorMessage && errorMessage.includes('tick the box')) {
+                setErrorMessage(null);
+              }
+            }}
+            className="flex items-start gap-2 text-left cursor-pointer group"
+            role="checkbox"
+            aria-checked={agreedToTerms && agreedToPersonalizedAds}
+            tabIndex={0}
+            id="signin-accept-all-consent-row"
+            onKeyDown={(e) => {
+              if (e.key === ' ' || e.key === 'Enter') {
+                e.preventDefault();
+                const nextAll = !(agreedToTerms && agreedToPersonalizedAds);
+                setAgreedToTerms(nextAll);
+                persistPersonalizedAdsConsent(nextAll);
+                if (nextAll && errorMessage && errorMessage.includes('tick the box')) {
+                  setErrorMessage(null);
+                }
+              }
+            }}
+          >
+            {agreedToTerms && agreedToPersonalizedAds ? (
+              <svg className="w-4 h-4 mt-0.5 shrink-0 text-black dark:text-white transition-colors" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" fill="currentColor" />
+                <path d="m9 12 2 2 4-4" stroke="currentColor" className="stroke-white dark:stroke-slate-950" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            ) : (
+              <svg className={`w-4 h-4 mt-0.5 shrink-0 transition-colors ${errorMessage && errorMessage.includes('tick the box') ? 'text-rose-500 animate-pulse' : 'text-slate-400 dark:text-slate-500 group-hover:text-black dark:group-hover:text-white'}`} viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" fill="none" />
+              </svg>
+            )}
+            <span className="leading-relaxed font-semibold text-black dark:text-white">
+              Accept all
+            </span>
+          </div>
+
+          {/* Line 2: Optional Personalized Ads Consent (synced with Settings -> Personalized Ads toggle) */}
+          <div
+            onClick={() => persistPersonalizedAdsConsent(!agreedToPersonalizedAds)}
+            className="flex items-start gap-2 text-left cursor-pointer group"
+            role="checkbox"
+            aria-checked={agreedToPersonalizedAds}
+            tabIndex={0}
+            id="signin-ads-consent-row"
+            onKeyDown={(e) => {
+              if (e.key === ' ' || e.key === 'Enter') {
+                e.preventDefault();
+                persistPersonalizedAdsConsent(!agreedToPersonalizedAds);
+              }
+            }}
+          >
+            {agreedToPersonalizedAds ? (
+              <svg className="w-4 h-4 mt-0.5 shrink-0 text-black dark:text-white transition-colors" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" fill="currentColor" />
+                <path d="m9 12 2 2 4-4" stroke="currentColor" className="stroke-white dark:stroke-slate-950" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4 mt-0.5 shrink-0 text-slate-400 dark:text-slate-500 group-hover:text-black dark:group-hover:text-white transition-colors" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" fill="none" />
+              </svg>
+            )}
+            <span className="leading-relaxed text-black dark:text-white">
+              You agree to{' '}
+              <span className="font-semibold text-blue-600 dark:text-blue-400">
+                personalized ads
+              </span>{' '}
+              (optional)
+            </span>
+          </div>
+
+          {/* Line 3: Required Terms of service and Privacy policy */}
+          <div
+            onClick={() => {
+              setAgreedToTerms(!agreedToTerms);
+              if (errorMessage && errorMessage.includes('tick the box')) {
+                setErrorMessage(null);
+              }
+            }}
+            className="flex items-start gap-2 text-left cursor-pointer group"
+            role="checkbox"
+            aria-checked={agreedToTerms}
+            tabIndex={0}
+            id="signin-tos-consent-row"
+            onKeyDown={(e) => {
+              if (e.key === ' ' || e.key === 'Enter') {
+                e.preventDefault();
+                setAgreedToTerms(!agreedToTerms);
+                if (errorMessage && errorMessage.includes('tick the box')) {
+                  setErrorMessage(null);
+                }
+              }
+            }}
+          >
+            {agreedToTerms ? (
+              <svg className="w-4 h-4 mt-0.5 shrink-0 text-black dark:text-white transition-colors" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" fill="currentColor" />
+                <path d="m9 12 2 2 4-4" stroke="currentColor" className="stroke-white dark:stroke-slate-950" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4 mt-0.5 shrink-0 text-slate-400 dark:text-slate-500 group-hover:text-black dark:group-hover:text-white transition-colors" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" fill="none" />
+              </svg>
+            )}
+            <span className="leading-relaxed text-black dark:text-white">
+              You agree to our{' '}
+              <Link to="/terms" onClick={(e) => e.stopPropagation()} className="no-underline font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300">
+                Terms of service
+              </Link>{' '}
+              and{' '}
+              <Link to="/privacy" onClick={(e) => e.stopPropagation()} className="no-underline font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300">
+                Privacy policy
+              </Link>
+            </span>
+          </div>
         </div>
 
         {/* Bottom copyright subtitle */}

@@ -744,16 +744,24 @@ export default function Header() {
   const [isScrolledPastLine2, setIsScrolledPastLine2] = useState(false);
 
   useEffect(() => {
+    let rafId: number | null = null;
+    const syncScrollState = () => {
+      rafId = null;
+      const scrollPos = window.scrollY || document.documentElement.scrollTop || 0;
+      const next = scrollPos > 45;
+      setIsScrolledPastLine2((prev) => (prev === next ? prev : next));
+    };
     const handleScroll = () => {
-      const scrollPos = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
-      setIsScrolledPastLine2(scrollPos > 45);
+      if (rafId !== null) return;
+      rafId = window.requestAnimationFrame(syncScrollState);
     };
     window.addEventListener('scroll', handleScroll, { passive: true });
-    window.addEventListener('touchmove', handleScroll, { passive: true });
-    handleScroll();
+    syncScrollState();
     return () => {
       window.removeEventListener('scroll', handleScroll);
-      window.removeEventListener('touchmove', handleScroll);
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+      }
     };
   }, []);
 
@@ -761,7 +769,7 @@ export default function Header() {
 
   return (
     <>
-      <header className={`fixed top-0 left-0 right-0 w-full z-50 bg-[#fbf1e5] ${isSearchOpen || isLine2Hidden ? 'rounded-b-2xl sm:rounded-b-3xl border-b border-slate-300/70 dark:border-slate-800/80 shadow-xs' : 'border-b-0 shadow-none rounded-none'} transition-all duration-200 adsbygoogle-noablate`} id="main-header">
+      <header className={`fixed top-0 left-0 right-0 w-full z-50 bg-[#fbf1e5] ${isSearchOpen || isLine2Hidden ? 'rounded-b-2xl sm:rounded-b-3xl border-b border-slate-300/70 shadow-xs' : 'border-b-0 shadow-none rounded-none'} transition-[border-radius,border-color,box-shadow] duration-200 adsbygoogle-noablate`} id="main-header">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between">
         
         {/* Brand Name & Newsroom Navigation */}
@@ -1224,7 +1232,7 @@ export default function Header() {
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
               transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
-              className="w-full bg-[#fbf1e5] relative overflow-visible"
+              className="w-full bg-[#fbf1e5] relative overflow-visible will-change-transform"
             >
               <div className="pt-1 pb-3.5 px-3.5 sm:px-6">
                 <motion.div
@@ -1252,7 +1260,7 @@ export default function Header() {
                     y: pillOriginOffset.y,
                   }}
                   transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
-                  className="w-full sm:max-w-[420px] md:max-w-[460px] lg:max-w-[480px] mx-auto relative"
+                  className="w-full sm:max-w-[420px] md:max-w-[460px] lg:max-w-[480px] mx-auto relative will-change-transform"
                 >
                   {/* Google-style Pill Search Bar with pure white interior */}
                   <form
@@ -1319,7 +1327,7 @@ export default function Header() {
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -4 }}
                         transition={{ duration: 0.14, ease: 'easeOut' }}
-                        className="absolute left-0 right-0 top-full mt-1.5 bg-white rounded-2xl shadow-[0_10px_28px_rgba(32,33,36,0.16)] border border-slate-200/90 overflow-hidden z-[70] py-1.5 font-sans"
+                        className="absolute left-0 right-0 top-full mt-1.5 bg-white rounded-2xl shadow-[0_10px_28px_rgba(32,33,36,0.16)] border border-slate-200/90 overflow-hidden z-[70] py-1.5 font-sans will-change-transform"
                       >
                         {suggestions.map((item, idx) => (
                           <button
@@ -1382,7 +1390,7 @@ export default function Header() {
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
               transition={{ type: 'spring', damping: 28, stiffness: 320 }}
-              className="relative z-10 w-[78vw] max-w-[290px] sm:w-80 h-full bg-[#fbf1e5] border-r border-[#e8dbcc] dark:border-slate-800 shadow-2xl flex flex-col justify-between overflow-hidden"
+              className="relative z-10 w-[78vw] max-w-[290px] sm:w-80 h-full bg-[#fbf1e5] border-r border-[#e8dbcc] shadow-2xl flex flex-col justify-between overflow-hidden will-change-transform"
               id="article-side-menu-panel"
             >
               {/* Drawer Header: Exactly equal to main navbar vertical height (h-18 / 72px) */}
@@ -1433,21 +1441,21 @@ export default function Header() {
                       className={`w-full min-h-[46px] py-3 px-3.5 text-xs sm:text-[13px] font-bold tracking-wider uppercase transition-all duration-150 cursor-pointer rounded-xl flex items-center justify-between text-left group active:scale-[0.99] shrink-0 ${
                         isCurrent
                           ? 'bg-amber-100/95 text-black border border-amber-400/60 shadow-xs font-extrabold'
-                          : 'bg-white/60 dark:bg-slate-900/40 text-slate-900 dark:text-slate-100 hover:bg-white dark:hover:bg-slate-800/60 border border-black/5 dark:border-white/5'
+                          : 'bg-white/60 text-slate-900 hover:bg-white border border-black/5'
                       }`}
                       id={`side-menu-cat-tab-${cat.toLowerCase()}`}
                     >
-                      <span className="font-bold text-slate-900 dark:text-white group-hover:text-black dark:group-hover:text-white">
+                      <span className="font-bold text-slate-900 group-hover:text-black">
                         {cat}
                       </span>
-                      <ChevronRight className="h-3.5 w-3.5 text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-200 transition-transform group-hover:translate-x-0.5 shrink-0" />
+                      <ChevronRight className="h-3.5 w-3.5 text-slate-400 group-hover:text-slate-700 transition-transform group-hover:translate-x-0.5 shrink-0" />
                     </button>
                   );
                 })}
               </div>
 
-              {/* Bottom Return to Home Top Feed Action (Height completely preserved) */}
-              <div className="p-2.5 sm:p-3 border-t border-[#e8dbcc]/80 bg-[#fbf1e5] shrink-0">
+              {/* Bottom Return to Home Top Feed Action: Equal vertical height (h-18) to top header box & category-button sizing */}
+              <div className="h-18 px-3 border-t border-[#e8dbcc]/80 bg-[#fbf1e5] flex items-center shrink-0 box-border">
                 <button
                   type="button"
                   onClick={() => {
@@ -1457,10 +1465,10 @@ export default function Header() {
                     navigate('/');
                     window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
                   }}
-                  className="w-full py-1.5 sm:py-2 px-2.5 rounded-lg sm:rounded-xl bg-slate-900 text-white hover:bg-black text-[10.5px] sm:text-xs font-bold uppercase tracking-wider transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-98"
+                  className="w-full min-h-[46px] py-3 px-3.5 rounded-xl bg-slate-900 text-white hover:bg-black text-xs sm:text-[13px] font-bold uppercase tracking-wider transition-all duration-150 flex items-center justify-center gap-2 cursor-pointer shadow-xs active:scale-[0.99]"
                   id="side-menu-return-home-button"
                 >
-                  <Newspaper className="h-3.5 w-3.5" />
+                  <Newspaper className="h-4 w-4 shrink-0" />
                   <span>Return to Home Feed</span>
                 </button>
               </div>

@@ -11,3 +11,4 @@ server.cjs
 *downloaded-logs*
 data/
 .aistudio/
+public/assets/aistudio/

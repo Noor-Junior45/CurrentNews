@@ -94,6 +94,27 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
+function cleanNotificationText(raw) {
+  if (!raw || typeof raw !== 'string') return '';
+  let text = raw
+    .replace(/\[fig(?:ure)?(?:\.|\s+)?\s*\d+[^\]]*\]/gi, '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&nbsp;?|&#0*160;?|&#x0*a0;?|&(?:ensp|emsp|thinsp);?/gi, ' ')
+    .replace(/&quot;|&ldquo;|&rdquo;/gi, '"')
+    .replace(/&#0*39;|&apos;|&lsquo;|&rsquo;/gi, "'")
+    .replace(/&ndash;/gi, '–')
+    .replace(/&mdash;/gi, '—')
+    .replace(/&hellip;/gi, '…')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/\u00a0/g, ' ')
+    .replace(/\u200b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return text;
+}
+
 // Push Event - Displays notification on phone / browser when an article is published
 self.addEventListener('push', (event) => {
   let data = {
@@ -114,11 +135,12 @@ self.addEventListener('push', (event) => {
     }
   }
 
-  const title = data.title || 'Current News';
+  const title = cleanNotificationText(data.title) || 'Current News';
+  const body = cleanNotificationText(data.body) || 'Breaking article published. Tap to read.';
   const targetUrl = data.url ? (data.url.startsWith('http') ? data.url : self.location.origin + (data.url.startsWith('/') ? data.url : '/' + data.url)) : self.location.origin;
 
   const options = {
-    body: data.body || 'Breaking article published. Tap to read.',
+    body,
     icon: data.icon || 'https://i.imgur.com/gFgShoZ.jpeg',
     badge: data.badge || 'https://i.imgur.com/gFgShoZ.jpeg',
     image: data.image || undefined, // Rich full-width article image on Android

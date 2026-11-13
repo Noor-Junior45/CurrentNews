@@ -438,42 +438,81 @@ export default function HomeView() {
     fetchPosts();
   }, []);
 
-  const filteredPosts = posts.filter((post) => {
-    // Hide drafts from general public readers
-    if (post.status === 'draft') return false;
+  const publishedPosts = useMemo(
+    () => posts.filter((p) => p.status !== 'draft'),
+    [posts]
+  );
 
+  const filteredPosts = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
-    if (term) {
-      const haystack = `${post.title || ''} ${post.excerpt || ''} ${post.content || ''} ${post.category || ''} ${(post.hashtags || []).join(' ')}`.toLowerCase();
-      const tokens = term.split(/\s+/).filter(Boolean);
-      const matchesSearch = haystack.includes(term) || (tokens.length > 1 && tokens.every(t => haystack.includes(t)));
-      if (!matchesSearch) return false;
-    }
-    return checkPostCategoryMatch(post, selectedCategory);
-  });
-
-  // Resolve published posts
-  const publishedPosts = posts.filter((p) => p.status !== 'draft');
+    const tokens = term ? term.split(/\s+/).filter(Boolean) : [];
+    return publishedPosts.filter((post) => {
+      if (term) {
+        const haystack = `${post.title || ''} ${post.excerpt || ''} ${post.content || ''} ${post.category || ''} ${(post.hashtags || []).join(' ')}`.toLowerCase();
+        const matchesSearch = haystack.includes(term) || (tokens.length > 1 && tokens.every(t => haystack.includes(t)));
+        if (!matchesSearch) return false;
+      }
+      return checkPostCategoryMatch(post, selectedCategory);
+    });
+  }, [publishedPosts, searchTerm, selectedCategory]);
 
   // Featured Story Posters for rotating hero showcase (prioritizes stories with image covers)
-  // Dynamic Category Filtering:
-  // - If 'All' category page: shows posters from all dispatches across the publication.
-  // - If specific category page (e.g. Jharkhand, World, Sports, Politics, Tech): shows posters matching that specific category.
-  const categoryPostsForPoster = selectedCategory === 'All'
-    ? publishedPosts
-    : publishedPosts.filter(p => checkPostCategoryMatch(p, selectedCategory));
+  const posterPosts = useMemo(() => {
+    const categoryPostsForPoster = selectedCategory === 'All'
+      ? publishedPosts
+      : publishedPosts.filter(p => checkPostCategoryMatch(p, selectedCategory));
 
-  // Use category-filtered dispatches if available; gracefully fallback to publishedPosts if a category has 0 posts
-  const activePosterPool = categoryPostsForPoster.length > 0 ? categoryPostsForPoster : publishedPosts;
+    const activePosterPool = categoryPostsForPoster.length > 0 ? categoryPostsForPoster : publishedPosts;
 
-  const postsWithImage = activePosterPool.filter((p) => {
-    const cover = getPostCoverImage(p);
-    return cover && cover.trim().length > 0;
-  });
-  const posterPosts = (postsWithImage.length >= 3 
-    ? postsWithImage 
-    : [...postsWithImage, ...activePosterPool.filter(p => !getPostCoverImage(p))]
-  ).slice(0, 6);
+    const postsWithImage: Post[] = [];
+    const postsWithoutImage: Post[] = [];
+    for (const p of activePosterPool) {
+      const cover = getPostCoverImage(p);
+      if (cover && cover.trim().length > 0) {
+        postsWithImage.push(p);
+      } else {
+        postsWithoutImage.push(p);
+      }
+    }
+
+    return (postsWithImage.length >= 3
+      ? postsWithImage
+      : [...postsWithImage, ...postsWithoutImage]
+    ).slice(0, 6);
+  }, [publishedPosts, selectedCategory]);
+
+  // Single-pass category count lookup (eliminates 9x O(N) array scans on every render)
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = {
+      All: publishedPosts.length,
+      General: 0,
+      Politics: 0,
+      Tech: 0,
+      Sports: 0,
+      Opinion: 0,
+      Business: 0,
+      Health: 0,
+      World: 0,
+    };
+    const keyLookup: Record<string, string> = {
+      general: 'General',
+      politics: 'Politics',
+      tech: 'Tech',
+      sports: 'Sports',
+      opinion: 'Opinion',
+      business: 'Business',
+      health: 'Health',
+      world: 'World',
+    };
+    for (const p of publishedPosts) {
+      const normalized = (p.category || 'General').toLowerCase();
+      const canonical = keyLookup[normalized];
+      if (canonical) {
+        counts[canonical] += 1;
+      }
+    }
+    return counts;
+  }, [publishedPosts]);
 
   const [currentPosterIndex, setCurrentPosterIndex] = useState(0);
   const [isPosterHovered, setIsPosterHovered] = useState(false);
@@ -495,7 +534,10 @@ export default function HomeView() {
   const activePoster = posterPosts.length > 0 ? posterPosts[currentPosterIndex % posterPosts.length] : null;
 
   const totalPages = Math.max(1, Math.ceil(filteredPosts.length / postsPerPage));
-  const paginatedPosts = filteredPosts.slice((currentPage - 1) * postsPerPage, currentPage * postsPerPage);
+  const paginatedPosts = useMemo(
+    () => filteredPosts.slice((currentPage - 1) * postsPerPage, currentPage * postsPerPage),
+    [filteredPosts, currentPage, postsPerPage]
+  );
 
   // Batch stats for all visible cards with 3-minute localStorage cache
   const [statsMap, setStatsMap] = useState<Record<string, PostStats>>({});
@@ -609,31 +651,13 @@ export default function HomeView() {
         <div className="h-8 w-full shrink-0" aria-hidden="true" />
       ) : (
       <div 
-        className="relative z-30 bg-[#fbf1e5] border-b border-slate-300/70 dark:border-slate-800/80 rounded-b-2xl sm:rounded-b-3xl py-2 mb-8 shadow-xs animate-in fade-in duration-200" 
+        className="relative z-30 bg-[#fbf1e5] border-b border-slate-300/70 rounded-b-2xl sm:rounded-b-3xl py-2 mb-8 shadow-xs animate-in fade-in duration-200" 
         style={{ width: '100vw', marginLeft: 'calc(-50vw + 50%)' }}
         id="category-filter-header"
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center space-x-1 sm:space-x-1.5 overflow-x-auto pb-0.5 scroll-smooth no-scrollbar [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]" id="category-filter-tabs">
           {['All', 'General', 'Politics', 'Tech', 'Sports', 'Opinion', 'Business', 'Health', 'World'].map((cat) => {
-            const count = posts.filter(p => {
-              if (p.status === 'draft') return false;
-              if (cat === 'All') return true;
-              const postCategory = p.category || 'General';
-              if (cat === 'Jharkhand') {
-                return (
-                  postCategory.toLowerCase() === 'jharkhand' ||
-                  p.title.toLowerCase().includes('jharkhand') ||
-                  p.content.toLowerCase().includes('jharkhand') ||
-                  p.title.toLowerCase().includes('ranchi') ||
-                  p.content.toLowerCase().includes('ranchi') ||
-                  p.title.toLowerCase().includes('dhanbad') ||
-                  p.title.toLowerCase().includes('jamshedpur') ||
-                  p.title.toLowerCase().includes('bokaro') ||
-                  (p.hashtags || []).some(h => /jharkhand|ranchi|dhanbad|jamshedpur/i.test(h))
-                );
-              }
-              return postCategory.toLowerCase() === cat.toLowerCase();
-            }).length;
+            const count = categoryCounts[cat] ?? 0;
 
             const isSelected = selectedCategory === cat;
 
@@ -641,15 +665,15 @@ export default function HomeView() {
               <button
                 key={cat}
                 onClick={() => setSelectedCategory(cat)}
-                className={`min-h-[44px] py-2.5 px-3 sm:px-4 text-xs font-bold tracking-wider uppercase transition-all duration-200 cursor-pointer whitespace-nowrap flex items-center gap-1.5 border-b-2 -mb-px hover:text-black dark:hover:text-white ${
+                className={`min-h-[44px] py-2.5 px-3 sm:px-4 text-xs font-bold tracking-wider uppercase transition-all duration-200 cursor-pointer whitespace-nowrap flex items-center gap-1.5 border-b-2 -mb-px hover:text-black ${
                   isSelected 
-                    ? 'bg-amber-100/70 text-black border-amber-600/90 dark:bg-amber-950/40 dark:text-amber-200 dark:border-amber-500 rounded-t-lg' 
-                    : 'bg-transparent border-transparent text-black dark:text-slate-100 hover:border-black/30 dark:hover:border-white/30'
+                    ? 'bg-amber-100/70 text-black border-amber-600/90 rounded-t-lg' 
+                    : 'bg-transparent border-transparent text-black hover:border-black/30'
                 }`}
                 id={`cat-tab-${cat.toLowerCase()}`}
               >
-                <span className="font-bold text-black dark:text-slate-100">{cat === 'All' ? 'All' : cat}</span>
-                <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-full ${isSelected ? 'bg-amber-200 text-black dark:bg-amber-900/60 dark:text-amber-300' : 'bg-stone-200/90 dark:bg-stone-800 text-black dark:text-slate-200'}`}>
+                <span className="font-bold text-black">{cat === 'All' ? 'All' : cat}</span>
+                <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-full ${isSelected ? 'bg-amber-200 text-black' : 'bg-stone-200/90 text-black'}`}>
                   {count}
                 </span>
               </button>
@@ -695,8 +719,8 @@ export default function HomeView() {
                   initial={{ x: '100%' }}
                   animate={{ x: 0 }}
                   exit={{ x: '-100%' }}
-                  transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
-                  className="absolute inset-0 w-full h-full"
+                  transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+                  className="absolute inset-0 w-full h-full will-change-transform"
                 >
                   <Link
                     to={`/post/${activePoster.id}/${slugify(activePoster.title)}`}
@@ -720,6 +744,7 @@ export default function HomeView() {
                         <img
                           src={posterCover}
                           alt={activePoster.title}
+                          decoding="async"
                           referrerPolicy="no-referrer"
                           onError={(e) => {
                             const target = e.currentTarget;
@@ -733,6 +758,7 @@ export default function HomeView() {
                           <img
                             src="/editorial-default-poster.jpg"
                             alt={activePoster.title || 'Current News Editorial'}
+                            decoding="async"
                             className="w-full h-full object-cover transition-transform duration-1000 ease-out group-hover:scale-[1.03] opacity-90"
                           />
                           <div className="absolute inset-0 bg-[#0F172A]/40 mix-blend-multiply" />
@@ -920,15 +946,9 @@ export default function HomeView() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-0 sm:gap-8 -mx-4 sm:mx-0" id="posts-grid">
             {paginatedPosts.map((post, idx) => (
               <React.Fragment key={post.id}>
-                <motion.div
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{
-                    duration: 0.32,
-                    delay: Math.min(idx * 0.045, 0.45),
-                    ease: [0.22, 1, 0.36, 1]
-                  }}
-                  className="flex flex-col h-full"
+                <div
+                  className="flex flex-col h-full cn-card-reveal"
+                  style={idx > 0 ? { animationDelay: `${Math.min(idx * 22, 220)}ms` } : undefined}
                 >
                   <BlogPostCard 
                     post={post} 
@@ -936,7 +956,7 @@ export default function HomeView() {
                     cardStats={statsMap[post.id]} 
                     isLikedByUser={userLikedIds.has(post.id)} 
                   />
-                </motion.div>
+                </div>
                 {/* First native ad: after 3 cards on mobile & desktop (idx 2) */}
                 {idx === 2 && paginatedPosts.length > idx + 1 && (
                   <div className="col-span-1 sm:hidden lg:block lg:col-span-3 px-4 sm:px-0 my-2">

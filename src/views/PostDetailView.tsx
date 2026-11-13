@@ -767,13 +767,13 @@ export default function PostDetailView() {
         if (src.includes('imgur.com') && !/\.(png|jpg|jpeg|gif|webp)$/i.test(src)) {
           src = src.replace('imgur.com', 'i.imgur.com') + '.jpg';
         }
-        return `<div class="my-6 flex justify-center w-full"><img src="${src}" alt="Attached Chronicle Image" class="rounded-xl max-w-full w-auto max-h-[360px] sm:max-h-[400px] h-auto object-contain border-0 shadow-sm transform hover:scale-[1.005] transition-all duration-300" referrerPolicy="no-referrer" onerror="this.style.display='none'" /></div>`;
+        return `<div class="my-6 flex justify-center w-full"><img src="${src}" alt="Attached Chronicle Image" loading="lazy" decoding="async" class="rounded-xl max-w-full w-auto max-h-[360px] sm:max-h-[400px] h-auto object-contain border-0 shadow-sm transform hover:scale-[1.005] transition-[transform,box-shadow] duration-200" referrerPolicy="no-referrer" onerror="this.style.display='none'" /></div>`;
       });
 
       // Handle raw non-imgur direct image links inside paragraphs
       const pDirectImgPattern = /<p>\s*(https?:\/\/[^\s<>'"]+\.(?:png|jpg|jpeg|gif|webp))\s*<\/p>/gi;
       text = text.replace(pDirectImgPattern, (match, url) => {
-        return `<div class="my-6 flex justify-center w-full"><img src="${url}" alt="Attached Chronicle Image" class="rounded-xl max-w-full w-auto max-h-[360px] sm:max-h-[400px] h-auto object-contain border-0 shadow-sm transform hover:scale-[1.005] transition-all duration-300" referrerPolicy="no-referrer" onerror="this.style.display='none'" /></div>`;
+        return `<div class="my-6 flex justify-center w-full"><img src="${url}" alt="Attached Chronicle Image" loading="lazy" decoding="async" class="rounded-xl max-w-full w-auto max-h-[360px] sm:max-h-[400px] h-auto object-contain border-0 shadow-sm transform hover:scale-[1.005] transition-[transform,box-shadow] duration-200" referrerPolicy="no-referrer" onerror="this.style.display='none'" /></div>`;
       });
 
       // Handle inline [fig. N] or [fig N] markers in prose
@@ -791,7 +791,7 @@ export default function PostDetailView() {
             : `this.style.display = 'none';`;
           return `
             <div class="my-6 flex justify-center w-full not-prose" id="article-figure-${figNum}">
-              <img src="${pUrl}" data-fallback="${fbUrl || ''}" alt="Article Photo" class="rounded-xl max-w-full w-auto max-h-[360px] sm:max-h-[400px] h-auto object-contain border-0 shadow-sm hover:shadow transition-all duration-300" referrerPolicy="no-referrer" onerror="${errorScript}" />
+              <img src="${pUrl}" data-fallback="${fbUrl || ''}" alt="Article Photo" loading="lazy" decoding="async" class="rounded-xl max-w-full w-auto max-h-[360px] sm:max-h-[400px] h-auto object-contain border-0 shadow-sm hover:shadow transition-shadow duration-200" referrerPolicy="no-referrer" onerror="${errorScript}" />
             </div>
           `;
         }
@@ -844,7 +844,8 @@ export default function PostDetailView() {
           <img
             src={resolvedSrc}
             alt="Dispatch Feature Photo"
-            className="rounded-xl max-w-full w-auto max-h-[360px] sm:max-h-[400px] h-auto object-contain border-0 shadow-sm hover:shadow transition-all duration-300"
+            decoding="async"
+            className="rounded-xl max-w-full w-auto max-h-[360px] sm:max-h-[400px] h-auto object-contain border-0 shadow-sm hover:shadow transition-shadow duration-200"
             referrerPolicy="no-referrer"
             onError={(e) => {
               const target = e.currentTarget;
@@ -964,6 +965,7 @@ export default function PostDetailView() {
             <img 
               src="https://i.imgur.com/gq2X5nE.jpeg" 
               alt="Current News Avatar" 
+              decoding="async"
               className="h-7 w-7 sm:h-8 sm:w-8 rounded-full object-cover shrink-0 border border-stone-300 dark:border-stone-700"
               referrerPolicy="no-referrer"
               onError={(e) => { e.currentTarget.src = '/CurrentNews.png'; }}
@@ -1315,7 +1317,7 @@ export default function PostDetailView() {
         {/* Dynamic Lightbox Modal Overlay */}
         {lightboxImage && (
           <div 
-            className="fixed inset-0 z-[1000] flex flex-col items-center justify-center bg-slate-950/85 backdrop-blur-md transition-opacity duration-300"
+            className="fixed inset-0 z-[1000] flex flex-col items-center justify-center bg-slate-950/85 backdrop-blur-md animate-fade-in"
             id="image-lightbox-overlay"
             onClick={() => setLightboxImage(null)}
           >
@@ -1329,11 +1331,12 @@ export default function PostDetailView() {
               <span className="text-xl leading-none pr-1.5">×</span>
             </button>
             
-            <div className="max-w-[90vw] max-h-[80vh] relative flex flex-col justify-center items-center">
+            <div className="max-w-[90vw] max-h-[80vh] relative flex flex-col justify-center items-center animate-scale-up">
               <img 
                 src={cleanImageUrl(lightboxImage)} 
                 alt="Expanded High Resolution View" 
-                className="rounded-xl max-w-full max-h-[75vh] object-contain border border-white/10 shadow-2xl transition-transform duration-300 transform scale-100"
+                decoding="async"
+                className="rounded-xl max-w-full max-h-[75vh] object-contain border border-white/10 shadow-2xl"
                 onClick={(e) => e.stopPropagation()}
                 referrerPolicy="no-referrer"
                 onError={(e) => {

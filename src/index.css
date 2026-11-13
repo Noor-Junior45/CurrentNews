@@ -356,7 +356,7 @@ html.dark #card-reactions {
 }
 
 html.dark #main-header:not(.border-b-0) {
-  border-bottom: 1px solid #334155 !important;
+  border-bottom: 1px solid rgba(203, 213, 225, 0.7) !important;
 }
 
 #main-header,
@@ -1204,5 +1204,476 @@ html.dark #article-main-box {
   box-shadow: none !important;
 }
 
+/* ==========================================================================
+   Home Page Dark / Black Theme (Strictly scoped to html.dark)
+   Light mode colors and rules remain 100% unchanged.
+   ========================================================================== */
+html.dark body,
+html.dark #app-root-container {
+  background-color: #000000 !important;
+  color: #f4f4f5 !important;
+}
+
+html.dark #homepage-view,
+html.dark #top-articles-box-area,
+html.dark #bottom-editorial-nav-section,
+html.dark #tag-filter-box-area {
+  background-color: #000000 !important;
+}
+
+html.dark #bottom-editorial-nav-section {
+  border-top-color: #27272a !important;
+}
+
+html.dark #main-footer {
+  background-color: #09090b !important;
+  border-top-color: #27272a !important;
+}
+
+html.dark #posts-grid > article,
+html.dark #posts-grid > [id^="post-card-"],
+html.dark #posts-grid > [id^="post-card-"].newspaper-paper,
+html.dark #homepage-view .newspaper-paper {
+  background-color: #111111 !important;
+  color: #f4f4f5 !important;
+  border-color: #27272a !important;
+  box-shadow: 0 4px 14px -2px rgba(0, 0, 0, 0.7) !important;
+}
+
+@media (min-width: 640px) {
+  html.dark #posts-grid > [id^="post-card-"]:hover,
+  html.dark #posts-grid > article:hover {
+    border-color: #3f3f46 !important;
+  }
+}
+
+@media (max-width: 639px) {
+  html.dark #posts-grid > article,
+  html.dark #posts-grid > [id^="post-card-"],
+  html.dark #posts-grid > [id^="post-card-"].newspaper-paper {
+    background-color: #09090b !important;
+    border-top: 0 !important;
+    border-left: 0 !important;
+    border-right: 0 !important;
+    border-bottom: 1px solid #27272a !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+}
+
+html.dark #posts-grid [id^="post-card-"] h3,
+html.dark #posts-grid [id^="post-card-"] h3 span {
+  color: #ffffff !important;
+}
+
+html.dark #posts-grid [id^="post-card-"]:hover h3,
+html.dark #posts-grid [id^="post-card-"]:hover h3 span {
+  color: #a5b4fc !important;
+}
+
+html.dark #posts-grid [id^="post-card-"] p {
+  color: #d4d4d8 !important;
+}
+
+html.dark #posts-grid [id^="post-card-"] .text-slate-800 {
+  color: #e4e4e7 !important;
+}
+
+html.dark #posts-grid [id^="post-card-"] .text-slate-500,
+html.dark #posts-grid [id^="post-card-"] .text-slate-400,
+html.dark #posts-grid [id^="post-card-"] .text-slate-400 span,
+html.dark #posts-grid [id^="post-card-"] .text-slate-300 {
+  color: #a1a1aa !important;
+}
+
+html.dark #posts-grid [id^="post-card-"] .card-category-tag {
+  color: #818cf8 !important;
+}
+
+html.dark #posts-grid [id^="post-card-"] .card-category-tag:hover {
+  color: #a5b4fc !important;
+}
+
+html.dark #posts-grid [id^="post-card-"] #card-reactions {
+  border-top-color: #27272a !important;
+}
+
+html.dark #posts-grid [id^="post-card-"] #card-reactions button {
+  background-color: transparent !important;
+  border: none !important;
+  color: #a1a1aa !important;
+}
+
+html.dark #posts-grid [id^="post-card-"] #card-reactions button:hover,
+html.dark #posts-grid [id^="post-card-"] #card-reactions button:hover span {
+  color: #ffffff !important;
+}
+
+html.dark #posts-grid [id^="post-card-"] #card-reactions button[class*="text-emerald"],
+html.dark #posts-grid [id^="post-card-"] #card-reactions button[class*="text-emerald"] span {
+  color: #34d399 !important;
+}
+
+html.dark #posts-grid [id^="post-card-"] #card-reactions button[class*="text-emerald"] svg {
+  color: #34d399 !important;
+  fill: #34d399 !important;
+}
+
+html.dark #posts-grid [id^="post-card-"] #card-reactions button[class*="text-rose"],
+html.dark #posts-grid [id^="post-card-"] #card-reactions button[class*="text-rose"] span {
+  color: #fb7185 !important;
+}
+
+html.dark #posts-grid [id^="post-card-"] #card-reactions button[class*="text-rose"] svg {
+  color: #fb7185 !important;
+  fill: #fb7185 !important;
+}
+
+html.dark #posts-grid [id^="post-card-"] a.read-full-article-link,
+html.dark #posts-grid [id^="post-card-"] a.read-full-article-link span {
+  color: #f87171 !important;
+}
+
+html.dark #posts-grid [id^="post-card-"] a.read-full-article-link:hover,
+html.dark #posts-grid [id^="post-card-"] a.read-full-article-link:hover span {
+  color: #ef4444 !important;
+}
+
+html.dark #loading-skeletons .bg-white,
+html.dark #empty-feed,
+html.dark #continue-reading-section .bg-white\/95 {
+  background-color: #111111 !important;
+  border-color: #27272a !important;
+}
+
+html.dark #feed-pagination {
+  border-top-color: #27272a !important;
+}
+
+html.dark #homepage-view [id^="pagination-page-"]:not([data-active="true"]),
+html.dark #pagination-prev-btn,
+html.dark #pagination-next-btn {
+  background-color: #111111 !important;
+  border-color: #27272a !important;
+  color: #e4e4e7 !important;
+}
+
+/* ==========================================================================
+   Navbar & Menu Sections — Keep Identical to Light Mode in Dark Theme
+   Prevents global html.dark text/bg/border/button/input overrides from
+   altering #main-header, #navbar-search-line-2, #category-filter-header,
+   and #article-side-menu-panel.
+   ========================================================================== */
+html.dark #main-header {
+  background-color: #fbf1e5 !important;
+  color: #0f172a !important;
+}
+
+html.dark #main-header #header-side-menu-trigger {
+  background-color: transparent !important;
+  color: #1e293b !important;
+}
+
+html.dark #main-header #header-side-menu-trigger:hover {
+  background-color: rgba(0, 0, 0, 0.05) !important;
+  color: #000000 !important;
+}
+
+html.dark #main-header #header-side-menu-trigger svg {
+  color: #0f172a !important;
+}
+
+html.dark #main-header #header-brand-link {
+  color: #0f172a !important;
+}
+
+html.dark #main-header #header-brand-link .text-slate-950 {
+  color: #020617 !important;
+}
+
+html.dark #main-header #header-brand-link .text-slate-700 {
+  color: #334155 !important;
+}
+
+html.dark #main-header #header-search-trigger {
+  color: #334155 !important;
+}
+
+html.dark #main-header #header-search-trigger[aria-expanded="true"] {
+  background-color: rgba(0, 0, 0, 0.1) !important;
+  color: #020617 !important;
+}
+
+html.dark #main-header #header-search-trigger:hover {
+  background-color: rgba(0, 0, 0, 0.05) !important;
+  color: #020617 !important;
+}
+
+html.dark #main-header #header-search-trigger svg {
+  color: inherit !important;
+}
+
+html.dark #main-header #header-profile-trigger {
+  background-color: rgba(255, 255, 255, 0.8) !important;
+  border-color: #cbd5e1 !important;
+  color: #334155 !important;
+}
+
+html.dark #main-header #header-profile-trigger:hover {
+  background-color: #ffffff !important;
+  border-color: #64748b !important;
+  color: #0f172a !important;
+}
+
+html.dark #main-header #header-profile-trigger .bg-slate-100 {
+  background-color: #f1f5f9 !important;
+  color: #475569 !important;
+}
+
+html.dark #main-header .border-slate-300 {
+  border-color: #cbd5e1 !important;
+}
+
+/* Line 2 Search Bar & Suggestions Dropdown inside Navbar */
+html.dark #main-header #navbar-search-line-2 {
+  background-color: #fbf1e5 !important;
+}
+
+html.dark #main-header #navbar-search-pill-form {
+  background-color: #ffffff !important;
+  border-color: rgba(203, 213, 225, 0.85) !important;
+  color: #0f172a !important;
+}
+
+html.dark #main-header #navbar-search-pill-form:focus-within {
+  border-color: #94a3b8 !important;
+}
+
+html.dark #main-header #navbar-search-pill-form > svg {
+  color: #94a3b8 !important;
+}
+
+html.dark #main-header #navbar-search-input {
+  background-color: transparent !important;
+  color: #0f172a !important;
+  border-color: transparent !important;
+}
+
+html.dark #main-header #navbar-search-input::placeholder {
+  color: #94a3b8 !important;
+}
+
+html.dark #main-header #navbar-search-clear-cross-button {
+  background-color: transparent !important;
+  color: #64748b !important;
+}
+
+html.dark #main-header #navbar-search-clear-cross-button:hover {
+  background-color: transparent !important;
+  color: #0f172a !important;
+}
+
+html.dark #main-header #header-search-suggestions-dropdown {
+  background-color: #ffffff !important;
+  border-color: rgba(226, 232, 240, 0.9) !important;
+  color: #1e293b !important;
+}
+
+html.dark #main-header #header-search-suggestions-dropdown button {
+  background-color: #ffffff !important;
+  color: #1e293b !important;
+}
+
+html.dark #main-header #header-search-suggestions-dropdown button:hover {
+  background-color: #f8fafc !important;
+}
+
+html.dark #main-header #header-search-suggestions-dropdown button[aria-selected="true"] {
+  background-color: #f1f5f9 !important;
+  color: #020617 !important;
+}
+
+html.dark #main-header #header-search-suggestions-dropdown .text-slate-400 {
+  color: #94a3b8 !important;
+}
+
+html.dark #main-header #header-search-suggestions-dropdown .text-slate-700 {
+  color: #334155 !important;
+}
+
+html.dark #main-header #header-search-suggestions-dropdown .text-slate-800 {
+  color: #1e293b !important;
+}
+
+html.dark #main-header #header-search-suggestions-dropdown .text-slate-950 {
+  color: #020617 !important;
+}
+
+/* Line 2 Category Menu Section */
+html.dark #category-filter-header {
+  background-color: #fbf1e5 !important;
+  border-bottom-color: rgba(203, 213, 225, 0.7) !important;
+}
+
+html.dark #category-filter-header [id^="cat-tab-"],
+html.dark #category-filter-header [id^="cat-tab-"]:hover,
+html.dark #category-filter-header [id^="cat-tab-"] span {
+  color: #000000 !important;
+}
+
+/* Side Menu Drawer (Hamburger Menu Section) */
+html.dark #article-side-menu-panel {
+  background-color: #fbf1e5 !important;
+  border-right-color: #e8dbcc !important;
+  color: #0f172a !important;
+}
+
+html.dark #article-side-menu-panel .text-slate-950 {
+  color: #020617 !important;
+}
+
+html.dark #article-side-menu-panel .text-slate-600 {
+  color: #475569 !important;
+}
+
+html.dark #article-side-menu-panel .text-slate-500 {
+  color: #64748b !important;
+}
+
+html.dark #article-side-menu-panel #side-menu-close-button {
+  color: #475569 !important;
+}
+
+html.dark #article-side-menu-panel #side-menu-close-button:hover {
+  color: #0f172a !important;
+  background-color: rgba(0, 0, 0, 0.05) !important;
+}
+
+html.dark #article-side-menu-panel [id^="side-menu-cat-tab-"] {
+  color: #0f172a !important;
+}
+
+html.dark #article-side-menu-panel [id^="side-menu-cat-tab-"].bg-white\/60 {
+  background-color: rgba(255, 255, 255, 0.6) !important;
+  border-color: rgba(0, 0, 0, 0.05) !important;
+}
+
+html.dark #article-side-menu-panel [id^="side-menu-cat-tab-"].bg-white\/60:hover {
+  background-color: #ffffff !important;
+}
+
+html.dark #article-side-menu-panel [id^="side-menu-cat-tab-"] span {
+  color: #0f172a !important;
+}
+
+html.dark #article-side-menu-panel [id^="side-menu-cat-tab-"]:hover span {
+  color: #000000 !important;
+}
+
+html.dark #article-side-menu-panel [id^="side-menu-cat-tab-"] svg {
+  color: #94a3b8 !important;
+}
+
+html.dark #article-side-menu-panel [id^="side-menu-cat-tab-"]:hover svg {
+  color: #334155 !important;
+}
+
+html.dark #article-side-menu-panel #side-menu-return-home-button {
+  background-color: #0f172a !important;
+  color: #ffffff !important;
+}
+
+html.dark #article-side-menu-panel #side-menu-return-home-button:hover {
+  background-color: #000000 !important;
+}
+
+/* ==========================================================================
+   60/120fps GPU-Composited Animations & Scroll Smoothness
+   ========================================================================== */
+@keyframes cnFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes cnScaleUp {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 8px, 0) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes cnCardReveal {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes cnSlideUpIn {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 16px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.animate-fade-in {
+  animation: cnFadeIn 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-scale-up {
+  animation: cnScaleUp 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: transform, opacity;
+}
+
+.cn-card-reveal {
+  animation: cnCardReveal 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: transform, opacity;
+}
+
+/* Restore utility classes used across category strip and floating banners */
+.animate-in.fade-in {
+  animation: cnFadeIn 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-in.fade-in.slide-in-from-bottom-4 {
+  animation: cnSlideUpIn 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Isolate feed card layout/style recalculation for jitter-free mobile scrolling */
+#posts-grid > *,
+#posts-grid article[id^="post-card-"] {
+  contain: layout style;
+}
+
+#main-header {
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in,
+  .animate-scale-up,
+  .cn-card-reveal,
+  .animate-in.fade-in,
+  .animate-in.fade-in.slide-in-from-bottom-4 {
+    animation: none !important;
+  }
+}
 
 

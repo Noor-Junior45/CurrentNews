@@ -20,7 +20,6 @@ import {
   saveCompressedStories,
   getDeletedStoryIds,
 } from './compressedStorage';
-import { KNOWN_PUBLISHED_R2_IDS } from './r2KnownIds';
 
 export interface OriginNode {
   id: string;
@@ -361,49 +360,6 @@ class ClientLoadBalancer {
   }
 
   /**
-   * Native APK direct R2 CDN object hydration failover (`https://media.currentnews.blog/articles/<id>.json`).
-   * Uses `CapacitorHttp.get()` (immune to WebView CORS) if Cloud Run is temporarily unreachable or restarting.
-   */
-  private async hydrateNativeFeedFromR2Objects(): Promise<Post[]> {
-    if (!isNativeApp()) return [];
-    const deletedIds = getDeletedStoryIds();
-    const candidateIds = KNOWN_PUBLISHED_R2_IDS.filter((id) => !deletedIds.has(id));
-    const hydrated: Post[] = [];
-    const BATCH_SIZE = 8;
-
-    for (let i = 0; i < candidateIds.length; i += BATCH_SIZE) {
-      const batch = candidateIds.slice(i, i + BATCH_SIZE);
-      const results = await Promise.all(
-        batch.map(async (id) => {
-          try {
-            const { ok, json } = await smartFetchJson(
-              `https://media.currentnews.blog/articles/${encodeURIComponent(id)}.json`,
-              4000
-            );
-            if (!ok || !json || !json.title) return null;
-            const mapped = sanitizePostImages(mapD1ArticleToPost(json));
-            if ((mapped.status || 'published').toLowerCase() !== 'published') return null;
-            saveCompressedStory(mapped);
-            return mapped;
-          } catch {
-            return null;
-          }
-        })
-      );
-      for (const p of results) {
-        if (p) hydrated.push(p);
-      }
-    }
-
-    hydrated.sort((a, b) => {
-      const tA = new Date((a.createdAt as any) || 0).getTime() || 0;
-      const tB = new Date((b.createdAt as any) || 0).getTime() || 0;
-      return tB - tA;
-    });
-    return hydrated;
-  }
-
-  /**
    * Fetches public articles feed with transparent load balancing,
    * automated origin failover, single-flight deduplication, and local cache write-through.
    */
@@ -563,28 +519,6 @@ class ClientLoadBalancer {
         );
       }
       return { posts: filtered, source: 'Local LZW Cache (Offline)' };
-    }
-
-    // Fallback 2 (Native APK): Direct Cloudflare R2 CDN object hydration via CapacitorHttp
-    if (nativeMode) {
-      const hydrated = await this.hydrateNativeFeedFromR2Objects();
-      if (hydrated.length > 0) {
-        saveCompressedStories(hydrated);
-        let filtered = hydrated;
-        if (params?.category && params.category !== 'All') {
-          filtered = filtered.filter((p) => matchesCategoryFilter(p, params.category));
-        }
-        if (params?.search) {
-          const term = params.search.toLowerCase();
-          filtered = filtered.filter(
-            (p) =>
-              (p.title || '').toLowerCase().includes(term) ||
-              (p.excerpt || '').toLowerCase().includes(term) ||
-              (p.content || '').toLowerCase().includes(term)
-          );
-        }
-        return { posts: filtered, source: 'Cloudflare R2 Direct APK Failover' };
-      }
     }
 
     return { posts: [], source: 'Empty / Offline' };

@@ -321,39 +321,81 @@ async function querySingleArticleFromNeon(idOrSlug: string): Promise<CatalogArti
 }
 
 /**
- * Tier 2: Queries Cloudflare Worker D1 JSON API (`WORKER_BASE_URL/articles`), ignoring HTML responses.
+ * Tier 2: Queries Cloudflare Worker D1 JSON API (`WORKER_BASE_URL/articles`), following `nextCursor`
+ * up to 200 articles and ignoring HTML responses.
  */
 async function queryPublishedArticlesFromWorker(): Promise<CatalogArticle[]> {
+  const MAX_WORKER_ARTICLES = 200;
+  const PAGE_LIMIT = 50;
+  const MAX_PAGES = 20;
+
   try {
     const workerBase = (process.env.WORKER_BASE_URL || 'https://api.currentnews.blog').replace(/\/+$/, '');
-    const resp = await fetch(`${workerBase}/articles?limit=150`, {
-      headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(4000),
-    });
-    const contentType = resp.headers.get('content-type') || '';
-    if (!resp.ok || !contentType.includes('application/json')) {
-      return [];
-    }
-    const rawText = (await resp.text()).trim();
-    if (!rawText.startsWith('{') && !rawText.startsWith('[')) {
-      return [];
-    }
-    const parsed = JSON.parse(rawText);
-    const list = Array.isArray(parsed?.articles)
-      ? parsed.articles
-      : Array.isArray(parsed)
-      ? parsed
-      : [];
-
     const deletedIds = getDeletedArticleIds();
     const articles: CatalogArticle[] = [];
-    for (const item of list) {
-      const normalized = normalizeReaderArticle(item);
-      if (normalized && normalized.status === 'published' && !deletedIds.has(normalized.id)) {
-        if (normalized.content) storeFullArticleInCache(normalized);
-        articles.push(normalized);
+    const seenIds = new Set<string>();
+    const seenCursors = new Set<string>();
+
+    let cursor: string | null = null;
+    for (let page = 0; page < MAX_PAGES && articles.length < MAX_WORKER_ARTICLES; page++) {
+      let parsed: any;
+      try {
+        const url = new URL(`${workerBase}/articles`);
+        url.searchParams.set('limit', String(PAGE_LIMIT));
+        if (cursor) {
+          url.searchParams.set('cursor', cursor);
+        }
+
+        const resp = await fetch(url.toString(), {
+          headers: { Accept: 'application/json' },
+          signal: AbortSignal.timeout(4000),
+        });
+        const contentType = resp.headers.get('content-type') || '';
+        if (!resp.ok || !contentType.includes('application/json')) {
+          break;
+        }
+        const rawText = (await resp.text()).trim();
+        if (!rawText.startsWith('{') && !rawText.startsWith('[')) {
+          break;
+        }
+        parsed = JSON.parse(rawText);
+      } catch {
+        break;
       }
+
+      const list = Array.isArray(parsed?.articles)
+        ? parsed.articles
+        : Array.isArray(parsed)
+        ? parsed
+        : [];
+
+      if (list.length === 0) {
+        break;
+      }
+
+      for (const item of list) {
+        if (articles.length >= MAX_WORKER_ARTICLES) break;
+        const normalized = normalizeReaderArticle(item);
+        if (
+          normalized &&
+          normalized.status === 'published' &&
+          !deletedIds.has(normalized.id) &&
+          !seenIds.has(normalized.id)
+        ) {
+          seenIds.add(normalized.id);
+          if (normalized.content) storeFullArticleInCache(normalized);
+          articles.push(normalized);
+        }
+      }
+
+      const nextCursor = typeof parsed?.nextCursor === 'string' ? parsed.nextCursor.trim() : '';
+      if (!nextCursor || seenCursors.has(nextCursor) || articles.length >= MAX_WORKER_ARTICLES) {
+        break;
+      }
+      seenCursors.add(nextCursor);
+      cursor = nextCursor;
     }
+
     return articles;
   } catch {
     return [];
@@ -407,9 +449,10 @@ export async function getPublishedFeedCatalog(): Promise<CatalogArticle[]> {
 
   inFlightFeedPromise = (async () => {
     try {
-      // 1. Authoritative Neon PostgreSQL + R2 feed index / local disk in parallel
-      const [neonArticles, rawR2Feed] = await Promise.all([
+      // Authoritative Neon PostgreSQL + Worker D1 API + R2 feed index in parallel
+      const [neonArticles, workerArticles, rawR2Feed] = await Promise.all([
         queryPublishedArticlesFromNeon(200),
+        queryPublishedArticlesFromWorker().catch(() => []),
         getFeedFromR2().catch(() => []),
       ]);
 
@@ -421,13 +464,7 @@ export async function getPublishedFeedCatalog(): Promise<CatalogArticle[]> {
         .map(normalizeReaderArticle)
         .filter((p): p is CatalogArticle => Boolean(p && p.status === 'published'));
 
-      let merged = mergeAndSortCatalog(neonArticles, normalizedR2, localDisk);
-
-      // 2. If Neon + R2 feed.json + disk yielded 0 articles, try Worker D1 JSON endpoint
-      if (merged.length === 0) {
-        const workerArticles = await queryPublishedArticlesFromWorker();
-        merged = mergeAndSortCatalog(workerArticles);
-      }
+      const merged = mergeAndSortCatalog(neonArticles, workerArticles, normalizedR2, localDisk);
 
       if (merged.length > 0) {
         cachedFeed = merged;

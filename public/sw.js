@@ -70,12 +70,20 @@ self.addEventListener('fetch', (event) => {
               });
             }
           }
-          return networkResponse;
+          return networkResponse || new Response('Offline', { status: 503 });
         })
-        .catch(() => {
-          return caches.match(event.request).then((cached) => {
-            return cached || caches.match('/index.html') || caches.match('/');
-          });
+        .catch(async () => {
+          try {
+            const cached = await caches.match(event.request);
+            return (
+              cached ||
+              (await caches.match('/index.html')) ||
+              (await caches.match('/')) ||
+              new Response('Offline', { status: 503 })
+            );
+          } catch (_) {
+            return new Response('Offline', { status: 503 });
+          }
         })
     );
     return;
@@ -83,14 +91,19 @@ self.addEventListener('fetch', (event) => {
 
   // Cache-First with network fallback for static hashed assets
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-      return fetch(event.request).catch(() => {
-        // Offline fallback
-      });
-    })
+    caches
+      .match(event.request)
+      .then((cachedResponse) => {
+        if (cachedResponse) {
+          return cachedResponse;
+        }
+        return fetch(event.request).catch(() => {
+          return new Response('', { status: 503, statusText: 'Offline' });
+        });
+      })
+      .catch(() => {
+        return new Response('', { status: 503, statusText: 'Offline' });
+      })
   );
 });
 

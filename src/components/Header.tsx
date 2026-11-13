@@ -484,6 +484,27 @@ export default function Header() {
   const [isSubscribed, setIsSubscribed] = useState<boolean>(false);
   const [subDocId, setSubDocId] = useState<string | null>(null);
   const [isSubscribing, setIsSubscribing] = useState<boolean>(false);
+  const [newsletterErrorToast, setNewsletterErrorToast] = useState<string | null>(null);
+  const newsletterToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showNewsletterErrorToast = useCallback((message = 'Could not update newsletter. Please try again.') => {
+    setNewsletterErrorToast(message);
+    if (newsletterToastTimerRef.current) {
+      clearTimeout(newsletterToastTimerRef.current);
+    }
+    newsletterToastTimerRef.current = setTimeout(() => {
+      setNewsletterErrorToast(null);
+      newsletterToastTimerRef.current = null;
+    }, 3500);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (newsletterToastTimerRef.current) {
+        clearTimeout(newsletterToastTimerRef.current);
+      }
+    };
+  }, []);
 
   // Personalized Ads consent states
   const [adsConsent, setAdsConsent] = useState<'granted' | 'denied' | 'pending'>('pending');
@@ -687,25 +708,40 @@ export default function Header() {
       return;
     }
 
+    if (!user.email) {
+      showNewsletterErrorToast('Could not update newsletter. Please try again.');
+      return;
+    }
+
+    const normalizedEmail = user.email.toLowerCase();
     setIsSubscribing(true);
     try {
       if (target === 'unsubscribe') {
-        await api.unsubscribeEmail();
+        const result = await api.unsubscribeEmail();
+        if (result !== true) {
+          showNewsletterErrorToast('Could not update newsletter. Please try again.');
+          return;
+        }
         setIsSubscribed(false);
         setSubDocId(null);
-        localStorage.removeItem('cn_sub_' + user.email.toLowerCase());
+        localStorage.removeItem('cn_sub_' + normalizedEmail);
         localStorage.removeItem('newsletter_subscribed');
         window.dispatchEvent(new Event('settings-updated'));
       } else {
-        await api.subscribeEmail(user.email.toLowerCase());
+        const result = await api.subscribeEmail(normalizedEmail);
+        if (result !== true) {
+          showNewsletterErrorToast('Could not update newsletter. Please try again.');
+          return;
+        }
         setIsSubscribed(true);
         setSubDocId('subscribed');
-        localStorage.setItem('cn_sub_' + user.email.toLowerCase(), 'true');
+        localStorage.setItem('cn_sub_' + normalizedEmail, 'true');
         localStorage.setItem('newsletter_subscribed', 'true');
         window.dispatchEvent(new Event('settings-updated'));
       }
     } catch (err) {
       console.error('Newsletter settings sync failed:', err);
+      showNewsletterErrorToast('Could not update newsletter. Please try again.');
     } finally {
       setIsSubscribing(false);
     }
@@ -1476,6 +1512,25 @@ export default function Header() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Newsletter error toast */}
+      {newsletterErrorToast && (
+        <div
+          role="alert"
+          id="newsletter-error-toast"
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[110] max-w-[90vw] px-4 py-2.5 rounded-xl bg-rose-600 text-white text-xs font-semibold shadow-lg flex items-center gap-3 animate-in fade-in slide-in-from-bottom-4 duration-200"
+        >
+          <span>{newsletterErrorToast}</span>
+          <button
+            type="button"
+            onClick={() => setNewsletterErrorToast(null)}
+            className="text-white/80 hover:text-white cursor-pointer shrink-0"
+            aria-label="Dismiss error"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
     </>
   );
 }

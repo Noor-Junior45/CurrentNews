@@ -15,3 +15,6 @@ build
 .env
 .env.local
 bun.lock
+BUG_LOG.md
+CONTEXT_SNAPSHOT.md
+

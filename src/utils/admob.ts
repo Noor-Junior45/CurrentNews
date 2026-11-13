@@ -68,14 +68,23 @@ class AdMobManager {
     }
   }
 
+  private isProductionAdUnitId(adId?: string): boolean {
+    if (!adId) return false;
+    if (
+      adId.includes('YYYYYYYYYY') ||
+      adId.includes('XXXXXXXXXX') ||
+      adId.includes('PASTE_') ||
+      adId.startsWith('ca-app-pub-3940256099942544')
+    ) {
+      return false;
+    }
+    return /^ca-app-pub-\d{16}\/\d{10}$/.test(adId);
+  }
+
   private resolveInterstitialAdConfig(customAdId?: string): { adId: string; isTesting: boolean } {
-    const hasProductionInterstitial = Boolean(
-      ADMOB_INTERSTITIAL_ID &&
-      !ADMOB_INTERSTITIAL_ID.includes('YYYYYYYYYY') &&
-      !ADMOB_INTERSTITIAL_ID.includes('XXXXXXXXXX')
-    );
+    const hasProductionInterstitial = this.isProductionAdUnitId(ADMOB_INTERSTITIAL_ID);
     const adId = customAdId || (hasProductionInterstitial ? ADMOB_INTERSTITIAL_ID : TEST_INTERSTITIAL_ID);
-    const isTesting = !customAdId && !hasProductionInterstitial;
+    const isTesting = customAdId ? !this.isProductionAdUnitId(customAdId) : !hasProductionInterstitial;
     return { adId, isTesting };
   }
 
@@ -138,7 +147,7 @@ class AdMobManager {
 
     this.initializingPromise = (async () => {
       try {
-        const isTesting = !ADMOB_BANNER_ID || ADMOB_BANNER_ID.includes('XXXXXXXXXX');
+        const isTesting = !this.isProductionAdUnitId(ADMOB_BANNER_ID) && !this.isProductionAdUnitId(ADMOB_INTERSTITIAL_ID);
         const options: AdMobInitializationOptions = {
           initializeForTesting: isTesting,
           tagForChildDirectedTreatment: false,
@@ -182,15 +191,16 @@ class AdMobManager {
       const ok = await this.initialize();
       if (!ok) return;
 
-      const hasProductionBanner = ADMOB_BANNER_ID && !ADMOB_BANNER_ID.includes('XXXXXXXXXX');
+      const hasProductionBanner = this.isProductionAdUnitId(ADMOB_BANNER_ID);
       const adId = customAdId || (hasProductionBanner ? ADMOB_BANNER_ID : TEST_BANNER_ID);
+      const isTesting = customAdId ? !this.isProductionAdUnitId(customAdId) : !hasProductionBanner;
 
       const options: BannerAdOptions = {
         adId,
         adSize: BannerAdSize.ADAPTIVE_BANNER,
         position,
         margin: 0,
-        isTesting: !hasProductionBanner,
+        isTesting,
         npa: this.isNonPersonalizedAds(),
       };
 
@@ -342,7 +352,7 @@ class AdMobManager {
     this.nativeFeedPromise = (async () => {
       try {
         await this.initialize();
-        const hasProductionNative = ADMOB_NATIVE_ID && !ADMOB_NATIVE_ID.includes('XXXXXXXXXX');
+        const hasProductionNative = this.isProductionAdUnitId(ADMOB_NATIVE_ID);
         const adId = hasProductionNative ? ADMOB_NATIVE_ID : TEST_NATIVE_ID;
 
         this.nativeFeed = await NativeAdFeed.create({

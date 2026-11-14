@@ -397,5 +397,8 @@
   - Kept verified AdMob IDs in `src/utils/admob.ts` & `strings.xml` (`ca-app-pub-5865716270182311~4645476456`, banner `2031114923`, interstitial `2535355843`, native `1743128281`) and unified `isProductionAdUnitId()` placeholder guard.
   - Added `android/app/src/main/res/xml/gma_ad_services_config.xml` and `android.adservices.AD_SERVICES_CONFIG` `tools:replace="android:resource"` in `AndroidManifest.xml` (leaving `versionCode = 5`, `versionName = "1.0.4"` unchanged).
   - Excluded `BUG_LOG.md` and `CONTEXT_SNAPSHOT.md` in `.dockerignore` and refreshed `package-lock.json` via `npm install`.
-- **Immediate Next Step:** Sync Android assets (`npm run cap:sync`) if needed and build the signed APK/AAB (`versionCode = 5`, `versionName = "1.0.4"`) in Android Studio.
+- [x] **Phase 92 (Android Gradle Kotlin `2.2.20` Alignment & `compilerOptions` Migration):** [COMPLETED]
+  - Upgraded `org.jetbrains.kotlin.android` and `extra["kotlin_version"]` from `2.0.0` to `2.2.20` in `android/build.gradle.kts` to match `kotlin-stdlib:2.2.20` pulled by `@capacitor-community/admob@8.3.0` (`io.github.webview-native-ui:engine`).
+  - Migrated `kotlinOptions { jvmTarget = "21" }` to `kotlin { compilerOptions { jvmTarget.set(JvmTarget.JVM_21) } }` in `android/app/build.gradle.kts` while keeping `versionCode = 5` and `versionName = "1.0.4"`.
+- **Immediate Next Step:** Build the signed APK/AAB (`versionCode = 5`, `versionName = "1.0.4"`) in Android Studio.
 

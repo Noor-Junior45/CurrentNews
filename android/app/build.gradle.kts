@@ -1,5 +1,6 @@
 import java.io.File
 import java.util.Properties
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 // Module-level build file for Kotlin DSL (app/build.gradle.kts)
 plugins {
@@ -72,12 +73,14 @@ android {
         targetCompatibility = JavaVersion.VERSION_21
     }
 
-    kotlinOptions {
-        jvmTarget = "21"
-    }
-
     buildFeatures {
         viewBinding = true
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_21)
     }
 }
 
